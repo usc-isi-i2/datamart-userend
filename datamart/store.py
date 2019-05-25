@@ -7,10 +7,10 @@ from requests.auth import HTTPBasicAuth
 from etk.etk import ETK
 from etk.knowledge_graph import KGSchema
 from etk.etk_module import ETKModule
-from etk.wikidata.entity import WDProperty, WDItem
+from etk.wikidata.entity import WDProperty, WDItem, change_recorder, serialize_change_record
 from etk.wikidata.value import Datatype, Item, TimeValue, Precision, QuantityValue, StringValue, URLValue, MonolingualText
 from etk.wikidata.statement import WDReference
-from etk.wikidata import serialize_change_record
+# from etk.wikidata import serialize_change_record
 from etk.wikidata.truthy import TruthyUpdater
 from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
 from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
@@ -22,9 +22,11 @@ from io import StringIO
 
 # WIKIDATA_QUERY_SERVER = config.endpoint_main
 # WIKIDATA_UPDATE_SERVER = config.endpoint_update_main
-WIKIDATA_QUERY_SERVER = config.endpoint_query_test  # this is testing wikidata
-WIKIDATA_UPDATE_SERVER = config.endpoint_upload_test  # this is testing wikidata
-
+# WIKIDATA_QUERY_SERVER = config.endpoint_query_test  # this is testing wikidata
+# WIKIDATA_UPDATE_SERVER = config.endpoint_upload_test  # this is testing wikidata
+local = "http://128.9.216.134:9999/blazegraph/namespace/datamart3/sparql"
+WIKIDATA_QUERY_SERVER = local
+WIKIDATA_UPDATE_SERVER = local
 
 class Datamart_dataset:
     def __init__(self):
@@ -100,9 +102,21 @@ class Datamart_dataset:
         self.doc.kg.add_subject(p)
 
         # get the starting source id
-        sparql_query = """select ?x where {
-                        wd:Z00000 wdt:P1114 ?x .
-                       }"""
+        sparql_query = """
+            prefix wdt: <http://www.wikidata.org/prop/direct/>
+            prefix wd: <http://www.wikidata.org/entity/>
+            prefix wikibase: <http://wikiba.se/ontology#>
+            PREFIX p: <http://www.wikidata.org/prop/>
+            PREFIX pqv: <http://www.wikidata.org/prop/qualifier/value/>
+            PREFIX pq: <http://www.wikidata.org/prop/qualifier/>
+            PREFIX ps: <http://www.wikidata.org/prop/statement/>
+            prefix bd: <http://www.bigdata.com/rdf#>
+            prefix bds: <http://www.bigdata.com/rdf/search#>
+
+            select ?x where {
+              wd:Z00000 wdt:P1114 ?x .
+            }
+            """
         try:
             sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
             sparql.setQuery(sparql_query)
@@ -120,6 +134,7 @@ class Datamart_dataset:
             self.resource_id = 1000001
 
     def load_and_preprocess(self, input_dir, file_type="csv"):
+        from_online_file = False
         if file_type=="csv":
             try:
                 loaded_data = pd.read_csv(input_dir,dtype=str)
@@ -128,6 +143,7 @@ class Datamart_dataset:
 
             # TODO: how to upload to the online server afterwards?
         elif len(file_type) > 7 and file_type[:7]=="online_":
+            from_online_file = True
             general_materializer = GeneralMaterializer()
             file_type = file_type[7:]
                 # example: "csv"
@@ -145,9 +161,9 @@ class Datamart_dataset:
                 # remove last \n so that we will not get an extra useless row
                 if result[-1] == "\n":
                     result = result[:-1]
-                loaded_data = pd.DataFrame([x.split(',') for x in result.split('\n')], dtype=str)
-                loaded_data.columns = loaded_data.iloc[0]
-                loaded_data = loaded_data.drop(0)
+                    loaded_data = StringIO(result)
+                    loaded_data = pd.read_csv(loaded_data,dtype="str")
+
             except:
                 raise ValueError("Loading online data from " + input_dir + "failed!")
         else:
@@ -176,7 +192,7 @@ class Datamart_dataset:
             if 'http://schema.org/Text' in each_column_meta['semantic_type']:
                 self.columns_are_string.append(i)
                 
-        if len(file_type) > 7 and file_type[:7]=="online_":
+        if from_online_file:
             metadata['url'] = input_dir
             
         return wikifier_res, metadata
@@ -266,13 +282,38 @@ class Datamart_dataset:
             upload the dataset
         """
         # This special Q node is used to store the next count to store the new Q node
-        sparql_query = """delete {
-              wd:Z00000 wdt:P1114 ?x .
-            }
-            where {
-                wd:Z00000 wdt:P1114 ?x .
-            }
-        """
+        sparql_query = """
+            prefix wdt: <http://www.wikidata.org/prop/direct/>
+            prefix wdtn: <http://www.wikidata.org/prop/direct-normalized/>
+            prefix wdno: <http://www.wikidata.org/prop/novalue/>
+            prefix wds: <http://www.wikidata.org/entity/statement/>
+            prefix wdv: <http://www.wikidata.org/value/>
+            prefix wdref: <http://www.wikidata.org/reference/>
+            prefix wd: <http://www.wikidata.org/entity/>
+            prefix wikibase: <http://wikiba.se/ontology#>
+            prefix p: <http://www.wikidata.org/prop/>
+            prefix pqv: <http://www.wikidata.org/prop/qualifier/value/>
+            prefix pq: <http://www.wikidata.org/prop/qualifier/>
+            prefix ps: <http://www.wikidata.org/prop/statement/>
+            prefix psn: <http://www.wikidata.org/prop/statement/value-normalized/>
+            prefix prv: <http://www.wikidata.org/prop/reference/value/>
+            prefix psv: <http://www.wikidata.org/prop/statement/value/>
+            prefix prn: <http://www.wikidata.org/prop/reference/value-normalized/>
+            prefix pr: <http://www.wikidata.org/prop/reference/>
+            prefix pqn: <http://www.wikidata.org/prop/qualifier/value-normalized/>
+            prefix skos: <http://www.w3.org/2004/02/skos/core#>
+            prefix prov: <http://www.w3.org/ns/prov#>
+            prefix schema: <http://schema.org/'>
+            prefix bd: <http://www.bigdata.com/rdf#>
+            prefix bds: <http://www.bigdata.com/rdf/search#>
+
+            delete {
+                  wd:Z00000 wdt:P1114 ?x .
+                }
+                where {
+                    wd:Z00000 wdt:P1114 ?x .
+                }
+            """
         try:
             sparql = SPARQLWrapper(WIKIDATA_UPDATE_SERVER)
             sparql.setQuery(sparql_query)
@@ -292,16 +333,17 @@ class Datamart_dataset:
         # upload
         extracted_data = self.doc.kg.serialize("ttl")
         headers = {'Content-Type': 'application/x-turtle',}
-        response = requests.post(WIKIDATA_UPDATE_SERVER, data=extracted_data, headers=headers,
+        response = requests.post(WIKIDATA_UPDATE_SERVER, data=extracted_data.encode('utf-8'), headers=headers,
                                  auth=HTTPBasicAuth(config.user, config.password))
         print('Upload file finished with status code: {}!'.format(response.status_code))
 
-        if response.status_code!="200":
+        if response.status_code!=200:
             raise ValueError("Uploading file failed")
         else:
             # upload truthy
             temp_output = StringIO()
             serialize_change_record(temp_output)
+            temp_output.seek(0)
             tu = TruthyUpdater(WIKIDATA_UPDATE_SERVER, False, config.user, config.password)
             np_list = []
             for l in temp_output.readlines():

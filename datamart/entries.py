@@ -266,6 +266,37 @@ class D3MDatamart:
             search_results = search_results[:limit]
         return search_results
 
+    def search_with_data_columns(self, supplied_data: container.Dataset, data_constraints: typing.List['TabularVariable'], 
+                                 query: 'DatamartQuery'=None) -> "DatamartQueryCursor":
+        """
+        Search using a query which can include constraints on supplied data columns (TabularVariable).
+
+        This search is similar to the "smart" search provided by `search_with_data()`, but caller must manually specify
+        constraints using columns from the supplied data; Datamart will not automatically analyze it to determine
+        relevance or joinability.
+
+        Use of the query spec enables callers to compose their own "smart search" implementations.
+
+        Datamart implementations should return a DatamartQueryCursor immediately.
+
+        Parameters
+        ------_---
+        query : DatamartQuery
+            Query specification
+        supplied_data : container.Dataset
+            The data you are trying to augment.
+        data_constraints : list
+            List of `TabularVariable` constraints referencing the supplied data.
+
+        Returns
+        -------
+        DatamartQueryCursor
+            A cursor pointing to search results containing possible companion datasets for the supplied data.
+        """
+        if query is None:
+            
+
+
     def augment(self, query, supplied_data: d3m_Dataset, timeout: int = None, max_new_columns: int = 1000) -> d3m_Dataset:
         """
         In this entry point, the caller supplies a query and a dataset, and datamart returns an augmented dataset.
