@@ -24,13 +24,17 @@ from io import StringIO
 # WIKIDATA_UPDATE_SERVER = config.endpoint_update_main
 # WIKIDATA_QUERY_SERVER = config.endpoint_query_test  # this is testing wikidata
 # WIKIDATA_UPDATE_SERVER = config.endpoint_upload_test  # this is testing wikidata
-local = "http://128.9.216.134:9999/blazegraph/namespace/datamart3/sparql"
-WIKIDATA_QUERY_SERVER = local
-WIKIDATA_UPDATE_SERVER = local
+DATAMRT_SERVER = "http://dsbox02.isi.edu:9999/blazegraph/namespace/datamart3/sparql"
 
 class Datamart_dataset:
-    def __init__(self):
+    def __init__(self, query_server=None, update_server=None):
         self.punctuation_table = str.maketrans(dict.fromkeys(string.punctuation))
+        if query_server and update_server:
+            self.query_server = query_server
+            self.update_server = update_server
+        else:
+            self.query_server = DATAMRT_SERVER
+            self.update_server = DATAMRT_SERVER
 
         # initialize
         kg_schema = KGSchema()
@@ -118,7 +122,7 @@ class Datamart_dataset:
             }
             """
         try:
-            sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
+            sparql = SPARQLWrapper(self.query_server)
             sparql.setQuery(sparql_query)
             sparql.setReturnFormat(JSON)
             sparql.setMethod(POST)
@@ -194,7 +198,7 @@ class Datamart_dataset:
                 
         if from_online_file:
             metadata['url'] = input_dir
-            
+            metadata['title'] = input_dir.split("/")[-1]
         return wikifier_res, metadata
 
 
@@ -210,7 +214,7 @@ class Datamart_dataset:
         node_id = 'D' + str(self.resource_id)
         q = WDItem(node_id)
         self.resource_id += 1
-        q.add_label('datasets ' + node_id, lang='en')
+        q.add_label(node_id, lang='en')
         q.add_statement('P31', Item('Q1172284'))  # indicate it is subclass of a dataset
         q.add_statement('P2699', URLValue(url))  # url
         q.add_statement('P1476', MonolingualText(title, lang='en'))  # title
@@ -315,7 +319,7 @@ class Datamart_dataset:
                 }
             """
         try:
-            sparql = SPARQLWrapper(WIKIDATA_UPDATE_SERVER)
+            sparql = SPARQLWrapper(self.update_server)
             sparql.setQuery(sparql_query)
             sparql.setReturnFormat(JSON)
             sparql.setMethod(POST)
@@ -333,7 +337,7 @@ class Datamart_dataset:
         # upload
         extracted_data = self.doc.kg.serialize("ttl")
         headers = {'Content-Type': 'application/x-turtle',}
-        response = requests.post(WIKIDATA_UPDATE_SERVER, data=extracted_data.encode('utf-8'), headers=headers,
+        response = requests.post(self.update_server, data=extracted_data.encode('utf-8'), headers=headers,
                                  auth=HTTPBasicAuth(config.user, config.password))
         print('Upload file finished with status code: {}!'.format(response.status_code))
 
@@ -344,7 +348,7 @@ class Datamart_dataset:
             temp_output = StringIO()
             serialize_change_record(temp_output)
             temp_output.seek(0)
-            tu = TruthyUpdater(WIKIDATA_UPDATE_SERVER, False, config.user, config.password)
+            tu = TruthyUpdater(self.update_server, False, config.user, config.password)
             np_list = []
             for l in temp_output.readlines():
                 if not l: continue
