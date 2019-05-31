@@ -30,10 +30,10 @@ class Augment(object):
         self.joiners = dict()
         self.profiler = Profiler()
 
-    def query_by_sparql(self, json_query: dict, dataset: pd.DataFrame=None, **kwargs) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: pd.DataFrame=None, **kwargs) -> typing.Optional[typing.List[dict]]:
         """
         Args:
-            json_query: a dictnary format query
+            query: a dictnary format query
             dataset: 
             **kwargs:
 
@@ -41,11 +41,11 @@ class Augment(object):
 
         """
 
-        if json_query:
-            query_body = self.parse_sparql_query(json_query, dataset)
+        if query:
+            query_body = self.parse_sparql_query(query, dataset)
             try:
                 self.qm.setQuery(query_body)    
-                results = self.qm.query()
+                results = self.qm.query().convert()['results']['bindings']
             except:
                 print("[ERROR] Query failed!")
                 traceback.print_exc()
@@ -62,7 +62,33 @@ class Augment(object):
         :param dataset:
         :return: a string indicate the sparql query
         """
-        spaqrl_query = ""
+        # example of query variables: Chaves Los Angeles Sacramento
+        query_variables = json_query['variables']
+        query_part = " ".join(query_variables.values())
+        
+        spaqrl_query = '''
+        prefix ps: <http://www.wikidata.org/prop/statement/> 
+        prefix pq: <http://www.wikidata.org/prop/qualifier/> 
+        prefix p: <http://www.wikidata.org/prop/>
+
+        SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?title ?keywords
+        WHERE 
+        {
+          ?dataset p:C2005 ?variable;
+                 rdfs:label ?datasetLabel.
+          ?variable ps:C2005 ?variableName ;
+                    pq:C2006 [
+                        bds:search """''' + query_part + '''""" ;
+                        bds:relevance ?score ;
+                        bds:rank ?rank
+                    ].
+           ?dataset p:P2699/ps:P2699 ?url.
+           ?dataset p:P1476/ps:P1476 ?title.
+           ?dataset p:C2004/ps:C2004 ?keywords.
+          
+        }
+        ORDER BY DESC(?rank)
+        LIMIT 30'''
 
         return spaqrl_query
 

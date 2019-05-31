@@ -1,7 +1,5 @@
-
-import datetime
-import typing
 import pandas as pd
+# import os
 import copy
 import random
 import frozendict
@@ -27,20 +25,11 @@ from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
 from datamart.joiners.rltk_joiner import RLTKJoiner_new
 from wikifier import config
-import wikifier
 # import requests
 import traceback
 import logging
 import datetime
 import enum
-
-from d3m import container
-import d3m.metadata.base as metadata_base
-from d3m import utils
-
-__all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchResult', 'AugmentSpec',
-           'TabularJoinSpec', 'UnionSpec', 'TemporalGranularity', 'GeospatialGranularity', 'ColumnRelationship', 'DatamartQuery',
-           'VariableConstraint', 'NamedEntityVariable', 'TemporalVariable', 'GeospatialVariable', 'TabularVariable')
 
 Q_NODE_SEMANTIC_TYPE = "http://wikidata.org/qnode"
 DEFAULT_URL = "https://isi-datamart.edu"
@@ -53,82 +42,310 @@ CONTAINER_SCHEMA_VERSION = 'https://metadata.datadrivendiscovery.org/schemas/v0/
 P_NODE_IGNORE_LIST = {"P1549"}
 SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 AUGMENT_RESOURCE_ID = "augmentData"
-WIKIDATA_QUERY_SERVER = config.endpoint_query_main
 
 
-class DatamartQueryCursor(object):
+class D3MDatamart:
     """
-    Cursor to iterate through Datamarts search results.
+    ISI implementation of D3MDatamart
     """
-    def __init__(self, search_query, supplied_data, need_run_wikifier=False):
-        self.search_query = search_query
-        self.current_searching_query_index = 0
-        self.supplied_data = supplied_data
-        self.remained_part = None
-        self.need_run_wikifier = need_run_wikifier
+    def __init__(self, mode):
+        self.url = DEFAULT_URL
+        self._logger = logging.getLogger(__name__)
+        if mode == "test":
+            query_server = config.endpoint_query_test
+        else:
+            query_server = config.endpoint_query_main
+        self.augmenter = Augment(endpoint=query_server)
 
-    def get_next_page(self, *, limit: typing.Optional[int] = 20, timeout: int = None) -> typing.Optional[typing.Sequence['DatamartSearchResult']]:
+    def search(self, query: DatamartQuery, timeout=None, limit: int = 20) -> typing.List[DatamartSearchResult]:
         """
-        Return the next page of results. The call will block until the results are ready.
-
-        Note that the results are not ordered; the first page of results can be returned first simply because it was
-        found faster, but the next page might contain better results. The caller should make sure to check
-        `DatamartSearchResult.score()`.
+        This entry point supports search using a query specification.
+        The query spec is rich enough to enable query by example. The caller can select
+        values from a column in a dataset and use the query spec to find datasets that can join with the values
+        provided. Use of the query spec enables callers to compose their own "smart search" implementations.
 
         Parameters
         ----------
-        limit : int or None
-            Maximum number of search results to return. None means no limit.
-        timeout : int
-            Maximum number of seconds before returning results. An empty list might be returned if it is reached.
+        query: DatamartQuery
+            Query specification.
+        timeout: int
+            Maximum number of seconds before returning results.
+        limit: int
+            Maximum number of search results to return.
+
+        returns
+        -------
+        typing.List[DatamartSearchResult]
+            List of search results, combined from multiple datamarts. In the baseline implementation the list of
+            datamarts will be randomized on each call, and the results from multiple datamarts will be interleaved
+            accordingly. There will be an attempt to deduplicate results from multiple datamarts.
+        """
+        if not self.url.startswith(SEARCH_URL):
+            return []
+        query_json = query.to_json()
+        return self.search_general(query=query_json, supplied_data=None, timeout=timeout, limit=limit)
+
+    def search_general(self, query, supplied_data: d3m_DataFrame=None, timeout=None, limit: int=20) \
+            -> typing.List[DatamartSearchResult]:
+        """
+        The search function used for general elastic search
+        :param query: JSON object describing the query.
+        :param supplied_data: the data you are trying to augment.
+        :param timeout: allowed time spent on searching
+        :param limit: the limitation on the return amount of DatamartSearchResult
+        :return: list of search results of DatamartSearchResult
+        """
+        query_results = []
+        try:
+            params = {"timeout": "2m"}
+            if (query and ('required_variables' in query)) or (supplied_data is None):
+                # if ("required_variables" exists or no data):
+
+                cur_results = self.augmenter.query_by_sparql(query, supplied_data, size=limit) or []
+                for res in cur_results:
+                    query_results.append(DatamartSearchResult(search_result=res, supplied_data=supplied_data,
+                                                              query_json=query, search_type="general")
+                                         )
+
+            else:
+                # if there is no "required_variables" in the query JSON, but the supplied_data exists,
+                # try each named entity column as "required_variables" and concat the results:
+                query = query or {}
+                exist = set()
+                for col in supplied_data:
+                    if Utils.is_column_able_to_query(supplied_data[col]):
+                        # update 2019.4.9: we should not replace the original query!!!
+                        query_copy = query.copy()
+                        query_copy['required_variables'] = [{
+                            "type": "dataframe_columns",
+                            "names": [col]
+                        }]
+                        cur_results = self.augmenter.query_by_sparql(query_copy, supplied_data, size=limit, params=params)
+                        if not cur_results:
+                            continue
+                        for res in cur_results:
+                            if res['_id'] not in exist:
+                                # TODO: how about the score ??
+                                exist.add(res['_id'])
+                            query_results.append(DatamartSearchResult(search_result=res, supplied_data=supplied_data,
+                                                                   query_json=query_copy, search_type="general")
+                                              )
+            return query_results
+        except:
+            print("Searching with wiki data failed")
+            traceback.print_exc()
+        finally:
+            return query_results
+
+    def search_with_data(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame], query: DatamartQuery = None,
+                         timeout=None, limit: int = 20) -> typing.List[DatamartSearchResult]:
+        """
+        This entry point supports search based on a supplied datasets.
+
+        *) Smart search: the caller provides supplied_data (a D3M dataset), and a query containing
+        keywords from the D3M problem specification. The search will analyze the supplied data and look for datasets
+        that can augment the supplied data in some way. The keywords are used for further filtering and ranking.
+        For example, a datamart may try to identify named entities in the supplied data and search for companion
+        datasets that contain these entities.
+
+        *) Columns search: this search is similar to smart search in that it uses both query spec and the supplied_data.
+        The difference is that only the data in the columns listed in query_by_example_columns is used to identify
+        companion datasets.
+
+        Parameters
+        ---------
+        query: DatamartQuery
+            Query specification
+        supplied_data: d3m.container.Dataset or d3m.container.DataFrame
+            The data you are trying to augment.
+        query_by_example_columns:
+            A list of column identifiers or column names.
+        timeout: int
+            Maximum number of seconds before returning results.
+        limit: int
+            Maximum number of search results to return.
+
 
         Returns
         -------
-        Sequence[DatamartSearchResult] or None
-            A list of `DatamartSearchResult's, or None if there are no more results.
+        typing.List[DatamartSearchResult]
+            A list of DatamartSearchResult of possible companion datasets for the supplied data.
         """
 
-        # if need to run wikifier, run it before any search
-        if self.current_searching_query_index == 0 and self.need_run_wikifier:
-            self._run_wikifier()
+        if not self.url.startswith(SEARCH_URL):
+            return []
 
-        # if already remianed enough part
-        current_result = self.remained_part or []
-        if len(current_result) > limit:
-            self.remained_part = current_result[limit:]
-            current_result = current_result[:limit]
-            return current_result
-
-        # start searching
-        while self.current_searching_query_index < len(self.search_query) and len(current_result) < limit:
-            if self.search_query[self.current_searching_query_index].search_type == "wikidata":
-                search_res = self._search_wikidata(query=None, supplied_data=self.supplied_data)
-            elif self.search_query[self.current_searching_query_index].search_type == "datamart":
-                search_res = self._search_datamart()
-            
-            self.current_searching_query_index += 1
-            current_result.extend(search_res)
-            
-
-        if len(current_result) == 0:
-            return None
+        if type(supplied_data) is d3m_Dataset:
+            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
         else:
-            if len(current_result) > limit:
-                self.remained_part = current_result[limit:]
-                current_result = current_result[:limit]
-            return current_result
+            supplied_dataframe = supplied_data
 
-    def run_wikifier(self):
-        from dsbox.datapreprocessing.cleaner.wikifier import WikifierHyperparams ,Wikifier
-        wikifier_hyperparams = WikifierHyperparams.defaults()
-        # wikifier_hyperparams = wikifier_hyperparams.replace({"use_columns":(1,)})
-        wikifier_primitive = Wikifier(hyperparams = wikifier_hyperparams)
-        self.supplied_data = wikifier_primitive.produce(inputs = self.supplied_data).value
-        self.need_run_wikifier = False
+        search_results = []
+        if query is not None:
+            query_json = query.to_json()
+        else:
+            query_json = None
+
+        # first take a search on wikidata
+        wikidata_search_results = self.search_wiki_data(query_json, supplied_data, timeout)
+        search_results.extend(wikidata_search_results)
+        limit_remained = limit - len(wikidata_search_results)
+
+        if query is None:
+            # if not query given, try to find the Text columns from given dataframe and use it to find some candidates
+            can_query_columns = []
+            for each in range(len(supplied_dataframe.columns)):
+                if type(supplied_data) is d3m_Dataset:
+                    selector = (res_id, ALL_ELEMENTS, each)
+                else:
+                    selector = (ALL_ELEMENTS, each)
+                each_column_meta = supplied_data.metadata.query(selector)
+                if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
+                    # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
+                    can_query_columns.append(each)
+
+            # import pdb
+            # pdb.set_trace()
+
+            if len(can_query_columns) == 0:
+                self._logger.warning("No columns can be augment!")
+                return search_results
+
+            results_no_query = []
+            for each_column in can_query_columns:
+                column_values = supplied_dataframe.iloc[:, each_column]
+                query_column_entities = list(set(column_values.tolist()))
+
+                if len(query_column_entities) > MAX_ENTITIES_LENGTH:
+                    query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
+
+                for i in range(len(query_column_entities)):
+                    query_column_entities[i] = str(query_column_entities[i])
+
+                query_column_entities = " ".join(query_column_entities)
+
+                search_query = DatamartQuery(about=query_column_entities)
+                query_json = search_query.to_json()
+                # TODO: need to improve the query for required variables
+                # search_query ={
+                #     "required_variables": [
+                #         {
+                #             "type": "generic_entity",
+                #             "named_entities":query_column_entities
+                #         }
+                #     ]
+                # }
+
+                # sort to put best results at top
+                temp_results = self.search_general(query=query_json, supplied_data=supplied_dataframe)
+                temp_results.sort(key=lambda x: x.score, reverse=True)
+                results_no_query.append(temp_results)
+            # we will return the results of each searching query one by one
+            # for example: [res_q1_1,res_q1_2,res_q1_3], [res_q2_1,res_q2_2,res_q2_3] , [res_q3_1,res_q3_2,res_q3_3]
+            # will return as: [res_q1_1, res_q2_1, res_q3_1, res_q1_2, res_q2_2, res_q3_3...]
+            results_rescheduled = []
+            has_remained = True
+            while has_remained:
+                has_remained = False
+                for each in results_no_query:
+                    if len(each) > 0:
+                        has_remained = True
+                        results_rescheduled.append(each.pop(0))
+            # append together
+            search_results.extend(results_rescheduled)
+
+        else:  # for the condition if given query, follow the query
+            if limit_remained > 0:
+                query_json = query.to_json()
+                general_search_results = self.search_general(query=query_json, supplied_data=supplied_dataframe,
+                                                             timeout=timeout, limit=limit_remained)
+                general_search_results.sort(key=lambda x: x.score, reverse=True)
+                search_results.extend(general_search_results)
+
+        if len(search_results) > limit:
+            search_results = search_results[:limit]
+        return search_results
+
+    def search_with_data_columns(self, supplied_data: container.Dataset, data_constraints: typing.List['TabularVariable'], 
+                                 query: 'DatamartQuery'=None) -> "DatamartQueryCursor":
+        """
+        Search using a query which can include constraints on supplied data columns (TabularVariable).
+
+        This search is similar to the "smart" search provided by `search_with_data()`, but caller must manually specify
+        constraints using columns from the supplied data; Datamart will not automatically analyze it to determine
+        relevance or joinability.
+
+        Use of the query spec enables callers to compose their own "smart search" implementations.
+
+        Datamart implementations should return a DatamartQueryCursor immediately.
+
+        Parameters
+        ------_---
+        query : DatamartQuery
+            Query specification
+        supplied_data : container.Dataset
+            The data you are trying to augment.
+        data_constraints : list
+            List of `TabularVariable` constraints referencing the supplied data.
+
+        Returns
+        -------
+        DatamartQueryCursor
+            A cursor pointing to search results containing possible companion datasets for the supplied data.
+        """
+        if query is None:
+            
 
 
-    def _search_wikidata(self, query, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset]=None, timeout=None,
-                         search_threshold=0.5) -> typing.List["DatamartSearchResult"]:
+    def augment(self, query, supplied_data: d3m_Dataset, timeout: int = None, max_new_columns: int = 1000) -> d3m_Dataset:
+        """
+        In this entry point, the caller supplies a query and a dataset, and datamart returns an augmented dataset.
+        Datamart automatically determines useful data for augmentation and automatically joins the new data to produce
+        an augmented Dataset that may contain new columns and rows, and possibly new dataframes.
+
+        Parameters
+        ---------
+        query: DatamartQuery
+            Query specification
+        supplied_data: d3m.container.Dataset
+            The data you are trying to augment.
+        timeout: int
+            Maximum number of seconds before returning results.
+        max_new_columns: int
+            Maximum number of new columns to add to the original dataset.
+
+        Returns
+        -------
+        d3m.container.Dataset
+            The augmented Dataset
+        """
+        if type(supplied_data) is d3m_Dataset:
+            input_type = "ds"
+            res_id, _ = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+        else:
+            input_type = "df"
+
+        search_results = self.search_with_data(query=query, supplied_data=supplied_data, timeout=timeout)
+        continue_aug = True
+        count = 0
+        augment_result = supplied_data
+
+        # continue augmenting until reach the maximum new columns or all search_result has been used
+        while continue_aug and count < len(search_results):
+            augment_result = search_results[count].augment(supplied_data=augment_result)
+            count += 1
+            if input_type == "ds":
+                current_column_number = augment_result[res_id].shape[1]
+            else:
+                current_column_number = augment_result.shape[1]
+            if current_column_number >= max_new_columns:
+                continue_aug = False
+
+        return augment_result
+
+    @staticmethod
+    def search_wiki_data(query, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset]=None, timeout=None,
+                         search_threshold=0.5) -> typing.List[DatamartSearchResult]:
         """
         The search function used for wikidata search
         :param query: JSON object describing the query.
@@ -216,10 +433,8 @@ class DatamartQueryCursor(object):
                         sparql.setRequestMethod(URLENCODED)
                         results = sparql.query().convert()['results']['bindings']
                     except:
-                        print("Query failed!")
-                        traceback.print_exc()
+                        print("Getting query of wiki data failed!")
                         continue
-
                     for each in results:
                         p_count[each['property']['value'].split("/")[-1]] += 1
 
@@ -241,165 +456,36 @@ class DatamartQueryCursor(object):
         finally:
             return wikidata_results
 
-    def _search_datamart(self):
+
+class DatamartMetadata:
+    """
+    This class represents the metadata associated with search results.
+    """
+    def __init__(self, title: str, description: str):
+        self.title = title
+        self.description = description
+
+    def get_columns(self) -> typing.List[str]:
+        """
+        :return: a list of strings representing the names of columns in the dataset that can be downloaded from a
+        search result.
+        """
         pass
 
-class Datamart(object):
-    """
-    All Datamarts must implement this abstract class.
-    """
-
-    def __init__(self, connection_url: str) -> None:
-        self.connection_url = connection_url
-        self._logger = logging.getLogger(__name__)
-        # query_server = "http://dsbox02.isi.edu:9999/blazegraph/namespace/datamart3/sparql"  # config.endpoint_query_main
-        self.augmenter = Augment(endpoint=self.connection_url)
-
-    def set_test_mode(self) -> None:
-        query_server = config.endpoint_query_test
-        self.augmenter = Augment(endpoint=query_server)
-
-    def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
-        """This entry point supports search using a query specification.
-
-        The query specification supports querying datasets by keywords, named entities, temporal ranges, and geospatial ranges.
-
-        Datamart implementations should return a DatamartQueryCursor immediately.
-
-        Parameters
-        ----------
-        query : DatamartQuery
-            Query specification.
-
-        Returns
-        -------
-        DatamartQueryCursor
-            A cursor pointing to search results.
+    def get_detailed_metadata(self) -> dict:
         """
-        print("Not implemented yet")
+        Datamart will use a program-wide metadata standard, currently computed by the Harvard team, using contributions
+        from other performers. This method returns the standard metadata for a dataset.
+        :return: a dict with the standard metadata.
+        """
         pass
 
-    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset) -> DatamartQueryCursor:
+    def get_datamart_specific_metadata(self) -> dict:
         """
-        Search using on a query and a supplied dataset.
-
-        This method is a "smart" search, which leaves the Datamart to determine how to evaluate the relevance of search
-        result with regard to the supplied data. For example, a Datamart may try to identify named entities and date
-        ranges in the supplied data and search for companion datasets which overlap.
-
-        To manually specify query constraints using columns of the supplied data, use the `search_with_data_columns()`
-        method and `TabularVariable` constraints.
-
-        Datamart implementations should return a DatamartQueryCursor immediately.
-
-        Parameters
-        ------_---
-        query : DatamartQuery
-            Query specification
-        supplied_data : container.Dataset
-            The data you are trying to augment.
-
-        Returns
-        -------
-        DatamartQueryCursor
-            A cursor pointing to search results containing possible companion datasets for the supplied data.
+        A datamart implementation may compute additional metadata beyond the program-wide standard metadata.
+        :return: a dict with the datamart-specific metadata.
         """
-
-        # first take a search on wikidata
-        # add wikidata searching query at first position
-        search_queries = [DatamartQuery(search_type="wikidata")]
-        if type(supplied_data) is d3m_Dataset:
-            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
-        else:
-            supplied_dataframe = supplied_data
-
-        if query is None:
-            # if not query given, try to find the Text columns from given dataframe and use it to find some candidates
-            can_query_columns = []
-            for each in range(len(supplied_dataframe.columns)):
-                if type(supplied_data) is d3m_Dataset:
-                    selector = (res_id, ALL_ELEMENTS, each)
-                else:
-                    selector = (ALL_ELEMENTS, each)
-                each_column_meta = supplied_data.metadata.query(selector)
-                if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
-                    # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
-                    can_query_columns.append(each)
-
-
-            if len(can_query_columns) == 0:
-                self._logger.warning("No columns can be augment with datamart!")
-            
-            for each_column in can_query_columns:
-                tabular_variable = TabularVariable(columns=[each_column], relationship=None)
-                each_search_query = self._generate_datamart_query_from_data(query=None, supplied_data=supplied_data, data_constraints=tabular_variable)
-                search_queries.append(each_search_query)
-
-            return DatamartQueryCursor(search_query=search_queries, supplied_data=supplied_data)
-
-    def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
-                                 data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
-        """
-        Search using a query which can include constraints on supplied data columns (TabularVariable).
-
-        This search is similar to the "smart" search provided by `search_with_data()`, but caller must manually specify
-        constraints using columns from the supplied data; Datamart will not automatically analyze it to determine
-        relevance or joinability.
-
-        Use of the query spec enables callers to compose their own "smart search" implementations.
-
-        Datamart implementations should return a DatamartQueryCursor immediately.
-
-        Parameters
-        ------_---
-        query : DatamartQuery
-            Query specification
-        supplied_data : container.Dataset
-            The data you are trying to augment.
-        data_constraints : list
-            List of `TabularVariable` constraints referencing the supplied data.
-
-        Returns
-        -------
-        DatamartQueryCursor
-            A cursor pointing to search results containing possible companion datasets for the supplied data.
-        """
-
-        # put the enetities of all given columns from "data_constraints" into the query's variable part and run the query
-
-        search_query = self._generate_datamart_query_from_data(query=None, supplied_data=supplied_data, data_constraints=data_constraints)
-        return DatamartQueryCursor(search_query=[search_query], supplied_data=supplied_data)
-
-    def _generate_datamart_query_from_data(self, query: 'DatamartQuery', supplied_data: container.Dataset,
-                                 data_constraints: typing.List['TabularVariable']):
-        all_query_variables = ""
-        for each_column in data_constraints.columns:
-            column_values = supplied_dataframe.iloc[:, each_column]
-            query_column_entities = list(set(column_values.tolist()))
-
-            if len(query_column_entities) > MAX_ENTITIES_LENGTH:
-                query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
-
-            for i in range(len(query_column_entities)):
-                query_column_entities[i] = str(query_column_entities[i])
-
-            query_column_entities = " ".join(query_column_entities)
-
-        all_query_variables += query_column_entities + " "
-        search_query = DatamartQuery(variables=query_column_entities)
-
-        return search_query
-
-
-class DatasetColumn:
-    """
-    Specify a column of a dataframe in a D3MDataset
-    """
-
-    def __init__(self, resource_id: str, column_index: int) -> None:
-        self.resource_id = resource_id
-        self.column_index = column_index
-
+        pass
 
 
 class DatamartSearchResult:
@@ -1042,30 +1128,24 @@ class DatamartSearchResult:
         return output
 
 
-class AugmentSpec:
+class D3MJoinSpec:
     """
-    Abstract class for D3M augmentation specifications
-    """
-
-
-class TabularJoinSpec(AugmentSpec):
-    """
-    A join spec specifies a possible way to join a left dataset with a right dataset. The spec assumes that it may
+    A join spec specifies a possible way to join a left datasets with a right dataset. The spec assumes that it may
     be necessary to use several columns in each datasets to produce a key or fingerprint that is useful for joining
     datasets. The spec consists of two lists of column identifiers or names (left_columns, left_column_names and
     right_columns, right_column_names).
 
     In the simplest case, both left and right are singleton lists, and the expectation is that an appropriate
     matching function exists to adequately join the datasets. In some cases equality may be an appropriate matching
-    function, and in some cases fuzz matching is required. The join spec does not specify the matching function.
+    function, and in some cases fuzz matching is required. The spec join spec does not specify the matching function.
 
     In more complex cases, one or both left and right lists contain several elements. For example, the left list
     may contain columns for "city", "state" and "country" and the right dataset contains an "address" column. The join
     spec pairs up ["city", "state", "country"] with ["address"], but does not specify how the matching should be done
     e.g., combine the city/state/country columns into a single column, or split the address into several columns.
     """
-    def __init__(self, left_resource_id: str, right_resource_id: str, left_columns: typing.List[typing.List[DatasetColumn]],
-                 right_columns: typing.List[typing.List[DatasetColumn]]) -> None:
+    def __init__(self, left_columns: typing.List[typing.List[int]], right_columns: typing.List[typing.List[int]],
+                 left_resource_id: str=None, right_resource_id: str=None):
         self.left_resource_id = left_resource_id
         self.right_resource_id = right_resource_id
         self.left_columns = left_columns
@@ -1074,18 +1154,12 @@ class TabularJoinSpec(AugmentSpec):
         # each list inside left_columns/right_columns is a candidate joining column for that dataFrame
         # each candidate joining column can also have multiple columns
 
-
-class UnionSpec(AugmentSpec):
-    """
-    A union spec specifies how to combine rows of a dataframe in the left dataset with a dataframe in the right dataset.
-    The dataframe after union should have the same columns as the left dataframe.
-
-    Implementation: TBD
-    """
-    pass
+    def to_str_format(self):
+        return "[ (" + (self.left_resource_id or "") + ", " + str(self.left_columns) + ") , (" + \
+               (self.right_resource_id or "") + ", " + str(self.right_columns) + ") ]"
 
 
-class TemporalGranularity(utils.Enum):
+class TemporalGranularity(enum.Enum):
     YEAR = 1
     MONTH = 2
     DAY = 3
@@ -1093,153 +1167,86 @@ class TemporalGranularity(utils.Enum):
     SECOND = 5
 
 
-class GeospatialGranularity(utils.Enum):
+class GeospatialGranularity(enum.Enum):
     COUNTRY = 1
     STATE = 2
     COUNTY = 3
     CITY = 4
-    POSTAL_CODE = 5
+    POSTALCODE = 5
 
 
-class ColumnRelationship(utils.Enum):
-    CONTAINS = 1
-    SIMILAR = 2
-    CORRELATED = 3
-    ANTI_CORRELATED = 4
-    MUTUALLY_INFORMATIVE = 5
-    MUTUALLY_UNINFORMATIVE = 6
+class DatamartVariable:
+    pass
 
 
 class DatamartQuery:
+    def __init__(self, about: str=None, required_variables: typing.List[DatamartVariable]=None,
+                 desired_variables: typing.List[DatamartVariable]=None):
+        self.about = about
+        self.required_variables = required_variables
+        self.desired_variables = desired_variables
+
+    def to_json(self):
+        """
+        function used to transform the Query to json format that can used on elastic search
+        :return:
+        """
+        search_query = dict()
+        if self.about is not None:
+            search_query["dataset"] = {
+                    "about": self.about
+                }
+        if self.required_variables is not None:
+            search_query["required_variables"] = self.required_variables
+
+        return search_query
+
+class NamedEntityVariable(DatamartVariable):
     """
-    A Datamart query consists of two parts:
-
-    * A list of keywords.
-
-    * A list of required variables. A required variable specifies that a matching dataset must contain a variable
-      satisfying the constraints provided in the query. When multiple required variables are given, the matching
-      dataset should contain variables that match each of the variable constraints.
-
-    The matching is fuzzy. For example, when a user specifies a required variable spec using named entities, the
-    expectation is that a matching dataset contains information about the given named entities. However, due to name,
-    spelling, and other differences it is possible that the matching dataset does not contain information about all
-    the specified entities.
-
-    In general, Datamart will do a best effort to satisfy the constraints, but may return datasets that only partially
-    satisfy the constraints.
-    """
-    def __init__(self, keywords: typing.List[str]=[], variables: typing.List['VariableConstraint']=[], search_type: str="datamart") -> None:
-        self.search_type = search_type
-        self.keywords = keywords
-        self.variables = variables
-
-
-class VariableConstraint(object):
-    """
-    Abstract class for all variable constraints.
-    """
-
-
-class NamedEntityVariable(VariableConstraint):
-    """
-    Specifies that a matching dataset must contain a variable including the specified set of named entities.
-
-    For example, if the entities are city names, the expectation is that a matching dataset must contain a variable
-    (column) with the given city names. Due to spelling differences and incompleteness of datasets, the returned
-    results may not contain all the specified entities.
+    Describes columns containing named enitities.
 
     Parameters
     ----------
-    entities : List[str]
+    entities: List[str]
         List of strings that should be contained in the matched dataset column.
     """
-    def __init__(self, entities: typing.List[str]) -> None:
+    def __init__(self, entities: typing.List[str]):
         self.entities = entities
 
 
-class TemporalVariable(VariableConstraint):
+class TemporalVariable(DatamartVariable):
     """
-    Specifies that a matching dataset should contain a variable with temporal information (e.g., dates) satisfying
-    the given constraint.
-
-    The goal is to return a dataset that covers the requested temporal interval and includes
-    data at a requested level of granularity.
-
-    Datamart will return best effort results, including datasets that may not fully cover the specified temporal
-    interval or whose granularity is finer or coarser than the requested granularity.
+    Describes columns containing temporal information.
 
     Parameters
     ----------
-    start : datetime
-        A matching dataset should contain a variable with temporal information that starts earlier than the given start.
-    end : datetime
-        A matching dataset should contain a variable with temporal information that ends after the given end.
-    granularity : TemporalGranularity
-        A matching dataset should provide temporal information at the requested level of granularity.
+    start: datetime
+        Requested datetime should be equal or older than this datetime
+    end: datetime
+        Requested datatime should be equal or less than this datetime
+    granularity: TemporalGranularity
+        Requested datetimes are well matched with the requested granularity
     """
-    def __init__(self, start: datetime.datetime, end: datetime.datetime, granularity: TemporalGranularity = None) -> None:
-        self.start = start
-        self.end = end
-        self.granularity = granularity
+    def __init__(self, start: datetime.datetime, end: datetime.datetime, granularity: TemporalGranularity):
+        pass
 
 
-class GeospatialVariable(VariableConstraint):
+class GeospatialVariable(DatamartVariable):
     """
-    Specifies that a matching dataset should contain a variable with geospatial information that covers the given
-    bounding box.
-
-    A matching dataset may contain variables with latitude and longitude information (in one or two columns) that
-    cover the given bounding box.
-
-    Alternatively, a matching dataset may contain a variable with named entities of the given granularity that provide
-    some coverage of the given bounding box. For example, if the bounding box covers a 100 mile square in Southern
-    California, and the granularity is City, the result should contain Los Angeles, and other cities in Southern
-    California that intersect with the bounding box (e.g., Hawthorne, Torrance, Oxnard).
+    Describes columns containing geospatial information.
 
     Parameters
     ----------
-    latitude1 : float
+    lat1: float
         The latitude of the first point
-    longitude1 : float
+    long1: float
         The longitude of the first point
-    latitude2 : float
+    lat2: float
         The latitude of the second point
-    longitude2 : float
+    long2: float
         The longitude of the second point
-    granularity : GeospatialGranularity
-        Requested geospatial values are well matched with the requested granularity
+    granularity: GeospatialGranularity
+        Requested geosptial values are well matched with the requested granularity
     """
-    def __init__(self, latitude1: float, longitude1: float, latitude2: float, longitude2: float, granularity: GeospatialGranularity = None) -> None:
-        self.latitude1 = latitude1
-        self.longitude1 = longitude1
-        self.latitude2 = latitude2
-        self.longitude2 = longitude2
-        self.granularity = granularity
-
-
-class TabularVariable(object):
-    """
-    Specifies that a matching dataset should contain variables related to given columns in the supplied_dataset.
-
-    The relation ColumnRelationship.CONTAINS specifies that string values in the columns overlap using the string
-    equality comparator. If supplied_dataset columns consists of temporal or spatial values, then
-    ColumnRelationship.CONTAINS specifies overlap in temporal range or geospatial bounding box, respectively.
-
-    The relation ColumnRelationship.SIMILAR specifies that string values in the columns overlap using fuzzy string matching.
-
-    The relations ColumnRelationship.CORRELATED and ColumnRelationship.ANTI_CORRELATED specify the columns are
-    correlated and anti-correlated, respectively.
-
-    The relations ColumnRelationship.MUTUALLY_INFORMATIVE and ColumnRelationship.MUTUALLY_UNINFORMATIVE specify the columns
-    are mutually and anti-correlated, respectively.
-
-    Parameters:
-    -----------
-    columns : typing.List[int]
-        Specify columns in the dataframes of the supplied_dataset
-    relationship : ColumnRelationship
-        Specifies how the the columns in the supplied_dataset are related to the variables in the matching dataset.
-    """
-    def __init__(self, columns: typing.List[DatasetColumn], relationship: ColumnRelationship) -> None:
-        self.columns = columns
-        self.relationship = relationship
+    def __init__(self, lat1: float, long1: float, lat2: float, long2: float, granularity: GeospatialGranularity):
+        pass

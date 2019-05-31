@@ -162,14 +162,13 @@ class Datamart_dataset:
             }
             try:
                 result = general_materializer.get(metadata=file_metadata).to_csv(index=False)
-                # remove last \n so that we will not get an extra useless row
-                if result[-1] == "\n":
-                    result = result[:-1]
-                    loaded_data = StringIO(result)
-                    loaded_data = pd.read_csv(loaded_data,dtype="str")
-
             except:
                 raise ValueError("Loading online data from " + input_dir + "failed!")
+                # remove last \n so that we will not get an extra useless row
+            if result[-1] == "\n":
+                result = result[:-1]
+            loaded_data = StringIO(result)
+            loaded_data = pd.read_csv(loaded_data,dtype="str")
         else:
             raise ValueError("Unsupported file type")
 
@@ -199,6 +198,7 @@ class Datamart_dataset:
         if from_online_file:
             metadata['url'] = input_dir
             metadata['title'] = input_dir.split("/")[-1]
+            metadata['file_type'] = file_type
         return wikifier_res, metadata
 
 
@@ -207,6 +207,7 @@ class Datamart_dataset:
             metadata = {}
         title = metadata.get("title") or ""
         keywords = metadata.get("keywords") or ""
+        file_type = metadata.get("file_type") or ""
         # TODO: if no url given?
         url = metadata.get("url") or "https://"
         if type(keywords) is list:
@@ -217,6 +218,7 @@ class Datamart_dataset:
         q.add_label(node_id, lang='en')
         q.add_statement('P31', Item('Q1172284'))  # indicate it is subclass of a dataset
         q.add_statement('P2699', URLValue(url))  # url
+        q.add_statement('P2701', StringValue(file_type)) # file type
         q.add_statement('P1476', MonolingualText(title, lang='en'))  # title
         q.add_statement('C2001', StringValue(node_id))  # datamart identifier
         q.add_statement('C2004', StringValue(keywords))  # keywords
