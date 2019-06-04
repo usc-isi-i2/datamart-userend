@@ -71,7 +71,7 @@ class Augment(object):
         prefix pq: <http://www.wikidata.org/prop/qualifier/> 
         prefix p: <http://www.wikidata.org/prop/>
 
-        SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?title ?keywords
+        SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?title ?keywords ?extra_information
         WHERE 
         {
           ?dataset p:C2005 ?variable;
@@ -85,6 +85,7 @@ class Augment(object):
            ?dataset p:P2699/ps:P2699 ?url.
            ?dataset p:P1476/ps:P1476 ?title.
            ?dataset p:C2004/ps:C2004 ?keywords.
+           ?dataset p:C2010/ps:C2010 ?extra_information.
           
         }
         ORDER BY DESC(?rank)

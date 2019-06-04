@@ -22,13 +22,12 @@ with open('requirements.txt', 'r') as f:
             install_requires.append(re)
 
 print(dependency_links)
-setup(name='Datamart',
+setup(name='Datamart-userend',
       version='2.0dev',
       description='Data Augmentation',
       author='ISI',
       url='https://github.com/usc-isi-i2/datamart/tree/development',
       packages=['datamart',
-      #           'datamart.es_managers',
                 'datamart.joiners', 
                 'datamart.joiners.join_feature', 
                 'datamart.materializers',
@@ -37,7 +36,6 @@ setup(name='Datamart',
                 'datamart.profilers',
                 'datamart.profilers.helpers',
                 'datamart.utilities',
-      #           'datamart.resources',
                ],
       # package_dir={'datamart': 'datamart'},
       # package_data={'datamart': ['resources/*.json','resources/*.csv']},

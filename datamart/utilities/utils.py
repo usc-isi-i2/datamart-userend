@@ -1,7 +1,6 @@
 import warnings
 import dateutil.parser
-from datamart.materializers.materializer_base import MaterializerBase
-from datamart.materializers.general_materializer import GeneralMaterializer
+# from datamart.materializers.materializer_base import MaterializerBase
 import importlib
 import os
 import sys
@@ -15,8 +14,10 @@ from datetime import datetime
 from datamart.utilities.timeout import timeout
 import re
 import wikifier
+import traceback
 # from datamart.utilities.caching import Cache, EntryState
 from io import StringIO
+from ast import literal_eval
 
 class Utils:
     DEFAULT_DESCRIPTION = {
@@ -27,12 +28,13 @@ class Utils:
     }
 
     @staticmethod
-    def materialize(metadata):
+    def materialize(metadata) -> pd.DataFrame:
         if 'dataset' not in metadata:
             raise ValueError("No dataset name found")
         else:
             dataset_url = metadata['url']['value']
-
+        from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
+        from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
         file_type = metadata.get("file_type") or ""
         if file_type == "":
             # no file type get, try to guess
@@ -40,6 +42,33 @@ class Utils:
         else:
             file_type = file_type['value']
 
+        if file_type == "wikitable":
+            extra_information = literal_eval(metadata['extra_information'])
+            loaded_data = self.materialize_for_wikitable(dataset_url, file_type, extra_information)
+        else:
+            loaded_data = self.materialize_for_general(dataset_url, file_type)
+
+        # run dsbox's profiler and cleaner
+        hyper1 = ProfilerHyperparams.defaults()
+        profiler = Profiler(hyperparams=hyper1)
+        profiled_df = profiler.produce(inputs=loaded_data).value
+        hyper2 = CleaningFeaturizerHyperparameter.defaults()
+        clean_f = CleaningFeaturizer(hyperparams=hyper2)
+        clean_f.set_training_data(inputs=profiled_df)
+        clean_f.fit()
+        cleaned_df = pd.DataFrame(clean_f.produce(inputs=profiled_df).value)
+        wikifier_res = wikifier.produce(cleaned_df)
+
+        return wikifier_res
+
+    def materialize_for_wikitable(self, dataset_url:str, file_type:str, extra_information:str) -> pd.DataFrame:
+        from datamart.materializers.wikitables_materializer import WikitablesMaterializer
+        materializer = WikitablesMaterializer()
+        loaded_data = materializer.get_one(dataset_url, extra_information['xpath'])
+        return loaded_data
+
+    def materialize_for_general(self, dataset_url:str, file_type:str) -> pd.DataFrame:
+        from datamart.materializers.general_materializer import GeneralMaterializer
         general_materializer = GeneralMaterializer()
         file_metadata = {
             "materialization": {
@@ -50,8 +79,7 @@ class Utils:
                 }
             }
         }
-        from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
-        from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
+
         try:
             result = general_materializer.get(metadata=file_metadata).to_csv(index=False)
             # remove last \n so that we will not get an extra useless row
@@ -60,25 +88,10 @@ class Utils:
 
             loaded_data = StringIO(result)
             loaded_data = pd.read_csv(loaded_data,dtype="str")
-            # run dsbox's profiler and cleaner
-            hyper1 = ProfilerHyperparams.defaults()
-            profiler = Profiler(hyperparams=hyper1)
-            profiled_df = profiler.produce(inputs=loaded_data).value
-            hyper2 = CleaningFeaturizerHyperparameter.defaults()
-            clean_f = CleaningFeaturizer(hyperparams=hyper2)
-            clean_f.set_training_data(inputs=profiled_df)
-            clean_f.fit()
-            cleaned_df = pd.DataFrame(clean_f.produce(inputs=profiled_df).value)
-            # wikifier_res = wikifier.produce(loaded_data, target_columns=self.columns_are_string)
-
-            # TODO: It seems fill na with "" will change the column type!
-            # cleaned_df = cleaned_df.fillna("")
-            wikifier_res = wikifier.produce(cleaned_df)
-
+            return loaded_data
         except:
+            traceback.print_exc()
             raise ValueError("Materializing from " + dataset_url + " failed!")
-
-        return wikifier_res
 
     @staticmethod
     def calculate_dsbox_features(data: pd.DataFrame, metadata: typing.Union[dict, None],
@@ -103,7 +116,7 @@ class Utils:
         """Generate a default metadata just from the data, without the dataset schema
 
          Args:
-             data: pandas Dataframe
+             data: pandas DataFrame
 
          Returns:
               metadata dict

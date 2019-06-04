@@ -99,11 +99,12 @@ class DatamartQueryCursor(object):
         # start searching
         while self.current_searching_query_index < len(self.search_query) and len(current_result) < limit:
             if self.search_query[self.current_searching_query_index].search_type == "wikidata":
-                search_res = self._search_wikidata(query=None, supplied_data=self.supplied_data)
+                # TODO: now wikifier can only antomatically search for all possible columns and do exact match
+                search_res = self._search_wikidata()
             elif self.search_query[self.current_searching_query_index].search_type == "general":
                 search_res = self._search_datamart()
             else:
-                raise ValueError("Unknown search query type!")
+                raise ValueError("Unknown search query type for " + self.search_query[self.current_searching_query_index].search_type)
 
             self.current_searching_query_index += 1
             current_result.extend(search_res)
@@ -153,7 +154,7 @@ class DatamartQueryCursor(object):
         self.supplied_data = wikifier_primitive.produce(inputs = self.supplied_data).value
         self.need_run_wikifier = False
 
-    def _search_wikidata(self, query, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset]=None, timeout=None,
+    def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset]=None, timeout=None,
                          search_threshold=0.5) -> typing.List["DatamartSearchResult"]:
         """
         The search function used for wikidata search
@@ -164,6 +165,9 @@ class DatamartQueryCursor(object):
         :param search_threshold: the minimum appeared times of the properties
         :return: list of search results of DatamartSearchResult
         """
+        if supplied_data is None:
+            supplied_data = self.supplied_data
+
         wikidata_results = []
         try:
             q_nodes_columns = []
