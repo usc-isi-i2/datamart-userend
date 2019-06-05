@@ -44,9 +44,9 @@ class Utils:
 
         if file_type == "wikitable":
             extra_information = literal_eval(metadata['extra_information'])
-            loaded_data = self.materialize_for_wikitable(dataset_url, file_type, extra_information)
+            loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
         else:
-            loaded_data = self.materialize_for_general(dataset_url, file_type)
+            loaded_data = Utils.materialize_for_general(dataset_url, file_type)
 
         # run dsbox's profiler and cleaner
         hyper1 = ProfilerHyperparams.defaults()
@@ -61,13 +61,15 @@ class Utils:
 
         return wikifier_res
 
-    def materialize_for_wikitable(self, dataset_url:str, file_type:str, extra_information:str) -> pd.DataFrame:
+    @staticmethod
+    def materialize_for_wikitable(dataset_url:str, file_type:str, extra_information:str) -> pd.DataFrame:
         from datamart.materializers.wikitables_materializer import WikitablesMaterializer
         materializer = WikitablesMaterializer()
         loaded_data = materializer.get_one(dataset_url, extra_information['xpath'])
         return loaded_data
 
-    def materialize_for_general(self, dataset_url:str, file_type:str) -> pd.DataFrame:
+    @staticmethod
+    def materialize_for_general(dataset_url:str, file_type:str) -> pd.DataFrame:
         from datamart.materializers.general_materializer import GeneralMaterializer
         general_materializer = GeneralMaterializer()
         file_metadata = {

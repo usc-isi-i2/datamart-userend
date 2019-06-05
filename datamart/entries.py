@@ -122,7 +122,7 @@ class DatamartQueryCursor(object):
         inner function used to check whether there already exist Q nodes in the supplied ata
         If not, will return True to indicate need to run wikifier
         If already exist Q nodes, return False to indicate no need to run wikifier
-        :return:
+        :return: a bool value to indicate whether need to run wikifier or not
         """
         if type(self.supplied_data) is d3m_Dataset:
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
@@ -780,7 +780,7 @@ class DatamartSearchResult:
         p_name_dict = {"q_node": "q_node"}
         for each in return_df.columns.tolist():
             if each.lower().startswith("p") or each.lower().startswith("c"):
-                p_name_dict[each] = self._get_node_name(each)
+                p_name_dict[each] = self._get_node_name(each) + "_for_" + target_q_node_column_name
 
         # use rltk joiner to find the joining pairs
         joiner = RLTKJoiner_new()
@@ -873,18 +873,18 @@ class DatamartSearchResult:
             print("not seen type : ", datatype)
             return default_type
 
-    def augment(self, supplied_data, generate_metadata=True, augment_resource_id=AUGMENT_RESOURCE_ID):
+    def augment(self, supplied_data, augment_columns=None):
         """
         download and join using the TabularJoinSpec from get_join_hints()
         """
         if type(supplied_data) is d3m_DataFrame:
-            return self._augment(supplied_data=supplied_data, generate_metadata=generate_metadata, return_format="df", augment_resource_id=augment_resource_id)
+            return self._augment(supplied_data=supplied_data, generate_metadata=True, return_format="df", augment_resource_id=AUGMENT_RESOURCE_ID)
         elif type(supplied_data) is d3m_Dataset:
             self._res_id, self.supplied_data = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None, has_hyperparameter=False)
-            res = self._augment(supplied_data=supplied_data, generate_metadata=generate_metadata, return_format="ds", augment_resource_id=augment_resource_id)
+            res = self._augment(supplied_data=supplied_data, generate_metadata=True, return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID)
             return res
 
-    def _augment(self, supplied_data, generate_metadata=True, return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID):
+    def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID):
         """
         download and join using the TabularJoinSpec from get_join_hints()
         """
@@ -1060,6 +1060,34 @@ class DatamartSearchResult:
 
         return results
 
+    def __getstate__(self) -> typing.Dict:
+        """
+        This method is used by the pickler as the state of object.
+        The object can be recovered through this state uniquely.
+        Returns:
+            state: Dict
+                dictionary of important attributes of the object
+        """
+        state = {}
+        state["search_result"] = self.__dict__["search_result"]
+        state["query_json"] = self.__dict__["query_json"]
+        state["search_type"] = self.__dict__["search_type"]
+
+        return state
+
+    def __setstate__(self, state: typing.Dict) -> None:
+        """
+        This method is used for unpickling the object. It takes a dictionary
+        of saved state of object and restores the object to that state.
+        Args:
+            state: typing.Dict
+                dictionary of the objects picklable state
+        Returns:
+        """
+        self = self.__init__(search_result=state['search_result'], supplied_data=None, query_json=state['query_json'], search_type=state['search_type'])
+
+
+
     @classmethod
     def construct(cls, serialization: dict) -> DatamartSearchResult:
         """
@@ -1073,9 +1101,7 @@ class DatamartSearchResult:
 
     def serialize(self) -> dict:
         output = dict()
-        output["search_result"] = self.search_result
-        output["query_json"] = self.query_json
-        output["search_type"] = self.search_type
+
         return output
 
 

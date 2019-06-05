@@ -14,7 +14,7 @@ for input_dir in all_dir:
     a.model_data(df, meta, 0)
     a.upload()
 
-all_dir_wikipedia_test = ["https://en.wikipedia.org/wiki/1962_Washington_Senators_season", "https://en.wikipedia.org/wiki/2017%E2%80%9318_New_Orleans_Privateers_women%27s_basketball_team"]
+all_dir_wikipedia_test = ["https://en.wikipedia.org/wiki/1962_Washington_Senators_season", "https://en.wikipedia.org/wiki/2017%E2%80%9318_New_Orleans_Privateers_women%27s_basketball_team", "https://en.wikipedia.org/wiki/List_of_Asian_Games_medalists_in_cue_sports"]
 
 for input_dir in all_dir_wikipedia_test:
     df,meta=a.load_and_preprocess(input_dir=input_dir,file_type="wikitable")
