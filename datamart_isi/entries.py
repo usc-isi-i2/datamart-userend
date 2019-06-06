@@ -766,10 +766,13 @@ class DatamartSearchResult:
 
         semantic_types_dict = {
             "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
-
+        q_node_name_appeared = set()
         for result in results["results"]["bindings"]:
             each_result = {}
             q_node_name = result.pop("q")["value"].split("/")[-1]
+            if q_node_name in q_node_name_appeared:
+                continue
+            q_node_name_appeared.add(q_node_name)
             each_result["q_node"] = q_node_name
             for p_name, p_val in result.items():
                 each_result[p_name] = p_val["value"]
@@ -933,6 +936,7 @@ class DatamartSearchResult:
             df_joined = df_joined.drop(columns=['id'])
 
         if generate_metadata:
+            # put d3mIndex at first column
             columns_all = list(df_joined.columns)
             if 'd3mIndex' in df_joined.columns:
                 oldindex = columns_all.index('d3mIndex')
