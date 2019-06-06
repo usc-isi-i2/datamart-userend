@@ -607,7 +607,7 @@ class DatamartSearchResult:
             resources = {augment_resource_id: return_df}
             return_result = d3m_Dataset(resources=resources, generate_metadata=False)
             if generate_metadata:
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector, metadata=each_metadata)
                 return_result.metadata = self._generate_metadata_column_part_for_general(return_result, return_result.metadata, return_format, augment_resource_id)
@@ -615,7 +615,7 @@ class DatamartSearchResult:
         elif return_format == "df":
             return_result = d3m_DataFrame(all_results[0][2], generate_metadata=False)
             if generate_metadata:
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector, metadata=each_metadata)
                 return_result.metadata = self._generate_metadata_column_part_for_general(return_result, return_result.metadata, return_format, augment_resource_id=None)
@@ -625,7 +625,7 @@ class DatamartSearchResult:
 
         return return_result
 
-    def _generate_metadata_shape_part(self, value, selector) -> dict:
+    def _generate_metadata_shape_part(self, value, selector, supplied_data=None) -> dict:
         """
         recursively generate all metadata for shape part, return a dict
         :param value:
@@ -635,6 +635,14 @@ class DatamartSearchResult:
         generated_metadata = dict()
         generated_metadata['schema'] = CONTAINER_SCHEMA_VERSION
         if isinstance(value, d3m_Dataset):  # type: ignore
+            generated_metadata['id'] = supplied_data.metadata.query(())['id']
+            generated_metadata['name'] = supplied_data.metadata.query(())['name']
+            generated_metadata['location_uris'] = supplied_data.metadata.query(())['location_uris']
+            generated_metadata['digest'] = supplied_data.metadata.query(())['digest']
+            generated_metadata['description'] = supplied_data.metadata.query(())['description']
+            generated_metadata['source'] = supplied_data.metadata.query(())['source']
+            generated_metadata['version'] = supplied_data.metadata.query(())['version']
+            generated_metadata['structural_type'] = supplied_data.metadata.query(())['structural_type']
             generated_metadata['dimension'] = {
                 'name': 'resources',
                 'semantic_types': ['https://metadata.datadrivendiscovery.org/types/DatasetResource'],
@@ -652,7 +660,7 @@ class DatamartSearchResult:
 
         if isinstance(value, d3m_DataFrame):  # type: ignore
             generated_metadata['semantic_types'] = ['https://metadata.datadrivendiscovery.org/types/Table']
-
+            generated_metadata['structural_type'] = d3m_DataFrame
             generated_metadata['dimension'] = {
                 'name': 'rows',
                 'semantic_types': ['https://metadata.datadrivendiscovery.org/types/TabularRow'],
@@ -820,7 +828,7 @@ class DatamartSearchResult:
             return_result = d3m_Dataset(resources=resources, generate_metadata=False)
             if generate_metadata:
                 return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                            metadata=each_metadata)
@@ -831,7 +839,7 @@ class DatamartSearchResult:
             return_result = return_result.rename(columns=p_name_dict)
             if generate_metadata:
                 return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                            metadata=each_metadata)
@@ -878,11 +886,12 @@ class DatamartSearchResult:
         download and join using the TabularJoinSpec from get_join_hints()
         """
         if type(supplied_data) is d3m_DataFrame:
-            return self._augment(supplied_data=supplied_data, generate_metadata=True, return_format="df", augment_resource_id=AUGMENT_RESOURCE_ID)
+            res = self._augment(supplied_data=supplied_data, generate_metadata=True, return_format="df", augment_resource_id=AUGMENT_RESOURCE_ID)
         elif type(supplied_data) is d3m_Dataset:
             self._res_id, self.supplied_data = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None, has_hyperparameter=False)
             res = self._augment(supplied_data=supplied_data, generate_metadata=True, return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID)
-            return res
+        res['augmentData'] = res['augmentData'].astype(str)
+        return res
 
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID):
         """
@@ -1007,7 +1016,7 @@ class DatamartSearchResult:
                 return_result = d3m_Dataset(resources=resources, generate_metadata=False)
                 if generate_metadata:
                     return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                     for each_selector, each_metadata in metadata_shape_part_dict.items():
                         return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                                metadata=each_metadata)
@@ -1015,7 +1024,7 @@ class DatamartSearchResult:
                 return_result = d3m_DataFrame(df_joined, generate_metadata=False)
                 if generate_metadata:
                     return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=())
+                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
                     for each_selector, each_metadata in metadata_shape_part_dict.items():
                         return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                                metadata=each_metadata)
