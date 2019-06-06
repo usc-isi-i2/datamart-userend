@@ -13,5 +13,4 @@ nbconvert >= 5.4.0
 SPARQLWrapper>=1.8.4
 requests
 datasketch
-pandas
-etk
+pandas==0.23.4
