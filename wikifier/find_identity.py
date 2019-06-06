@@ -103,7 +103,7 @@ class FindIdentity:
     def call_redis(qnodes):
         payload = json.dumps({"ids": qnodes})
         search_headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-        r = requests.post("http://minds03.isi.edu:4444/get_identifiers", data=payload, headers=search_headers)
+        r = requests.post("http://dsbox02.isi.edu/wikifier/get_identifiers", data=payload, headers=search_headers)
         if r:
             val = r.json()
             return val

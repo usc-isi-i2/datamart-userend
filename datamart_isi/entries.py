@@ -296,7 +296,7 @@ class Datamart(object):
     def __init__(self, connection_url: str) -> None:
         self.connection_url = connection_url
         self._logger = logging.getLogger(__name__)
-        # query_server = "http://dsbox02.isi.edu:9999/blazegraph/namespace/datamart3/sparql"
+        # query_server = "http://dsbox02.isi.edu:9001/blazegraph/namespace/datamart3/sparql"
         self.augmenter = Augment(endpoint=self.connection_url)
         self.supplied_dataframe = None
 
