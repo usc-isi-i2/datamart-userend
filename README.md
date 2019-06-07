@@ -5,7 +5,7 @@ This project provides an implementation of the [D3M's Datamart API](https://gitl
 
 [Here](https://github.com/usc-isi-i2/datamart-userend/blob/d3m/examples/search_primitive_example.ipynb) is a Jupyter notebook that shows how to search the datamart.
 
-Below are the key steps to to query for datamart datasets using a supplied D3M dataset, and to augment this supplied dataset with a datamart dataset.
+Below are the key steps to to query for datamart datasets using a supplied D3M dataset, and to augment this supplied dataset with datamart datasets.
 
 First, load in the D3M dataset, and denormalized it:
 ```Python
@@ -31,7 +31,22 @@ augmented_dataset_1 = page[0].augment(supplied_data=search_cursor.supplied_data)
 augmented_dataset_2 = page[1].augment(supplied_data=augmented_dataset_1)
 ```
 
-## Sample Pipelines
+## Using the Search Results in Pipelines
+
+To use the search results in pipelines, the search results have to serialized and passed in as hyperparameters to the Datamart primitives in the common primitives repository.
+
+```python
+from common_primitives.datamart_augment import Hyperparams as hyper_augment
+
+result0 = pickle.dumps(page[0])
+
+hyper = hyper_augment.defaults()
+hyper = hyper.replace({"search_result": result0})
+augment_primitive = DataMartAugmentPrimitive(hyperparams=hyper)
+augment_result = augment_primitive.produce(inputs=dataset).value
+```
+
+[Here](examples/) is a sample pipeline.
 
 ## Uploading Dataset
 
