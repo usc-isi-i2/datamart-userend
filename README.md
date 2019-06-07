@@ -25,7 +25,7 @@ search_cursor = search_result.search_with_data(query=None, supplied_data=dataset
 page = search_cursor.get_next_page()
 ```
 
-In this case `page1` should contain only two datasets. Now, augment the supplied dataset with these two datasets.
+In this case `page` should contain only two datasets. Now, augment the supplied dataset with these two datasets.
 ```python
 augmented_dataset_1 = page[0].augment(supplied_data=search_cursor.supplied_data)
 augmented_dataset_2 = page[1].augment(supplied_data=augmented_dataset_1)
