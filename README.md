@@ -11,7 +11,7 @@ Here is a Jupyter notebook that show show to search the datamart, [here](https:/
 
 To upload datasets into the ISI Datamart, use the python class `datamart_isi.upload.Datamart_isi_upload`, [here](https://github.com/usc-isi-i2/datamart-upload).
 
-[Here](https://github.com/usc-isi-i2/datamart-upload/blob/master/examples/upload_example.ipynb) is a sample Jupyter notebook that show how to upload datasets to the ISI Datamart.
+[Here](https://github.com/usc-isi-i2/datamart-upload/blob/master/examples/upload_example.ipynb) is a sample Jupyter notebook that shows how to upload datasets into the ISI Datamart.
 
 First, create an uploader instance, and call its `load_and_preprocess` method with a URL pointing to the CSV file. The `load_and_preprocess` method returns two lists: a list of dataframes and a list of metadata describing those dataframes. In this case, the length of each list is one since the input URL references a single CSV file.
 ```python
@@ -25,10 +25,10 @@ The metadata contains information deduced by the data profiler. To add additiona
 metadata[0]['title'] = "County Income"
 metadata[0]['description'] = "Rank of counties by income"
 metadata[0]['keywords'] = ["Per capita income", "Median household income", "Median family income"]
-uploader.model_data(dataframes, metadata, 0)
 ```
 
-Finally, upload the dataset with the updated metadata:
+Finally, upload the dataset with the updated metadata into the datmart:
 ```python
+uploader.model_data(dataframes, metadata, 0)
 uploader.upload()
 ```
