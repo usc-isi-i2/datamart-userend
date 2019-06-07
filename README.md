@@ -46,7 +46,7 @@ augment_primitive = DataMartAugmentPrimitive(hyperparams=hyper)
 augment_result = augment_primitive.produce(inputs=dataset).value
 ```
 
-[Here](examples/) is a sample pipeline.
+[Here](examples/sample-augment-pipeline.json) is a sample pipeline.
 
 ## Uploading Dataset
 
