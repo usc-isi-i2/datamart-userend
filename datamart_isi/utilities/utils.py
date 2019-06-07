@@ -43,7 +43,7 @@ class Utils:
             file_type = file_type['value']
 
         if file_type == "wikitable":
-            extra_information = literal_eval(metadata['extra_information'])
+            extra_information = literal_eval(metadata['extra_information']['value'])
             loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
         else:
             loaded_data = Utils.materialize_for_general(dataset_url, file_type)

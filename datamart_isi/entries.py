@@ -915,8 +915,13 @@ class DatamartSearchResult:
         df_joined = pd.DataFrame()
 
         column_names_to_join = None
+        r1_paired = set()
         for r1, r2 in self.pairs:
-            left_res = supplied_data_df.loc[int(r1)]
+            r1_int = int(r1)
+            if r1_int in r1_paired:
+                continue
+            r1_paired.add(r1_int)
+            left_res = supplied_data_df.loc[r1_int]
             right_res = download_result.loc[int(r2)]
             if column_names_to_join is None:
                 column_names_to_join = right_res.index.difference(left_res.index)
@@ -925,6 +930,12 @@ class DatamartSearchResult:
                 columns_new.extend(column_names_to_join.tolist())
             new = pd.concat([left_res, right_res[column_names_to_join]])
             df_joined = df_joined.append(new, ignore_index=True)
+
+        # add up the rows don't have pairs
+        unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
+        if len(unpaired_rows) > 0:
+            df_joined = df_joined.append(supplied_data_df.loc[unpaired_rows], ignore_index=True)
+
         # ensure that the original dataframe columns are at the first left part
         df_joined = df_joined[columns_new]
         # if search with wikidata, we can remove duplicate Q node column
@@ -1061,6 +1072,7 @@ class DatamartSearchResult:
         right_join_column_name = self.search_result['variableName']['value']
         left_columns = []
         right_columns = []
+
         for each in self.query_json['variables'].keys():
             left_index = left_df.columns.tolist().index(each)
             right_index = right_df.columns.tolist().index(right_join_column_name)
