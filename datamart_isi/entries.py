@@ -36,14 +36,12 @@ __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchRe
            'VariableConstraint', 'NamedEntityVariable', 'TemporalVariable', 'GeospatialVariable', 'TabularVariable')
 
 Q_NODE_SEMANTIC_TYPE = "http://wikidata.org/qnode"
-# DEFAULT_URL = "https://isi-datamart.edu"
-DatamartSearchResult = typing.TypeVar('DatamartSearchResult', bound='DatamartSearchResult')
-TabularJoinSpec = typing.TypeVar('TabularJoinSpec', bound='TabularJoinSpec')
+AUGMENTED_COLUMN_SEMANTIC_TYPE = "https://metadata.datadrivendiscovery.org/types/Datamart_augmented_column"
 MAX_ENTITIES_LENGTH = 200
 CONTAINER_SCHEMA_VERSION = 'https://metadata.datadrivendiscovery.org/schemas/v0/container.json'
 P_NODE_IGNORE_LIST = {"P1549"}
 SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
-AUGMENT_RESOURCE_ID = "augmentData"
+AUGMENT_RESOURCE_ID = "learningData"
 WIKIDATA_QUERY_SERVER = config.wikidata_server
 
 
@@ -781,10 +779,10 @@ class DatamartSearchResult:
                     if "datatype" in p_val.keys():
                         semantic_types_dict[p_name] = (
                             self._get_semantic_type(p_val["datatype"]),
-                            'https://metadata.datadrivendiscovery.org/types/Attribute')
+                            'https://metadata.datadrivendiscovery.org/types/Attribute', AUGMENTED_COLUMN_SEMANTIC_TYPE)
                     else:
                         semantic_types_dict[p_name] = (
-                            "http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/Attribute')
+                            "http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/Attribute', AUGMENTED_COLUMN_SEMANTIC_TYPE)
 
             return_df = return_df.append(each_result, ignore_index=True)
 
@@ -967,17 +965,20 @@ class DatamartSearchResult:
                     if "float" in dtype:
                         semantic_types = (
                             "http://schema.org/Float",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute"
+                            "https://metadata.datadrivendiscovery.org/types/Attribute",
+                            AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
                     elif "int" in dtype:
                         semantic_types = (
                             "http://schema.org/Integer",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute"
+                            "https://metadata.datadrivendiscovery.org/types/Attribute",
+                            AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
                     else:
                         semantic_types = (
                             "https://metadata.datadrivendiscovery.org/types/CategoricalData",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute"
+                            "https://metadata.datadrivendiscovery.org/types/Attribute",
+                            AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
 
                     each_meta = {
@@ -1052,7 +1053,7 @@ class DatamartSearchResult:
     def get_metadata(self) -> dict:
         return self.metadata
 
-    def set_join_pairs(self, join_pairs: typing.List[TabularJoinSpec]) -> None:
+    def set_join_pairs(self, join_pairs: typing.List["TabularJoinSpec"]) -> None:
         """
         manually set up the join pairs
         :param join_pairs: user specified TabularJoinSpec
@@ -1060,7 +1061,7 @@ class DatamartSearchResult:
         """
         self.join_pairs = join_pairs
 
-    def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List[TabularJoinSpec]:
+    def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List["TabularJoinSpec"]:
         """
         Returns hints for joining supplied data with the data that can be downloaded using this search result.
         In the typical scenario, the hints are based on supplied data that was provided when search was called.
@@ -1111,23 +1112,6 @@ class DatamartSearchResult:
         """
         self = self.__init__(search_result=state['search_result'], supplied_data=None, query_json=state['query_json'], search_type=state['search_type'])
 
-
-
-    @classmethod
-    def construct(cls, serialization: dict) -> DatamartSearchResult:
-        """
-        Take into the serilized input and reconsctruct a "DatamartSearchResult"
-        """
-        load_result = DatamartSearchResult(search_result=serialization["search_result"],
-                                           supplied_data=None,
-                                           query_json=serialization["query_json"],
-                                           search_type=serialization["search_type"])
-        return load_result
-
-    def serialize(self) -> dict:
-        output = dict()
-
-        return output
 
 
 class AugmentSpec:
