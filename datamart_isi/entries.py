@@ -11,7 +11,7 @@ import logging
 import datetime
 import d3m.metadata.base as metadata_base
 import json
-
+import string
 from ast import literal_eval
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from d3m import container
@@ -39,7 +39,7 @@ __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchRe
 
 Q_NODE_SEMANTIC_TYPE = "http://wikidata.org/qnode"
 AUGMENTED_COLUMN_SEMANTIC_TYPE = "https://metadata.datadrivendiscovery.org/types/Datamart_augmented_column"
-MAX_ENTITIES_LENGTH = 200
+MAX_ENTITIES_LENGTH = 10000
 CONTAINER_SCHEMA_VERSION = 'https://metadata.datadrivendiscovery.org/schemas/v0/container.json'
 P_NODE_IGNORE_LIST = {"P1549"}
 SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
@@ -421,15 +421,22 @@ class Datamart(object):
     def _generate_datamart_query_from_data(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']):
         all_query_variables = {}
+        translator = str.maketrans(string.punctuation, ' '*len(string.punctuation))
+        
         for each_column in data_constraints.columns:
+            all_value_str_set = set()
             column_values = self.supplied_dataframe.iloc[:, each_column].astype(str)
             query_column_entities = list(set(column_values.tolist()))
+            for each in query_column_entities:
+                words_processed = str(each).lower().translate(translator).split()
+                for word in words_processed:
+                    all_value_str_set.add(word)
+            all_value_str = " ".join(all_value_str_set)
+            # if len(query_column_entities) > MAX_ENTITIES_LENGTH:
+            #     query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
 
-            if len(query_column_entities) > MAX_ENTITIES_LENGTH:
-                query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
-
-            query_column_entities = " ".join(query_column_entities)
-            all_query_variables[self.supplied_dataframe.columns[each_column]] = query_column_entities
+            # query_column_entities = " ".join(query_column_entities)
+            all_query_variables[self.supplied_dataframe.columns[each_column]] = all_value_str
 
         search_query = DatamartQuery(variables=all_query_variables)
 
@@ -653,7 +660,7 @@ class DatamartSearchResult:
                 each_name = self._get_node_name(each)
                 column_names.append(each_name)
             column_names = ", ".join(column_names)
-            required_variable = []
+            required_variable = list()
             required_variable.append(self.search_result["target_q_node_column_name"])
             result = pd.DataFrame({"title": "wikidata search result for " \
                                            + self.search_result["target_q_node_column_name"], \
@@ -670,7 +677,8 @@ class DatamartSearchResult:
             raise ValueError("Unknown search type with " + self.search_type)
         return result
 
-    def download(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame]=None, connection_url: str = None, generate_metadata=True, return_format="ds") -> container.Dataset:
+    def download(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame]=None,
+                 connection_url: str = None, generate_metadata=True, return_format="ds") -> container.Dataset:
         """
         Produces a D3M dataset (data plus metadata) corresponding to the search result.
         Every time the download method is called on a search result, it will produce the exact same columns
@@ -805,9 +813,9 @@ class DatamartSearchResult:
     def _generate_metadata_shape_part(self, value, selector, supplied_data=None) -> dict:
         """
         recursively generate all metadata for shape part, return a dict
-        :param value:
-        :param selector:
-        :return:
+        :param value: the input data
+        :param selector: a tuple which indicate the selector
+        :return: a dict with key as the selector, value as the metadata
         """
         if supplied_data is None:
             supplied_data = self.supplied_data
@@ -1144,6 +1152,9 @@ class DatamartSearchResult:
         """
         download and join using the TabularJoinSpec from get_join_hints()
         """
+        if type(return_format) is not str or return_format != "ds" and return_format != "df":
+            raise ValueError("Unknown return format as" + str(return_format))
+
         if type(supplied_data) is d3m_Dataset:
             supplied_data_df = supplied_data[self._res_id]
         elif type(supplied_data) is d3m_DataFrame:
@@ -1168,7 +1179,7 @@ class DatamartSearchResult:
             right_res = download_result.loc[int(r2)]
             if column_names_to_join is None:
                 column_names_to_join = right_res.index.difference(left_res.index)
-                matched_rows = right_res.index.intersection(left_res.index)
+                # matched_rows = right_res.index.intersection(left_res.index)
                 columns_new = left_res.index.tolist()
                 columns_new.extend(column_names_to_join.tolist())
             new = pd.concat([left_res, right_res[column_names_to_join]])
@@ -1238,15 +1249,15 @@ class DatamartSearchResult:
 
             if return_format == "df":
                 try:
-                    left_df_column_legth = supplied_data.metadata.query((metadata_base.ALL_ELEMENTS,))['dimension']['length']
-                except:
+                    left_df_column_length = supplied_data.metadata.query((metadata_base.ALL_ELEMENTS,))['dimension']['length']
+                except Exception:
                     traceback.print_exc()
                     raise ValueError("No getting metadata information failed!")
             elif return_format == "ds":
-                left_df_column_legth = supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension']['length']
+                left_df_column_length = supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension']['length']
 
             # add the original metadata
-            for i in range(left_df_column_legth):
+            for i in range(left_df_column_length):
                 if return_format == "df":
                     each_selector = (ALL_ELEMENTS, i)
                 elif return_format == "ds":
@@ -1255,8 +1266,6 @@ class DatamartSearchResult:
                 metadata_dict_left[each_column_meta['name']] = each_column_meta
 
             metadata_new = metadata_base.DataMetadata()
-            metadata_old = copy.copy(supplied_data.metadata)
-
             new_column_names_list = list(df_joined.columns)
             # update each column's metadata
             for i, current_column_name in enumerate(new_column_names_list):
@@ -1277,7 +1286,8 @@ class DatamartSearchResult:
                 return_result = d3m_Dataset(resources=resources, generate_metadata=False)
                 if generate_metadata:
                     return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
+                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
+                                                                                  selector=(), supplied_data=supplied_data)
                     for each_selector, each_metadata in metadata_shape_part_dict.items():
                         return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                                metadata=each_metadata)
@@ -1285,7 +1295,8 @@ class DatamartSearchResult:
                 return_result = d3m_DataFrame(df_joined, generate_metadata=False)
                 if generate_metadata:
                     return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(), supplied_data=supplied_data)
+                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
+                                                                                  selector=(), supplied_data=supplied_data)
                     for each_selector, each_metadata in metadata_shape_part_dict.items():
                         return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                                metadata=each_metadata)
@@ -1394,7 +1405,7 @@ class DatamartSearchResult:
             state: Dict
                 dictionary of important attributes of the object
         """
-        state = {}
+        state = dict()
         state["search_result"] = self.__dict__["search_result"]
         state["query_json"] = self.__dict__["query_json"]
         state["search_type"] = self.__dict__["search_type"]
@@ -1410,8 +1421,10 @@ class DatamartSearchResult:
                 dictionary of the objects picklable state
         Returns:
         """
-        self = self.__init__(search_result=state['search_result'], supplied_data=None, query_json=state['query_json'], search_type=state['search_type'])
-
+        self = self.__init__(search_result=state['search_result'],
+                             supplied_data=None,
+                             query_json=state['query_json'],
+                             search_type=state['search_type'])
 
 
 class AugmentSpec:
@@ -1437,7 +1450,8 @@ class TabularJoinSpec(AugmentSpec):
     spec pairs up ["city", "state", "country"] with ["address"], but does not specify how the matching should be done
     e.g., combine the city/state/country columns into a single column, or split the address into several columns.
     """
-    def __init__(self, left_columns: typing.List[typing.List[DatasetColumn]], right_columns: typing.List[typing.List[DatasetColumn]], 
+    def __init__(self, left_columns: typing.List[typing.List[DatasetColumn]],
+                 right_columns: typing.List[typing.List[DatasetColumn]],
                  left_resource_id: str=None, right_resource_id: str=None) -> None:
 
         self.left_resource_id = left_resource_id
@@ -1606,7 +1620,8 @@ class GeospatialVariable(VariableConstraint):
     granularity : GeospatialGranularity
         Requested geospatial values are well matched with the requested granularity
     """
-    def __init__(self, latitude1: float, longitude1: float, latitude2: float, longitude2: float, granularity: GeospatialGranularity = None) -> None:
+    def __init__(self, latitude1: float, longitude1: float, latitude2: float, longitude2: float,
+                 granularity: GeospatialGranularity = None) -> None:
         self.latitude1 = latitude1
         self.longitude1 = longitude1
         self.latitude2 = latitude2
