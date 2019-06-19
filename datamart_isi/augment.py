@@ -89,8 +89,8 @@ class Augment(object):
            ?dataset p:C2010/ps:C2010 ?extra_information.
           
         }
-        ORDER BY DESC(?rank)
-        LIMIT 30'''
+        ORDER BY ASC(?rank)
+        LIMIT 50'''
 
         return spaqrl_query
 
