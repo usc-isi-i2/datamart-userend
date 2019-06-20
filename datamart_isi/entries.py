@@ -427,13 +427,14 @@ class Datamart(object):
             all_value_str_set = set()
             column_values = self.supplied_dataframe.iloc[:, each_column].astype(str)
             query_column_entities = list(set(column_values.tolist()))
+            if len(query_column_entities) > MAX_ENTITIES_LENGTH:
+                query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
             for each in query_column_entities:
                 words_processed = str(each).lower().translate(translator).split()
                 for word in words_processed:
                     all_value_str_set.add(word)
             all_value_str = " ".join(all_value_str_set)
-            # if len(query_column_entities) > MAX_ENTITIES_LENGTH:
-            #     query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
+
 
             # query_column_entities = " ".join(query_column_entities)
             all_query_variables[self.supplied_dataframe.columns[each_column]] = all_value_str

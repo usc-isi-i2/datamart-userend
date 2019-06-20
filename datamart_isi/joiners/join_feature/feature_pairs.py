@@ -74,42 +74,45 @@ class FeaturePairs:
         str_key_l = []
         str_key_r = []
         for f1, f2 in self.pairs:
-            if f1.data_type == DataType.STRING:
-                # 2019.4.10: TOKEN_CATEGORICAL should also considered here
-                if f1.distribute_type == DistributeType.CATEGORICAL or f1.distribute_type == DistributeType.TOKEN_CATEGORICAL:
-                    prime_key_l.append(f1.name)
-                    prime_key_r.append(f2.name)
-                elif f1.distribute_type == DistributeType.NON_CATEGORICAL:
-                    str_key_l.append(f1.name)
-                    str_key_r.append(f2.name)
+            # why need to be string for old code???
+            # if f1.data_type == DataType.STRING:
+            # # 2019.4.10: TOKEN_CATEGORICAL should also considered here
+            # if f1.distribute_type == DistributeType.CATEGORICAL or f1.distribute_type == DistributeType.TOKEN_CATEGORICAL:
+            #     prime_key_l.append(f1.name)
+            #     prime_key_r.append(f2.name)
+            # elif f1.distribute_type == DistributeType.NON_CATEGORICAL:
+            str_key_l.append(f1.name)
+            str_key_r.append(f2.name)
 
-        if prime_key_l and prime_key_r:
-            try:
-                bg = rltk.HashBlockGenerator()
-                block = bg.generate(
-                    bg.block(self.left_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
-                                                                                  for pk in prime_key_l])),
-                    bg.block(self.right_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
-                                                                                   for pk in prime_key_r])))
-                return block
-            except Exception as e:
-                print(' - BLOCKING EXCEPTION: %s' % str(e))
-                raise ValueError("failed to get blocking!")
+        # if prime_key_l and prime_key_r:
+        #     try:
+        #         bg = rltk.HashBlockGenerator()
+        #         block = bg.generate(
+        #             bg.block(self.left_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
+        #                                                                           for pk in prime_key_l])),
+        #             bg.block(self.right_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
+        #                                                                            for pk in prime_key_r])))
+        #         return block
+        #     except Exception as e:
+        #         print(' - BLOCKING EXCEPTION: %s' % str(e))
+        #         raise ValueError("failed to get blocking!")
 
         # if the datasets are too large, use each key's first char as blocking key
-        if str_key_l and str_key_r and len(self._left_df) * len(self._right_df) > 10000:
-            try:
-                bg = rltk.HashBlockGenerator()
-                block = bg.generate(
-                    # original: str(getattr(r, pk))[0]
-                    bg.block(self.left_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
-                                                                                  for pk in str_key_l])),
-                    bg.block(self.right_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
-                                                                                   for pk in str_key_r]))
-                    )
-                return block
-            except Exception as e:
-                print(' - BLOCKING EXCEPTION: %s' % str(e))
+        # if str_key_l and str_key_r and len(self._left_df) * len(self._right_df) > 10000:
+        try:
+            bg = rltk.HashBlockGenerator()
+            block = bg.generate(
+                # original: str(getattr(r, pk))[0]
+                bg.block(self.left_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
+                                                                              for pk in str_key_l])),
+                bg.block(self.right_rltk_dataset, function_=lambda r: ''.join([str(getattr(r, pk)).lower()
+                                                                               for pk in str_key_r]))
+                )
+            return block
+        except Exception as e:
+            print(' - BLOCKING EXCEPTION: %s' % str(e))
+
+        raise ValueError("failed to get blocking!")
 
     def __len__(self):
         return self._length
