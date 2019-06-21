@@ -120,6 +120,8 @@ class RLTKJoiner(JoinerBase):
 
         fp = FeaturePairs(left_df, right_df, left_columns, right_columns, left_metadata, right_metadata)
         block = fp.get_rltk_block()
+        if block is None:
+            raise ValueError("Get joining block failed! Can't continue.")
         record_pairs = rltk.get_record_pairs(fp.left_rltk_dataset, fp.right_rltk_dataset, block=block)
         pairs_list = []
         # for r1, r2 in record_pairs:

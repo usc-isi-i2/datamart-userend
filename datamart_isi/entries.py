@@ -767,6 +767,7 @@ class DatamartSearchResult:
 
                 print(" - start getting pairs for", str(each_pair))
                 right_df_copy = copy.deepcopy(right_df)
+
                 result, self.pairs = RLTKJoiner.find_pair(left_df=left_df, right_df=right_df_copy,
                                                           left_columns=[left_columns], right_columns=[right_columns],
                                                           left_metadata=left_metadata, right_metadata=right_metadata)
@@ -1153,6 +1154,7 @@ class DatamartSearchResult:
         """
         download and join using the TabularJoinSpec from get_join_hints()
         """
+        import time
         if type(return_format) is not str or return_format != "ds" and return_format != "df":
             raise ValueError("Unknown return format as" + str(return_format))
 
@@ -1171,7 +1173,12 @@ class DatamartSearchResult:
         df_joined = pd.DataFrame()
         column_names_to_join = None
         r1_paired = set()
+        i = 0
+
+        df_dict = dict()
+        start = time.time()
         for r1, r2 in self.pairs:
+            i += 1
             r1_int = int(r1)
             if r1_int in r1_paired:
                 continue
@@ -1183,9 +1190,17 @@ class DatamartSearchResult:
                 # matched_rows = right_res.index.intersection(left_res.index)
                 columns_new = left_res.index.tolist()
                 columns_new.extend(column_names_to_join.tolist())
-            new = pd.concat([left_res, right_res[column_names_to_join]])
-            df_joined = df_joined.append(new, ignore_index=True)
+            dcit_right = right_res[column_names_to_join].to_dict()
+            dict_left = left_res.to_dict()
+            dcit_right.update(dict_left)
+            df_dict[i] = dcit_right
+            # new = pd.concat([left_res, right_res[column_names_to_join]])
+            # all_time_concat += time.time() - t1
+            # t2 = time.time()
+            # df_joined = df_joined.append(new, ignore_index=True)
+            # all_time_join += time.time() - t2
 
+        df_joined = pd.DataFrame.from_dict(df_dict, "index")
         # add up the rows don't have pairs
         unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
         if len(unpaired_rows) > 0:
@@ -1194,7 +1209,7 @@ class DatamartSearchResult:
         # ensure that the original dataframe columns are at the first left part
         df_joined = df_joined[columns_new]
         # if search with wikidata, we can remove duplicate Q node column
-
+        self._logger.info("Join finished, totally take " + str(time.time() - start) + "seconds.")
         if self.search_type == "wikidata":
             df_joined = df_joined.drop(columns=['q_node'])
 
