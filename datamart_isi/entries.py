@@ -29,6 +29,7 @@ from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
 from datamart_isi import config
+from datamart_isi.utilities.timeout import Timeout, timeout_call
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
@@ -86,7 +87,8 @@ class DatamartQueryCursor(object):
             A list of `DatamartSearchResult's, or None if there are no more results.
         """
         if timeout is None:
-            timeout = 2 ** 31 - 1
+            timeout = 1800
+        self._logger.info("Set time limit to be " + str(timeout) + " seconds.")
 
         # if need to run wikifier, run it before any search
         if self.current_searching_query_index == 0 and self.need_run_wikifier:
@@ -102,29 +104,28 @@ class DatamartQueryCursor(object):
         # start searching
         while self.current_searching_query_index < len(self.search_query) and len(current_result) < limit:
             time_start = time.time()
-            search_res = None
-            with stopit.ThreadingTimeout(timeout) as to_ctx_mrg:
-                # just to ensure timeout function is running correctly
-                assert to_ctx_mrg.state == to_ctx_mrg.EXECUTING
+            self._logger.debug("Start searching on query No." + str(self.current_searching_query_index))
 
-                if self.search_query[self.current_searching_query_index].search_type == "wikidata":
-                    # TODO: now wikifier can only automatically search for all possible columns and do exact match
-                    search_res = self._search_wikidata()
-                elif self.search_query[self.current_searching_query_index].search_type == "general":
-                    search_res = self._search_datamart()
-                else:
-                    raise ValueError("Unknown search query type for " +
-                                     self.search_query[self.current_searching_query_index].search_type)
+            if self.search_query[self.current_searching_query_index].search_type == "wikidata":
+                # TODO: now wikifier can only automatically search for all possible columns and do exact match
+                search_res = timeout_call(timeout, self._search_wikidata, [])
+            elif self.search_query[self.current_searching_query_index].search_type == "general":
+                search_res = timeout_call(timeout, self._search_datamart, [])
+            else:
+                raise ValueError("Unknown search query type for " +
+                                 self.search_query[self.current_searching_query_index].search_type)
 
             time_used = (time.time() - time_start)
             timeout -= time_used
-            if to_ctx_mrg.state == to_ctx_mrg.EXECUTED:
+            if search_res is not None:
                 self._logger.info("Running search on query No." + str(self.current_searching_query_index) + " used "
                                   + str(time_used) + " seconds and finished.")
                 self._logger.info("Remained searching time: " + str(timeout) + " seconds.")
-            elif to_ctx_mrg.state == to_ctx_mrg.TIMED_OUT:
+            elif timeout <= 0:
                 self._logger.error("Running search on query No." + str(self.current_searching_query_index) + " timeouted!")
-                return current_result
+                break
+            else:
+                self._logger.error("Running search on query No." + str(self.current_searching_query_index) + " failed!")
 
             self.current_searching_query_index += 1
             if search_res is not None:
@@ -137,9 +138,6 @@ class DatamartQueryCursor(object):
                 self.remained_part = current_result[limit:]
                 current_result = current_result[:limit]
             return current_result
-
-        # print("[WARNING] Timeout! Search has used" + str(timeout) + "seconds. Will return current searched results.")
-        # return current_result
 
     def _check_need_wikifier_or_not(self) -> bool:
         """
@@ -172,6 +170,7 @@ class DatamartQueryCursor(object):
         function used to run wikifier, will update self.supplied_data
         :return: None
         """
+        self._logger.debug("Start running wikifier...")
         try:
             output_ds = copy.copy(self.supplied_data)
             specific_q_nodes = None
@@ -207,6 +206,7 @@ class DatamartQueryCursor(object):
             traceback.print_exc()
             self._logger.error("Wikifier running failed.")
 
+        self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
 
     def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None, timeout=None,
@@ -219,6 +219,7 @@ class DatamartQueryCursor(object):
         :param search_threshold: the minimum appeared times of the properties
         :return: list of search results of DatamartSearchResult
         """
+        self._logger.debug("Start running search on wikidata...")
         if supplied_data is None:
             supplied_data = self.supplied_data
 
@@ -265,10 +266,11 @@ class DatamartQueryCursor(object):
 
                 # do a wikidata search for each Q nodes column
                 for each_column in q_nodes_columns:
+                    self._logger.debug("Start searching on column " + str(each_column))
                     q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
                     p_count = collections.defaultdict(int)
                     p_nodes_needed = []
-                    # temporary block
+                    # old method, the generated results are not very good
                     """
                     http_address = 'http://minds03.isi.edu:4444/get_properties'
                     headers = {"Content-Type": "application/json"}
@@ -305,6 +307,8 @@ class DatamartQueryCursor(object):
                         traceback.print_exc()
                         continue
 
+                    self._logger.debug("Response from server for column " + str(each_column) +
+                                       " received, start parsing the returned data from server.")
                     for each in results:
                         p_count[each['property']['value'].split("/")[-1]] += 1
 
@@ -318,10 +322,12 @@ class DatamartQueryCursor(object):
                                                                  query_json=query,
                                                                  search_type="wikidata")
                                             )
+
+                self._logger.debug("Running search on wikidata finished.")
             return wikidata_results
 
         except:
-            self._logger.error("Searching with wikidata failed")
+            self._logger.error("Searching with wikidata failed!")
             traceback.print_exc()
         finally:
             return wikidata_results
@@ -331,6 +337,7 @@ class DatamartQueryCursor(object):
         function used for searching in datamart with blaze graph database
         :return: List[DatamartSearchResult]
         """
+        self._logger.debug("Start searching on datamart...")
         search_result = []
         variables = dict()
         for each_variable in self.search_query[self.current_searching_query_index].variables:
@@ -340,11 +347,15 @@ class DatamartQueryCursor(object):
                  "variables": variables,
                  }
         query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
-        for each in query_results:
+
+        for i, each in enumerate(query_results):
+            self._logger.debug("Get returned No." + str(i) + " query result as ")
+            self._logger.debug(str(each))
             temp = DatamartSearchResult(search_result=each, supplied_data=self.supplied_data, query_json=query,
                                         search_type="general")
             search_result.append(temp)
 
+        self._logger.debug("Searching on datamart finished.")
         return search_result
 
 
@@ -571,16 +582,19 @@ class DatamartSearchResult:
         """
         function used to generate the d3m format metadata
         """
+        self._logger.debug("Start getting d3m metadata...")
         if self.search_type == "wikidata":
-            return self._get_d3m_metadata_for_wikidata()
+            metadata = self._get_d3m_metadata_for_wikidata()
         elif self.search_type == "general":
-            return self._get_d3m_metadata_for_general()
+            metadata = self._get_d3m_metadata_for_general()
         elif self.search_type == "wikifier":
             self._logger.warning("No metadata can provide for wikifier augment")
-            return DataMetadata()
+            metadata = DataMetadata()
         else:
-            self._logger.error("Unknown search type!")
-            return DataMetadata()
+            self._logger.error("Unknown search type as " + str(self.search_type))
+            metadata = DataMetadata()
+        self._logger.debug("Getting d3m metadata finished.")
+        return metadata
 
     def _get_d3m_metadata_for_wikidata(self):
         """
@@ -793,7 +807,6 @@ class DatamartSearchResult:
             return_df = self.download_wikidata(supplied_data, generate_metadata, return_format)
         else:
             raise ValueError("Unknown search type with " + self.search_type)
-
         return return_df
 
     def download_general(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None, generate_metadata=True,
@@ -806,6 +819,7 @@ class DatamartSearchResult:
         :param augment_resource_id: the name of the output dataset's resource id, the default is "augmentData"
         :return: a dataset or a dataframe depending on the input
         """
+        self._logger.debug("Start downloading for datamart...")
         res_id = None
         if type(supplied_data) is d3m_Dataset:
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
@@ -825,7 +839,7 @@ class DatamartSearchResult:
         else:
             self._logger.info("Find downloaded data from previous time, will use that.")
             right_df = self.right_df
-
+        self._logger.debug("Download finished, start generating d3m metadata.")
         left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
         right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
@@ -898,7 +912,7 @@ class DatamartSearchResult:
                                                                                          return_format, augment_resource_id=None)
         else:
             raise ValueError("Invalid return format was given")
-
+        self._logger.debug("download_general function finished.")
         return return_result
 
     def _generate_metadata_shape_part(self, value, selector, supplied_data=None) -> dict:
@@ -1003,6 +1017,7 @@ class DatamartSearchResult:
         :return: return_df: the materialized wikidata d3m_DataFrame,
                             with corresponding pairing information to original_data at last column
         """
+        self._logger.debug("Start downloading for wikidata...")
         # prepare the query
         p_nodes_needed = self.search_result["p_nodes_needed"]
         target_q_node_column_name = self.search_result["target_q_node_column_name"]
@@ -1053,6 +1068,7 @@ class DatamartSearchResult:
         except:
             self._logger.error("Getting query of wiki data failed!")
             return return_df
+        self._logger.debug("Download data finished, start generating d3m metadata.")
 
         semantic_types_dict = {
             "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
@@ -1142,6 +1158,7 @@ class DatamartSearchResult:
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                            metadata=each_metadata)
+        self._logger.debug("download_wikidata function finished.")
         return return_result
 
     def get_node_name(self, node_code) -> str:
@@ -1188,6 +1205,7 @@ class DatamartSearchResult:
         :param supplied_data:
         :return:
         """
+        self._logger.debug("Start running wikifier.")
         if type(supplied_data) is d3m_Dataset:
             self._res_id, _ = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None, has_hyperparameter=False)
             supplied_data_df = supplied_data[self._res_id]
@@ -1233,6 +1251,7 @@ class DatamartSearchResult:
                             "http://wikidata.org/qnode"
                         )}
             output_ds.metadata = output_ds.metadata.update(selector, metadata)
+        self._logger.debug("Running wikifier finished.")
         return output_ds
 
     def augment(self, supplied_data, augment_columns=None, connection_url: str = None):
@@ -1264,6 +1283,7 @@ class DatamartSearchResult:
         """
         download and join using the TabularJoinSpec from get_join_hints()
         """
+        self._logger.debug("Start running augment function.")
         if type(return_format) is not str or return_format != "ds" and return_format != "df":
             raise ValueError("Unknown return format as" + str(return_format))
 
@@ -1433,7 +1453,7 @@ class DatamartSearchResult:
                     for each_selector, each_metadata in metadata_shape_part_dict.items():
                         return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                                metadata=each_metadata)
-
+            self._logger.debug("Augment finished")
             return return_result
 
     def score(self) -> float:
@@ -1459,6 +1479,7 @@ class DatamartSearchResult:
 
         :return: a list of join hints. Note that datamart is encouraged to return join hints but not required to do so.
         """
+        self._logger.debug("Start getting join hints.")
         right_join_column_name = self.search_result['variableName']['value']
         left_columns = []
         right_columns = []
@@ -1472,7 +1493,8 @@ class DatamartSearchResult:
             right_columns.append([right_index_column])
 
         results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
-
+        self._logger.debug("Get join hints finished, the join hints are:")
+        self._logger.debug(str(results))
         return [results]
 
     def serialize(self):
