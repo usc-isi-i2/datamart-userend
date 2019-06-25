@@ -11,7 +11,7 @@ Implement RLTK joiner
 """
 
 
-class RLTKJoiner_new(JoinerBase):
+class RLTKJoinerWikidata(JoinerBase):
     """
         This new joiner just simply join all found pairs in rltk's block
     """
@@ -103,7 +103,7 @@ class RLTKJoiner_new(JoinerBase):
         return JoinResult(df_joined, matched_rows)
 
 
-class RLTKJoiner(JoinerBase):
+class RLTKJoinerGeneral(JoinerBase):
 
     def __init__(self):
         pass
