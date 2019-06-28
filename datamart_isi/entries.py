@@ -802,12 +802,16 @@ class DatamartSearchResult:
         if connection_url:
             self.connection_url = connection_url
         if self.search_type == "general":
-            return_df = self.download_general(supplied_data, generate_metadata, return_format)
+            res = self.download_general(supplied_data, generate_metadata, return_format)
         elif self.search_type == "wikidata":
-            return_df = self.download_wikidata(supplied_data, generate_metadata, return_format)
+            res = self.download_wikidata(supplied_data, generate_metadata, return_format)
         else:
             raise ValueError("Unknown search type with " + self.search_type)
-        return return_df
+
+        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+        res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+
+        return res
 
     def download_general(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None, generate_metadata=True,
                          return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) -> typing.Union[d3m_Dataset, d3m_DataFrame]:
@@ -1276,6 +1280,8 @@ class DatamartSearchResult:
         else:
             raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
         res[AUGMENT_RESOURCE_ID] = res[AUGMENT_RESOURCE_ID].astype(str)
+        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+        res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         return res
 
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
