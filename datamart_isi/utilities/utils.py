@@ -2,10 +2,13 @@ import typing
 import pandas as pd
 import wikifier
 import traceback
+from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 # from datamart_isi.utilities.caching import Cache, EntryState
 from io import StringIO
 from ast import literal_eval
+from datamart_isi.config import wikidata_server
 
+WIKIDATA_SERVER = "https://query.wikidata.org/sparql?"
 
 class Utils:
     DEFAULT_DESCRIPTION = {
@@ -17,37 +20,70 @@ class Utils:
 
     @staticmethod
     def materialize(metadata) -> pd.DataFrame:
-        if 'dataset' not in metadata:
-            raise ValueError("No dataset name found")
-        else:
+        # general type materializer
+        if 'url' in metadata:
             dataset_url = metadata['url']['value']
-        from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
-        from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
-        file_type = metadata.get("file_type") or ""
-        if file_type == "":
-            # no file type get, try to guess
-            file_type = dataset_url.split(".")[-1]
-        else:
-            file_type = file_type['value']
+            from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
+            from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
+            file_type = metadata.get("file_type") or ""
+            if file_type == "":
+                # no file type get, try to guess
+                file_type = dataset_url.split(".")[-1]
+            else:
+                file_type = file_type['value']
 
-        if file_type == "wikitable":
-            extra_information = literal_eval(metadata['extra_information']['value'])
-            loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
-        else:
-            loaded_data = Utils.materialize_for_general(dataset_url, file_type)
+            if file_type == "wikitable":
+                extra_information = literal_eval(metadata['extra_information']['value'])
+                loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
+            else:
+                loaded_data = Utils.materialize_for_general(dataset_url, file_type)
 
-        # run dsbox's profiler and cleaner
-        hyper1 = ProfilerHyperparams.defaults()
-        profiler = Profiler(hyperparams=hyper1)
-        profiled_df = profiler.produce(inputs=loaded_data).value
-        hyper2 = CleaningFeaturizerHyperparameter.defaults()
-        clean_f = CleaningFeaturizer(hyperparams=hyper2)
-        clean_f.set_training_data(inputs=profiled_df)
-        clean_f.fit()
-        cleaned_df = pd.DataFrame(clean_f.produce(inputs=profiled_df).value)
-        wikifier_res = wikifier.produce(cleaned_df)
+            # run dsbox's profiler and cleaner
+            hyper1 = ProfilerHyperparams.defaults()
+            profiler = Profiler(hyperparams=hyper1)
+            profiled_df = profiler.produce(inputs=loaded_data).value
+            hyper2 = CleaningFeaturizerHyperparameter.defaults()
+            clean_f = CleaningFeaturizer(hyperparams=hyper2)
+            clean_f.set_training_data(inputs=profiled_df)
+            clean_f.fit()
+            cleaned_df = pd.DataFrame(clean_f.produce(inputs=profiled_df).value)
+            wikifier_res = wikifier.produce(cleaned_df)
 
-        return wikifier_res
+            return wikifier_res
+
+        elif "p_nodes_needed" in metadata:
+            # wikidata materializer
+            label_part = "  ?itemLabel \n"
+            where_part = ""
+            for i, each_p_node in enumerate(metadata["p_nodes_needed"]):
+                label_part += "  ?value" + str(i) + "Label\n"
+                where_part += "  ?item wdt:" + each_p_node + " ?value" + str(i) + ".\n"
+            try:
+                sparql_query = """PREFIX wikibase: <http://wikiba.se/ontology#>
+                                  PREFIX wd: <http://www.wikidata.org/entity/>
+                                  prefix bd: <http://www.bigdata.com/rdf#>
+                                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+                                  SELECT \n""" + label_part + "WHERE \n {\n" + where_part \
+                             + """  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }\n}\n""" \
+                             + "LIMIT 30"
+
+                sparql = SPARQLWrapper(WIKIDATA_SERVER)
+                sparql.setQuery(sparql_query)
+                sparql.setReturnFormat(JSON)
+                # sparql.setMethod(POST)
+                # sparql.setRequestMethod(URLENCODED)
+            except:
+                print("[ERROR] Wikidata query failed!")
+                traceback.print_exc()
+
+            results = sparql.query().convert()["results"]["bindings"]
+            import pdb
+            pdb.set_trace()
+            for result in results["results"]["bindings"]:
+                print(result)
+
+
+
 
     @staticmethod
     def materialize_for_wikitable(dataset_url:str, file_type:str, extra_information:str) -> pd.DataFrame:

@@ -176,7 +176,7 @@ class DatamartQueryCursor(object):
             specific_q_nodes = None
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
             target_columns = list(range(supplied_dataframe.shape[1]))
-            wikifier_res = wikifier.produce(pd.DataFrame(self.supplied_data), target_columns, specific_q_nodes)
+            wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_q_nodes)
             output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
             # update metadata on column length
             selector = (res_id, ALL_ELEMENTS)
@@ -260,7 +260,6 @@ class DatamartQueryCursor(object):
                 self._logger.warning("Will skip wikidata search part")
                 return wikidata_results
             else:
-
                 self._logger.info("Wikidata Q nodes inputs detected! Will search with it.")
                 self._logger.info("Totally " + str(len(q_nodes_columns)) + " Q nodes columns detected!")
 
@@ -442,30 +441,30 @@ class Datamart(object):
         else:
             self.supplied_dataframe = supplied_data
 
-        if query is None:
+        # if query is None:
             # if not query given, try to find the Text columns from given dataframe and use it to find some candidates
-            can_query_columns = []
-            for each in range(len(self.supplied_dataframe.columns)):
-                if type(supplied_data) is d3m_Dataset:
-                    selector = (res_id, ALL_ELEMENTS, each)
-                else:
-                    selector = (ALL_ELEMENTS, each)
-                each_column_meta = supplied_data.metadata.query(selector)
-                if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
-                    # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
-                    can_query_columns.append(each)
+        can_query_columns = []
+        for each in range(len(self.supplied_dataframe.columns)):
+            if type(supplied_data) is d3m_Dataset:
+                selector = (res_id, ALL_ELEMENTS, each)
+            else:
+                selector = (ALL_ELEMENTS, each)
+            each_column_meta = supplied_data.metadata.query(selector)
+            if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
+                # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
+                can_query_columns.append(each)
 
-            if len(can_query_columns) == 0:
-                self._logger.warning("No columns can be augment with datamart!")
+        if len(can_query_columns) == 0:
+            self._logger.warning("No columns can be augment with datamart!")
 
-            for each_column_index in can_query_columns:
-                column_formated = DatasetColumn(res_id, each_column_index)
-                tabular_variable = TabularVariable(columns=[column_formated], relationship=ColumnRelationship.CONTAINS)
-                each_search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
-                                                                           data_constraints=[tabular_variable])
-                search_queries.append(each_search_query)
+        for each_column_index in can_query_columns:
+            column_formated = DatasetColumn(res_id, each_column_index)
+            tabular_variable = TabularVariable(columns=[column_formated], relationship=ColumnRelationship.CONTAINS)
+            each_search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
+                                                                       data_constraints=[tabular_variable])
+            search_queries.append(each_search_query)
 
-            return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data)
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
@@ -556,10 +555,6 @@ class DatamartSearchResult:
     def __init__(self, search_result, supplied_data, query_json, search_type):
         self._logger = logging.getLogger(__name__)
         self.search_result = search_result
-        if "score" in self.search_result:
-            self._score = float(self.search_result["score"]["value"])
-        else:
-            self._score = 1
         self.supplied_data = supplied_data
         if type(supplied_data) is d3m_Dataset:
             self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
@@ -577,6 +572,23 @@ class DatamartSearchResult:
         self.join_pairs = None
         self.right_df = None
         self.d3m_metadata = self._get_d3m_metadata()
+
+        if self.search_type == "general":
+            self._id = self.search_result['datasetLabel']['value']
+            self._score = float(self.search_result['score']['value'])
+        elif self.search_type == "wikidata":
+            self._id = "wikidata search on " + str(self.search_result['p_nodes_needed']) + " with column " + \
+                           self.search_result['target_q_node_column_name']
+            self._id = self._id.replace(" ", "_")
+            self._id = self._id.replace("[", "_")
+            self._id = self._id.replace("]", "_")
+            self._id = self._id.replace("'", "_")
+            self._id = self._id.replace(",", "")
+            # self._id = self._id.replace("___", "_")
+            self._score = 1
+        else:
+            self._id = "wikifier"
+            self._score = 1
 
     def _get_d3m_metadata(self) -> DataMetadata:
         """
@@ -764,10 +776,25 @@ class DatamartSearchResult:
 
         elif self.search_type == "general":
             title = self.search_result['title']['value']
-            column_names = self.search_result['keywords']['value']
+            column_names = []
+            current_column_number = 0
+            temp_selector = (ALL_ELEMENTS, current_column_number)
+            temp_meta = self.d3m_metadata.query(selector=temp_selector)
+            while len(temp_meta) != 0:
+                column_names.append(temp_meta['name'])
+                current_column_number += 1
+                temp_selector = (ALL_ELEMENTS, current_column_number)
+                temp_meta = self.d3m_metadata.query(selector=temp_selector)
+
+            column_names = ", ".join(column_names)
             join_columns = self.search_result['variableName']['value']
 
             result = pd.DataFrame({"title": title, "columns": column_names, "join columns": join_columns, "score": self._score},
+                                  index=[0])
+
+        elif self.search_type == "wikifier":
+            title = "wikifier"
+            result = pd.DataFrame({"title": title, "columns": "", "join columns": "", "score": self._score},
                                   index=[0])
 
         else:
@@ -1465,6 +1492,9 @@ class DatamartSearchResult:
     def score(self) -> float:
         return self._score
 
+    def id(self) -> str:
+        return self._id
+
     def get_metadata(self) -> DataMetadata:
         return self.d3m_metadata
 
@@ -1505,18 +1535,11 @@ class DatamartSearchResult:
 
     def serialize(self):
         result = dict()
-        if self.search_type == "general":
-            result['id'] = self.search_result['datasetLabel']['value']
-            result['score'] = float(self.search_result['score']['value'])
-        elif self.search_type == "wikidata":
-            result['id'] = "wikidata search on " + str(self.search_result['p_nodes_needed']) + " with column " + \
-                           self.search_result['target_q_node_column_name']
-            result['score'] = self._score
-        else:
-            result['id'] = ""
-            result['score'] = 0
+        result['id'] = self._id
+        result['score'] = self._score
 
         result['metadata'] = dict()
+        result['metadata']['connection_url'] = self.connection_url
         result['metadata']['search_result'] = self.search_result
         result['metadata']['query_json'] = self.query_json
         result['metadata']['search_type'] = self.search_type
