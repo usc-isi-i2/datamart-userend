@@ -1081,7 +1081,7 @@ class DatamartSearchResult:
         sparql_query = "SELECT DISTINCT ?q " + p_nodes_query_part + \
                        " \nWHERE \n{\n  VALUES (?q) { \n " + q_nodes_query + "}\n" + \
                        p_nodes_optional_part + special_request_part + "}\n"
-
+        print(sparql_query)
         # if not self.connection_url:
         #     self.connection_url = WIKIDATA_QUERY_SERVER
         #     print("[INFO] Using default connection url: " + self.connection_url)
@@ -1149,20 +1149,26 @@ class DatamartSearchResult:
         # add remained attributes metadata
         for each_column in range(0, return_df.shape[1] - 1):
             current_column_name = p_name_dict[return_df.columns[each_column]]
-            metadata_selector = (ALL_ELEMENTS, each_column)
+            if return_format == "df":
+                each_selector = (ALL_ELEMENTS, each_column)
+            elif return_format == "ds":
+                each_selector = (self._res_id, ALL_ELEMENTS, each_column)
             # here we do not modify the original data, we just add an extra "expected_semantic_types" to metadata
             metadata_each_column = {"name": current_column_name, "structural_type": str,
                                     'semantic_types': semantic_types_dict[return_df.columns[each_column]]}
             self.metadata[current_column_name] = metadata_each_column
             if generate_metadata:
-                metadata_new = metadata_new.update(metadata=metadata_each_column, selector=metadata_selector)
+                metadata_new = metadata_new.update(metadata=metadata_each_column, selector=each_selector)
 
         # special for joining_pairs column
-        metadata_selector = (ALL_ELEMENTS, return_df.shape[1])
+        if return_format == "df":
+            each_selector = (ALL_ELEMENTS, each_column + 1)
+        elif return_format == "ds":
+            each_selector = (self._res_id, ALL_ELEMENTS, each_column + 1)
         metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
                                   'semantic_types': ("http://schema.org/Integer",)}
         if generate_metadata:
-            metadata_new = metadata_new.update(metadata=metadata_joining_pairs, selector=metadata_selector)
+            metadata_new = metadata_new.update(metadata=metadata_joining_pairs, selector=each_selector)
 
         # start adding shape metadata for dataset
         if return_format == "ds":
@@ -1425,7 +1431,7 @@ class DatamartSearchResult:
                     left_df_column_length = supplied_data.metadata.query((metadata_base.ALL_ELEMENTS,))['dimension']['length']
                 except Exception:
                     traceback.print_exc()
-                    raise ValueError("No getting metadata information failed!")
+                    raise ValueError("Getting left metadata information failed!")
             elif return_format == "ds":
                 left_df_column_length = supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension'][
                     'length']
