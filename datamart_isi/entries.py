@@ -835,8 +835,11 @@ class DatamartSearchResult:
         else:
             raise ValueError("Unknown search type with " + self.search_type)
 
+        if return_format == "ds":
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-        res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+            res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+        else:
+            res.reset_index(drop=True)
 
         return res
 
@@ -1081,7 +1084,6 @@ class DatamartSearchResult:
         sparql_query = "SELECT DISTINCT ?q " + p_nodes_query_part + \
                        " \nWHERE \n{\n  VALUES (?q) { \n " + q_nodes_query + "}\n" + \
                        p_nodes_optional_part + special_request_part + "}\n"
-        print(sparql_query)
         # if not self.connection_url:
         #     self.connection_url = WIKIDATA_QUERY_SERVER
         #     print("[INFO] Using default connection url: " + self.connection_url)
@@ -1283,7 +1285,7 @@ class DatamartSearchResult:
                         "structural_type": str,
                         'semantic_types': (
                             "http://schema.org/Text",
-                            "https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                            # "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                             "https://metadata.datadrivendiscovery.org/types/Attribute",
                             "http://wikidata.org/qnode"
                         )}
@@ -1293,7 +1295,21 @@ class DatamartSearchResult:
 
     def augment(self, supplied_data, augment_columns=None, connection_url: str = None):
         """
-        download and join using the TabularJoinSpec from get_join_hints()
+        Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
+        The augment methods is a baseline implementation of download plus augment.
+
+        Callers who want to control over the augmentation process should use the download method and use their own
+        augmentation algorithm.
+
+        Parameters
+        ---------
+        supplied_data : container.Dataset
+            A D3M dataset containing the dataset that is the target for augmentation.
+        augment_columns : typing.List[DatasetColumn]
+            If provided, only the specified columns from the Datamart dataset that will be added to the supplied dataset.
+        connection_url : str
+            A connection string used to connect to a specific Datamart deployment. If not provided, a different
+            deployment might be used.
         """
         if connection_url:
             self.connection_url = connection_url
@@ -1320,7 +1336,7 @@ class DatamartSearchResult:
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
                  augment_resource_id=AUGMENT_RESOURCE_ID):
         """
-        download and join using the TabularJoinSpec from get_join_hints()
+        Inner detail function
         """
         self._logger.debug("Start running augment function.")
         if type(return_format) is not str or return_format != "ds" and return_format != "df":
@@ -1338,7 +1354,6 @@ class DatamartSearchResult:
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
         download_result = download_result.drop(columns=['joining_pairs'])
-        df_joined = pd.DataFrame()
         column_names_to_join = None
         r1_paired = set()
         i = 0
@@ -1355,6 +1370,18 @@ class DatamartSearchResult:
             right_res = download_result.loc[int(r2)]
             if column_names_to_join is None:
                 column_names_to_join = right_res.index.difference(left_res.index)
+                # if specified augment columns given, only append these columns
+                if augment_columns:
+                    augment_columns_with_column_names = []
+                    max_length = self.d3m_metadata.query((ALL_ELEMENTS, ))['dimension']['length']
+                    for each in augment_columns:
+                        if each.column_index < max_length:
+                            each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
+                            augment_columns_with_column_names.append(each_column_meta["name"])
+                        else:
+                            print("[ERROR] Index out of range, will ignore: " + str(each.column_index))
+                    column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
+
                 columns_new = left_res.index.tolist()
                 columns_new.extend(column_names_to_join.tolist())
             dcit_right = right_res[column_names_to_join].to_dict()
@@ -1373,7 +1400,7 @@ class DatamartSearchResult:
         df_joined = df_joined[columns_new]
         # if search with wikidata, we can remove duplicate Q node column
         self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
-        if self.search_type == "wikidata":
+        if self.search_type == "wikidata" and 'q_node' in df_joined.columns:
             df_joined = df_joined.drop(columns=['q_node'])
 
         if 'id' in df_joined.columns:

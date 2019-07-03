@@ -64,7 +64,6 @@ class FindIdentity:
             if len(P_predicts) == 0:
                 print("[ERROR] No candidate P nodes found for input column : [" + column_name + "]")
                 return result
-            print("The best matching P node is " + P_predicts[0])
 
         """
         # use edit distance to find best candidate
@@ -81,7 +80,12 @@ class FindIdentity:
         pdb.set_trace()
         # best_predicts =
         """
-        best_predicts = [P_predicts[0]]
+        if "P882" in P_predicts:
+            best_predicts = ["P882"]
+        else:
+            best_predicts = [P_predicts[0]]
+
+        print("The best matching P node is " + best_predicts[0])
 
         # print('Top 3 possible properties:')
         # print(P_predicts)
