@@ -6,9 +6,11 @@ from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 # from datamart_isi.utilities.caching import Cache, EntryState
 from io import StringIO
 from ast import literal_eval
+from d3m.container import DataFrame as d3m_DataFrame
+
 from datamart_isi.config import wikidata_server
 
-WIKIDATA_SERVER = "https://query.wikidata.org/sparql?"
+WIKIDATA_SERVER = "https://query.wikidata.org/sparql"
 
 class Utils:
     DEFAULT_DESCRIPTION = {
@@ -65,7 +67,7 @@ class Utils:
                                   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
                                   SELECT \n""" + label_part + "WHERE \n {\n" + where_part \
                              + """  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }\n}\n""" \
-                             + "LIMIT 30"
+                             + "LIMIT 100"
 
                 sparql = SPARQLWrapper(WIKIDATA_SERVER)
                 sparql.setQuery(sparql_query)
@@ -77,13 +79,44 @@ class Utils:
                 traceback.print_exc()
 
             results = sparql.query().convert()["results"]["bindings"]
-            import pdb
-            pdb.set_trace()
-            for result in results["results"]["bindings"]:
-                print(result)
+            all_res = {}
+            for i, result in enumerate(results):
+                each_res = {}
+                for each_key in result.keys():
+                    each_res[each_key] = result[each_key]['value']
+                all_res[i] = each_res
+            df_res = pd.DataFrame.from_dict(all_res, "index")
+            column_names = df_res.columns.tolist()
+            column_names = column_names[1:]
+            column_names_replaced = dict()
+            for each in zip(column_names, metadata["p_nodes_needed"]):
+                column_names_replaced[each[0]] = Utils.get_node_name(each[1])
+            df_res.rename(columns=column_names_replaced, inplace=True)
 
+            df_res = d3m_DataFrame(df_res, generate_metadata=True)
+            return df_res
+        else:
+            raise ValueError("Unknown type for materialize!")
 
-
+    @staticmethod
+    def get_node_name(node_code) -> str:
+        """
+        Function used to get the properties(P nodes) names with given P node
+        :param node_code: a str indicate the P node (e.g. "P123")
+        :return: a str indicate the P node label (e.g. "inception")
+        """
+        sparql_query = "SELECT DISTINCT ?x WHERE \n { \n" + \
+                       "wd:" + node_code + " rdfs:label ?x .\n FILTER(LANG(?x) = 'en') \n} "
+        try:
+            sparql = SPARQLWrapper(WIKIDATA_SERVER)
+            sparql.setQuery(sparql_query)
+            sparql.setReturnFormat(JSON)
+            sparql.setMethod(POST)
+            sparql.setRequestMethod(URLENCODED)
+            results = sparql.query().convert()
+            return results['results']['bindings'][0]['x']['value']
+        except:
+            return node_code
 
     @staticmethod
     def materialize_for_wikitable(dataset_url:str, file_type:str, extra_information:str) -> pd.DataFrame:
@@ -93,7 +126,7 @@ class Utils:
         return loaded_data
 
     @staticmethod
-    def materialize_for_general(dataset_url:str, file_type:str) -> pd.DataFrame:
+    def materialize_for_general(dataset_url: str, file_type: str) -> pd.DataFrame:
         from datamart_isi.materializers.general_materializer import GeneralMaterializer
         general_materializer = GeneralMaterializer()
         file_metadata = {
@@ -113,7 +146,7 @@ class Utils:
                 result = result[:-1]
 
             loaded_data = StringIO(result)
-            loaded_data = pd.read_csv(loaded_data,dtype="str")
+            loaded_data = pd.read_csv(loaded_data, dtype="str")
             return loaded_data
         except:
             traceback.print_exc()
