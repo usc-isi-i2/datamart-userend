@@ -57,8 +57,8 @@ class DatamartQueryCursor(object):
         self._logger = logging.getLogger(__name__)
         self.augmenter = augmenter
         self.search_query = search_query
-        self.current_searching_query_index = 0
         self.supplied_data = supplied_data
+        self.current_searching_query_index = 0
         self.remained_part = None
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
@@ -146,6 +146,8 @@ class DatamartQueryCursor(object):
         If already exist Q nodes, return False to indicate no need to run wikifier
         :return: a bool value to indicate whether need to run wikifier or not
         """
+        if self.supplied_data == None:
+            return False
         if type(self.supplied_data) is d3m_Dataset:
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
             selector_base_type = "ds"
@@ -338,13 +340,18 @@ class DatamartQueryCursor(object):
         """
         self._logger.debug("Start searching on datamart...")
         search_result = []
-        variables = dict()
+
+        variables, keywords_search, title = dict(), dict(), dict()
         for each_variable in self.search_query[self.current_searching_query_index].variables:
             variables[each_variable.key] = each_variable.values
 
         query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
                  "variables": variables,
                  }
+
+        query["keywords_search"] = self.search_query[self.current_searching_query_index].keywords_search
+        query["title_search"] = self.search_query[self.current_searching_query_index].title_search
+
         query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
 
         for i, each in enumerate(query_results):
@@ -374,7 +381,7 @@ class Datamart(object):
         query_server = config.wikidata_server_test
         self.augmenter = Augment(endpoint=query_server)
 
-    def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
+    def search_with_keywords(self, query: 'DatamartQuery') -> DatamartQueryCursor:
         """This entry point supports search using a query specification.
 
         The query specification supports querying datasets by keywords, named entities, temporal ranges, and geospatial ranges.
@@ -391,15 +398,8 @@ class Datamart(object):
         DatamartQueryCursor
             A cursor pointing to search results.
         """
-        if query.variables is not None:
-            search_queries = {"keywords": query.keywords,
-                              "variables": query.variables
-                              }
-        else:
-            search_queries = {
-                "variables": query.keywords
-            }
-        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=None)
+
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None)
 
     def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, skip_wikidata=False) \
             -> DatamartQueryCursor:
@@ -1758,10 +1758,12 @@ class DatamartQuery:
     """
 
     def __init__(self, keywords: typing.List[str] = list(), variables: typing.List['VariableConstraint'] = list(),
-                 search_type: str = "general") -> None:
+                 search_type: str = "general", keywords_search: typing.List[str] = list(), title_search: str = "") -> None:
         self.search_type = search_type
         self.keywords = keywords
         self.variables = variables
+        self.keywords_search = keywords_search
+        self.title_search = title_search
 
 
 class VariableConstraint(object):

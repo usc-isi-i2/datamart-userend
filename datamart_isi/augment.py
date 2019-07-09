@@ -63,37 +63,68 @@ class Augment(object):
         :return: a string indicate the sparql query
         """
         # example of query variables: Chaves Los Angeles Sacramento
-        query_variables = json_query['variables']
-        query_part = " ".join(query_variables.values())
-        
-        spaqrl_query = '''
-        prefix ps: <http://www.wikidata.org/prop/statement/> 
-        prefix pq: <http://www.wikidata.org/prop/qualifier/> 
-        prefix p: <http://www.wikidata.org/prop/>
+        PREFIX = '''
+            prefix ps: <http://www.wikidata.org/prop/statement/>
+            prefix pq: <http://www.wikidata.org/prop/qualifier/> 
+            prefix p: <http://www.wikidata.org/prop/>
+        '''
+        SELECTION = '''
+            SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
+        '''
+        STRUCTURE = '''
+            WHERE {
+                ?dataset rdfs:label ?datasetLabel.
+                ?dataset p:P2699/ps:P2699 ?url.
+                ?dataset p:P2701/ps:P2701 ?file_type.
+                ?dataset p:C2010/ps:C2010 ?extra_information.
+                ?dataset p:C2005 ?variable.
+                ?variable ps:C2005 ?variableName.
+                ?dataset p:P1476 ?title_url.
+                ?title_url ps:P1476 ?title .
+                ?dataset p:C2004 ?keywords_url.
+                ?keywords_url ps:C2004 ?keywords.
+        '''
+        bind = ""
+        ORDER = "ORDER BY ASC(?score)"
+        LIMIT = "LIMIT 50"
+        spaqrl_query = PREFIX + SELECTION + STRUCTURE
 
-        SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
-        WHERE 
-        {
-          ?dataset p:C2005 ?variable;
-                 rdfs:label ?datasetLabel.
-          ?variable ps:C2005 ?variableName ;
-                    pq:C2006 [
-                        bds:search """''' + query_part + '''""" ;
-                        bds:relevance ?score ;
-                        bds:rank ?rank
-                    ].
-           ?dataset p:P2699/ps:P2699 ?url.
-           ?dataset p:P2701/ps:P2701 ?file_type.
-           ?dataset p:P1476/ps:P1476 ?title.
-           ?dataset p:C2004/ps:C2004 ?keywords.
-           ?dataset p:C2010/ps:C2010 ?extra_information.
-          
-        }
-        ORDER BY ASC(?rank)
-        LIMIT 50'''
+        if "variables" in json_query.keys() and json_query["variables"] != {}:
+            query_variables = json_query['variables']
+            query_part = " ".join(query_variables.values())
+            spaqrl_query += '''
+                ?variable pq:C2006 [
+                            bds:search """''' + query_part + '''""" ;
+                            bds:relevance ?score_var ;
+                          ].
+                '''
+            bind = "?score_var" if bind == "" else bind + "+ ?score_var"
+
+        if "keywords_search" in json_query.keys() and json_query["keywords_search"] != [] :
+            query_keywords = json_query["keywords_search"]
+            query_part = " ".join(query_keywords)
+            spaqrl_query += '''
+                ?keywords_url ps:C2004 [
+                                bds:search """''' + query_part + '''""" ;
+                                bds:relevance ?score_key ;
+                              ].
+                '''
+            bind = "?score_key" if bind == "" else bind + "+ ?score_key"
+
+        if "title_search" in json_query.keys() and json_query["title_search"] != '':
+            query_title = json_query["title_search"]
+            spaqrl_query += '''
+                ?title_url ps:P1476 [
+                          bds:search """''' + query_title + '''""" ;
+                          bds:relevance ?score_title ;
+                        ]. 
+            '''
+            bind = "?score_title" if bind == "" else bind + "+ ?score_title"
+
+        spaqrl_query += "\n BIND((" + bind + ") AS ?score)" + "\n }" + "\n" + ORDER + "\n" + LIMIT
+        print(spaqrl_query)
 
         return spaqrl_query
-
 
     def query(self,
               col: pd.Series = None,
