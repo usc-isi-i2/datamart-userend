@@ -85,7 +85,7 @@ class Augment(object):
                 ?keywords_url ps:C2004 ?keywords.
         '''
         bind = ""
-        ORDER = "ORDER BY ASC(?score)"
+        ORDER = "ORDER BY DESC(?score)"
         LIMIT = "LIMIT 50"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
 
