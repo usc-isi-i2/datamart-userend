@@ -59,6 +59,8 @@ class BasicProfiler(object):
             semantic_types.append("http://schema.org/Float")
         elif "int" in column.dtype.name:
             semantic_types.append("http://schema.org/Integer")
+        elif "datetime" in column.dtype.name:
+            semantic_types.append("http://schema.org/DateTime")
         return semantic_types
 
     @staticmethod
