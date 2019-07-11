@@ -49,10 +49,10 @@ WIKIDATA_QUERY_SERVER = config.wikidata_server
 MEMCACHE_SERVER = config.memcache_server
 
 # initialize memcache system, if failed, just ignore
-try:
-    mc = memcache.Client([MEMCACHE_SERVER], debug=True)
-except:
-    mc = None
+# try:
+    # mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+# except:
+mc = None
 
 class DatamartQueryCursor(object):
     """
@@ -862,7 +862,7 @@ class DatamartSearchResult:
             raise ValueError("Unknown search type with " + self.search_type)
 
         if return_format == "ds":
-        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+            # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
             res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         else:
             res.reset_index(drop=True)
@@ -1417,7 +1417,7 @@ class DatamartSearchResult:
 
         df_joined = pd.DataFrame.from_dict(df_dict, "index")
         # add up the rows don't have pairs
-        unpaired_rows = set(range(1, supplied_data_df.shape[0])) - r1_paired
+        unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
         if len(unpaired_rows) > 0:
             unpaired_rows_list = [i for i in unpaired_rows]
             df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)

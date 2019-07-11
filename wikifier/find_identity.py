@@ -112,6 +112,7 @@ class FindIdentity:
             val = r.json()
             return val
         else:
+            print("[ERROR] Server no response!")
             return {}
 
     @staticmethod
