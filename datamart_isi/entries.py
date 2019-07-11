@@ -13,7 +13,7 @@ import json
 import string
 import wikifier
 import time
-import stopit
+import memcache
 from ast import literal_eval
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 
@@ -46,7 +46,13 @@ P_NODE_IGNORE_LIST = {"P1549"}
 SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 AUGMENT_RESOURCE_ID = "learningData"
 WIKIDATA_QUERY_SERVER = config.wikidata_server
+MEMCACHE_SERVER = config.memcache_server
 
+# initialize memcache system, if failed, just ignore
+# try:
+    # mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+# except:
+mc = None
 
 class DatamartQueryCursor(object):
     """
@@ -284,6 +290,7 @@ class DatamartQueryCursor(object):
                             p_count[each_p] += 1
                     """
                     # TODO: temporary change here, may change back in the future
+                    # TODO: add to use memcache to get results faster, memcache should run on dsbox server and let the backend the get the cache via internal
                     # Q node format (wd:Q23)(wd: Q42)
                     q_node_query_part = ""
                     unique_qnodes = set(q_nodes_list)
@@ -296,17 +303,36 @@ class DatamartQueryCursor(object):
                                    + "    ( wikibase:Time )\n    ( wikibase:Monolingualtext )\n  }" \
                                    + "  ?wd_property wikibase:propertyType ?type .\n}\norder by ?item ?property "
 
-                    try:
-                        sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
-                        sparql.setQuery(sparql_query)
-                        sparql.setReturnFormat(JSON)
-                        sparql.setMethod(POST)
-                        sparql.setRequestMethod(URLENCODED)
-                        results = sparql.query().convert()['results']['bindings']
-                    except:
-                        self._logger.error("Query on search_wikidata failed!")
-                        traceback.print_exc()
-                        continue
+                    if mc is not None:
+                        # check whether we have cache or not
+                        results = mc.get("results_" + str(hash(sparql_query)))
+                    else:
+                        results = None
+
+                    if results is not None:
+                        self._logger.info("Memcache hit in dsbox server! Will use cached results.")
+
+                    else:
+                        self._logger.info("Cache not hit, will run general query.")
+                        try:
+                            sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
+                            sparql.setQuery(sparql_query)
+                            sparql.setReturnFormat(JSON)
+                            sparql.setMethod(POST)
+                            sparql.setRequestMethod(URLENCODED)
+                            results = sparql.query().convert()['results']['bindings']
+                        except:
+                            self._logger.error("Query on search_wikidata failed!")
+                            traceback.print_exc()
+                            continue
+
+                        # add search result to cache
+                        if mc is not None:
+                            mc.set("results_" + str(hash(sparql_query)), results)
+                            # add timestamp to let the system know when to update
+                            mc.set("timestamp_" + str(hash(sparql_query)), str(datetime.datetime.now().timestamp()))
+                            # add real query
+                            mc.set("query_" + str(hash(sparql_query)), sparql_query)
 
                     self._logger.debug("Response from server for column " + str(each_column) +
                                        " received, start parsing the returned data from server.")
@@ -836,7 +862,7 @@ class DatamartSearchResult:
             raise ValueError("Unknown search type with " + self.search_type)
 
         if return_format == "ds":
-        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+            # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
             res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         else:
             res.reset_index(drop=True)
@@ -1391,7 +1417,7 @@ class DatamartSearchResult:
 
         df_joined = pd.DataFrame.from_dict(df_dict, "index")
         # add up the rows don't have pairs
-        unpaired_rows = set(range(1, supplied_data_df.shape[0])) - r1_paired
+        unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
         if len(unpaired_rows) > 0:
             unpaired_rows_list = [i for i in unpaired_rows]
             df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
