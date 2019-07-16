@@ -113,20 +113,21 @@ class Augment(object):
                 '''
             bind = "?score_key" if bind == "" else bind + "+ ?score_key"
 
-        if "variables_search" in json_query.keys() and "temporal_variable" in json_query["variables_search"].keys():
-            tv = json_query["variables_search"]["temporal_variable"]
-            TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
+        if "variables_search" in json_query.keys() and json_query["keywords_search"] != {}:
+            if "temporal_variable" in json_query["variables_search"].keys():
+                tv = json_query["variables_search"]["temporal_variable"]
+                TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
 
-            start_date = pd.to_datetime(tv["start"]).isoformat()
-            end_date = pd.to_datetime(tv["end"]).isoformat()
-            granularity = TemporalGranularity[tv["granularity"]]
-            spaqrl_query += '''
-                ?variable pq:C2013 ?time_granularity . 
-  				?variable pq:C2011 ?start_time .
-  				?variable pq:C2012 ?end_time . 
-                FILTER(?time_granularity >= ''' + str(granularity) + ''') 
-                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
-          	    '''
+                start_date = pd.to_datetime(tv["start"]).isoformat()
+                end_date = pd.to_datetime(tv["end"]).isoformat()
+                granularity = TemporalGranularity[tv["granularity"]]
+                spaqrl_query += '''
+                    ?variable pq:C2013 ?time_granularity . 
+                    ?variable pq:C2011 ?start_time .
+                    ?variable pq:C2012 ?end_time . 
+                    FILTER(?time_granularity >= ''' + str(granularity) + ''') 
+                    FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                    '''
 
         # if "title_search" in json_query.keys() and json_query["title_search"] != '':
         #     query_title = json_query["title_search"]
