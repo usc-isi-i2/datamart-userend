@@ -122,7 +122,6 @@ class Augment(object):
             bind = "?score_title" if bind == "" else bind + "+ ?score_title"
 
         spaqrl_query += "\n BIND((" + bind + ") AS ?score)" + "\n }" + "\n" + ORDER + "\n" + LIMIT
-        print(spaqrl_query)
 
         return spaqrl_query
 

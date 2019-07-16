@@ -50,7 +50,7 @@ MEMCACHE_SERVER = config.memcache_server
 
 # initialize memcache system, if failed, just ignore
 # try:
-    # mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+#     mc = memcache.Client([MEMCACHE_SERVER], debug=True)
 # except:
 mc = None
 
@@ -217,13 +217,12 @@ class DatamartQueryCursor(object):
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
 
-    def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None, timeout=None,
+    def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
                          search_threshold=0.5) -> typing.List["DatamartSearchResult"]:
         """
         The search function used for wikidata search
         :param query: JSON object describing the query.
         :param supplied_data: the data you are trying to augment.
-        :param timeout: allowed time spent on searching
         :param search_threshold: the minimum appeared times of the properties
         :return: list of search results of DatamartSearchResult
         """
@@ -427,7 +426,7 @@ class Datamart(object):
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None)
 
-    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, skip_wikidata=False) \
+    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
@@ -457,9 +456,11 @@ class Datamart(object):
         # first take a search on wikidata
         # add wikidata searching query at first position
         res_id = None
-        if skip_wikidata:
+        if not need_wikidata:
             search_queries = []
+            need_run_wikifier = False
         else:
+            need_run_wikifier = None
             search_queries = [DatamartQuery(search_type="wikidata")]
 
         if type(supplied_data) is d3m_Dataset:
@@ -490,7 +491,8 @@ class Datamart(object):
                                                                        data_constraints=[tabular_variable])
             search_queries.append(each_search_query)
 
-        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data)
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
+                                   need_run_wikifier=need_run_wikifier)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
@@ -1319,7 +1321,7 @@ class DatamartSearchResult:
         self._logger.debug("Running wikifier finished.")
         return output_ds
 
-    def augment(self, supplied_data, augment_columns=None, connection_url: str = None):
+    def augment(self, supplied_data, augment_columns=None, connection_url: str = None, augment_resource_id=AUGMENT_RESOURCE_ID):
         """
         Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
         The augment methods is a baseline implementation of download plus augment.
@@ -1346,15 +1348,15 @@ class DatamartSearchResult:
 
         if type(supplied_data) is d3m_DataFrame:
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="df", augment_resource_id=AUGMENT_RESOURCE_ID)
+                                return_format="df", augment_resource_id=augment_resource_id)
         elif type(supplied_data) is d3m_Dataset:
             self._res_id, self.supplied_data = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None,
                                                                               has_hyperparameter=False)
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID)
+                                return_format="ds", augment_resource_id=augment_resource_id)
         else:
             raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
-        res[AUGMENT_RESOURCE_ID] = res[AUGMENT_RESOURCE_ID].astype(str)
+        # res[augment_resource_id] = res[augment_resource_id].astype(str)
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
         res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         return res
@@ -1447,6 +1449,7 @@ class DatamartSearchResult:
             metadata_dict_left = {}
             metadata_dict_right = {}
             if self.search_type == "general":
+                # if the search type is general, we need to generate the metadata dict here
                 for i, each in enumerate(df_joined):
                     # description = each['description']
                     dtype = df_joined[each].dtype.name
@@ -1464,7 +1467,7 @@ class DatamartSearchResult:
                         )
                     else:
                         semantic_types = (
-                            "https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                            # "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                             "https://metadata.datadrivendiscovery.org/types/Attribute",
                             AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
@@ -1477,6 +1480,7 @@ class DatamartSearchResult:
                     }
                     metadata_dict_right[each] = frozendict.FrozenOrderedDict(each_meta)
             else:
+                # if from wikidata, we should have already generated it
                 metadata_dict_right = self.metadata
 
             if return_format == "df":
