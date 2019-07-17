@@ -393,7 +393,6 @@ class DatamartQueryCursor(object):
                                        pd.to_datetime(tv["end"]).timestamp()  # query time
                 start_time, end_time = pd.to_datetime(each['start_time']['value']).timestamp(), \
                                        pd.to_datetime(each['end_time']['value']).timestamp()  # dataset
-                print("start_date {} end_date {} \n start_time {} end_time {}".format(start_date, end_date, start_time, end_time))
 
                 if  start_date >= start_time and end_time >= end_date:
                     time_score = 1.0
