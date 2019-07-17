@@ -113,7 +113,7 @@ class Augment(object):
                 '''
             bind = "?score_key" if bind == "" else bind + "+ ?score_key"
 
-        if "variables_search" in json_query.keys() and json_query["keywords_search"] != {}:
+        if "variables_search" in json_query.keys() and json_query["variables_search"] != {}:
             if "temporal_variable" in json_query["variables_search"].keys():
                 tv = json_query["variables_search"]["temporal_variable"]
                 TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
@@ -138,8 +138,10 @@ class Augment(object):
         #                 ].
         #     '''
         #     bind = "?score_title" if bind == "" else bind + "+ ?score_title"
+        if bind:
+            spaqrl_query += "\n BIND((" + bind + ") AS ?score)"
 
-        spaqrl_query += "\n BIND((" + bind + ") AS ?score)" + "\n }" + "\n" + ORDER + "\n" + LIMIT
+        spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
 
         return spaqrl_query
 
