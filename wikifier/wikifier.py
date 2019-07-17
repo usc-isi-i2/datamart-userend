@@ -69,7 +69,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
         print('Current column: ' + current_column_name)
         try:
             temp = set()
-            for each in input_df[current_column_name].dropna().tolist():
+            for each in input_df.iloc[:, column].dropna().tolist():
                 temp.add(int(each))
             if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_converage):
                 print("A columns with all numerical values and useless detected, skipped")
@@ -79,9 +79,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
 
         curData = []
         for each in input_df.iloc[:, column].tolist():
-            if type(each) is str:
-                curData.append(each)
-            elif each is np.nan or math.isnan(each):
+            if each is np.nan or math.isnan(each):
                 curData.append("")
             else:
                 curData.append(str(each))

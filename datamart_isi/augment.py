@@ -3,6 +3,7 @@ import pandas as pd
 import typing
 import warnings
 import traceback
+import logging
 from datetime import datetime
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
@@ -30,9 +31,9 @@ class Augment(object):
 
         self.joiners = dict()
         self.profiler = Profiler()
+        self.logger = logging.getLogger(__name__)
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None, **kwargs) -> typing.Optional[
-        typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None, **kwargs) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
@@ -42,14 +43,13 @@ class Augment(object):
         Returns:
 
         """
-
         if query:
             query_body = self.parse_sparql_query(query, dataset)
             try:
                 self.qm.setQuery(query_body)
                 results = self.qm.query().convert()['results']['bindings']
-            except:
-                print("[ERROR] Query failed!")
+            except Exception as e:
+                self.logger.error(e, exc_info=True)
                 traceback.print_exc()
                 return []
             return results

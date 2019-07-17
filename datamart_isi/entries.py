@@ -52,7 +52,7 @@ MEMCACHE_SERVER = config.memcache_server
 
 # initialize memcache system, if failed, just ignore
 # try:
-# mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+#     mc = memcache.Client([MEMCACHE_SERVER], debug=True)
 # except:
 mc = None
 
@@ -68,6 +68,7 @@ class DatamartQueryCursor(object):
         self.search_query = search_query
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
+
         self.remained_part = None
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
@@ -221,13 +222,12 @@ class DatamartQueryCursor(object):
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
 
-    def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None, timeout=None,
+    def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
                          search_threshold=0.5) -> typing.List["DatamartSearchResult"]:
         """
         The search function used for wikidata search
         :param query: JSON object describing the query.
         :param supplied_data: the data you are trying to augment.
-        :param timeout: allowed time spent on searching
         :param search_threshold: the minimum appeared times of the properties
         :return: list of search results of DatamartSearchResult
         """
@@ -375,12 +375,9 @@ class DatamartQueryCursor(object):
         for each_variable in self.search_query[self.current_searching_query_index].variables:
             variables[each_variable.key] = each_variable.values
 
-        query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
-                 "variables": variables,
-                 }
-
-        query["keywords_search"] = self.search_query[self.current_searching_query_index].keywords_search
-        query["variables_search"] = self.search_query[self.current_searching_query_index].variables_search
+        query = {"keywords": self.search_query[self.current_searching_query_index].keywords, "variables": variables,
+                 "keywords_search": self.search_query[self.current_searching_query_index].keywords_search,
+                 "variables_search": self.search_query[self.current_searching_query_index].variables_search}
 
         query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
 
@@ -434,7 +431,7 @@ class Datamart(object):
         query_server = config.wikidata_server_test
         self.augmenter = Augment(endpoint=query_server)
 
-    def search_without_data(self, query: 'DatamartQuery') -> DatamartQueryCursor:
+    def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
         """This entry point supports search using a query specification.
 
         The query specification supports querying datasets by keywords, named entities, temporal ranges, and geospatial ranges.
@@ -454,7 +451,7 @@ class Datamart(object):
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None)
 
-    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, skip_wikidata=False) \
+    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
@@ -484,9 +481,11 @@ class Datamart(object):
         # first take a search on wikidata
         # add wikidata searching query at first position
         res_id = None
-        if skip_wikidata:
+        if not need_wikidata:
             search_queries = []
+            need_run_wikifier = False
         else:
+            need_run_wikifier = None
             search_queries = [DatamartQuery(search_type="wikidata")]
 
         if type(supplied_data) is d3m_Dataset:
@@ -503,8 +502,8 @@ class Datamart(object):
             else:
                 selector = (ALL_ELEMENTS, each)
             each_column_meta = supplied_data.metadata.query(selector)
-            if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
-                # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
+            if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
+                    or "http://schema.org/DateTime" in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
 
         if len(can_query_columns) == 0:
@@ -517,7 +516,8 @@ class Datamart(object):
                                                                        data_constraints=[tabular_variable])
             search_queries.append(each_search_query)
 
-        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data)
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
+                                   need_run_wikifier=need_run_wikifier)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
@@ -565,23 +565,48 @@ class Datamart(object):
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+        TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
+        special_time_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
                 each_column_index = each_column.column_index
                 each_column_res_id = each_column.resource_id
                 all_value_str_set = set()
-                column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
-                query_column_entities = list(set(column_values.tolist()))
-                if len(query_column_entities) > MAX_ENTITIES_LENGTH:
-                    query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
-                for each in query_column_entities:
-                    words_processed = str(each).lower().translate(translator).split()
-                    for word in words_processed:
-                        all_value_str_set.add(word)
-                all_value_str = " ".join(all_value_str_set)
-                each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
-                keywords.append(each_keyword)
+                each_column_meta = supplied_data.metadata.query((each_column_res_id, ALL_ELEMENTS, each_column_index))
+                if 'http://schema.org/DateTime' in each_column_meta["semantic_types"]:
+                    column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
+                    column_data_datetime_format = pd.to_datetime(column_data)
+                    start_date = min(column_data_datetime_format)
+                    end_date = max(column_data_datetime_format)
+                    if any(column_data_datetime_format.dt.second != 0):
+                        time_granularity = TemporalGranularity['second']
+                    elif any(column_data_datetime_format.dt.minute != 0):
+                        time_granularity = TemporalGranularity['minute']
+                    elif any(column_data_datetime_format.dt.hour != 0):
+                        time_granularity = TemporalGranularity['hour']
+                    elif any(column_data_datetime_format.dt.day != 0):
+                        time_granularity = TemporalGranularity['day']
+                    elif any(column_data_datetime_format.dt.month != 0):
+                        time_granularity = TemporalGranularity['month']
+                    elif any(column_data_datetime_format.dt.year != 0):
+                        time_granularity = TemporalGranularity['year']
+                    each_keyword = ["time_start", "time_end", special_time_mark]
+                    all_value_str = str(start_date) + "____" + str(end_date)
+
+                elif 'http://schema.org/Text' in each_column_meta["semantic_types"]:
+                    column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
+                    query_column_entities = list(set(column_values.tolist()))
+                    if len(query_column_entities) > MAX_ENTITIES_LENGTH:
+                        query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
+                    for each in query_column_entities:
+                        words_processed = str(each).lower().translate(translator).split()
+                        for word in words_processed:
+                            all_value_str_set.add(word)
+                    all_value_str = " ".join(all_value_str_set)
+                    each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
+                    keywords.append(each_keyword)
+
                 all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
 
         search_query = DatamartQuery(keywords=keywords, variables=all_query_variables)
@@ -605,7 +630,7 @@ class DatamartSearchResult:
     Different datamarts will provide different implementations of this class.
     """
 
-    def __init__(self, search_result, supplied_data, query_json, search_type):
+    def __init__(self, search_result, supplied_data, query_json, search_type, connection_url=None):
         self._logger = logging.getLogger(__name__)
         self.search_result = search_result
         self.supplied_data = supplied_data
@@ -618,7 +643,8 @@ class DatamartSearchResult:
             self.selector_base_type = "df"
         else:
             self.supplied_dataframe = None
-        self.connection_url = WIKIDATA_QUERY_SERVER
+        if connection_url is None:
+            self.connection_url = WIKIDATA_QUERY_SERVER
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
@@ -639,7 +665,6 @@ class DatamartSearchResult:
             self._id = self._id.replace("]", "_")
             self._id = self._id.replace("'", "_")
             self._id = self._id.replace(",", "")
-            # self._id = self._id.replace("___", "_")
             self._score = 1
         else:
             self._id = "wikifier"
@@ -1160,6 +1185,7 @@ class DatamartSearchResult:
         return_df = d3m_DataFrame()
         try:
             sparql = SPARQLWrapper(self.connection_url)
+            self._logger.debug("Connection to datamart blazegraph server at" + self.connection_url)
             sparql.setQuery(sparql_query)
             sparql.setReturnFormat(JSON)
             sparql.setMethod(POST)
@@ -1362,7 +1388,7 @@ class DatamartSearchResult:
         self._logger.debug("Running wikifier finished.")
         return output_ds
 
-    def augment(self, supplied_data, augment_columns=None, connection_url: str = None):
+    def augment(self, supplied_data, augment_columns=None, connection_url: str = None, augment_resource_id=AUGMENT_RESOURCE_ID):
         """
         Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
         The augment methods is a baseline implementation of download plus augment.
@@ -1389,15 +1415,15 @@ class DatamartSearchResult:
 
         if type(supplied_data) is d3m_DataFrame:
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="df", augment_resource_id=AUGMENT_RESOURCE_ID)
+                                return_format="df", augment_resource_id=augment_resource_id)
         elif type(supplied_data) is d3m_Dataset:
             self._res_id, self.supplied_data = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None,
                                                                               has_hyperparameter=False)
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID)
+                                return_format="ds", augment_resource_id=augment_resource_id)
         else:
             raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
-        res[AUGMENT_RESOURCE_ID] = res[AUGMENT_RESOURCE_ID].astype(str)
+        # res[augment_resource_id] = res[augment_resource_id].astype(str)
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
         res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         return res
@@ -1490,6 +1516,7 @@ class DatamartSearchResult:
             metadata_dict_left = {}
             metadata_dict_right = {}
             if self.search_type == "general":
+                # if the search type is general, we need to generate the metadata dict here
                 for i, each in enumerate(df_joined):
                     # description = each['description']
                     dtype = df_joined[each].dtype.name
@@ -1507,7 +1534,7 @@ class DatamartSearchResult:
                         )
                     else:
                         semantic_types = (
-                            "https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                            # "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                             "https://metadata.datadrivendiscovery.org/types/Attribute",
                             AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
@@ -1520,6 +1547,7 @@ class DatamartSearchResult:
                     }
                     metadata_dict_right[each] = frozendict.FrozenOrderedDict(each_meta)
             else:
+                # if from wikidata, we should have already generated it
                 metadata_dict_right = self.metadata
 
             if return_format == "df":
