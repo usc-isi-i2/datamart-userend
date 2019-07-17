@@ -68,6 +68,7 @@ class DatamartQueryCursor(object):
         self.search_query = search_query
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
+
         self.remained_part = None
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
@@ -375,12 +376,9 @@ class DatamartQueryCursor(object):
         for each_variable in self.search_query[self.current_searching_query_index].variables:
             variables[each_variable.key] = each_variable.values
 
-        query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
-                 "variables": variables,
-                 }
-
-        query["keywords_search"] = self.search_query[self.current_searching_query_index].keywords_search
-        query["variables_search"] = self.search_query[self.current_searching_query_index].variables_search
+        query = {"keywords": self.search_query[self.current_searching_query_index].keywords, "variables": variables,
+                 "keywords_search": self.search_query[self.current_searching_query_index].keywords_search,
+                 "variables_search": self.search_query[self.current_searching_query_index].variables_search}
 
         query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
 
@@ -434,7 +432,7 @@ class Datamart(object):
         query_server = config.wikidata_server_test
         self.augmenter = Augment(endpoint=query_server)
 
-    def search_without_data(self, query: 'DatamartQuery') -> DatamartQueryCursor:
+    def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
         """This entry point supports search using a query specification.
 
         The query specification supports querying datasets by keywords, named entities, temporal ranges, and geospatial ranges.
@@ -503,8 +501,8 @@ class Datamart(object):
             else:
                 selector = (ALL_ELEMENTS, each)
             each_column_meta = supplied_data.metadata.query(selector)
-            if 'http://schema.org/Text' in each_column_meta["semantic_types"]:
-                # or "https://metadata.datadrivendiscovery.org/types/CategoricalData" in each_column_meta["semantic_types"]:
+            if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
+                    or "http://schema.org/DateTime" in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
 
         if len(can_query_columns) == 0:
@@ -565,23 +563,48 @@ class Datamart(object):
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+        TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
+        special_time_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
                 each_column_index = each_column.column_index
                 each_column_res_id = each_column.resource_id
                 all_value_str_set = set()
-                column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
-                query_column_entities = list(set(column_values.tolist()))
-                if len(query_column_entities) > MAX_ENTITIES_LENGTH:
-                    query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
-                for each in query_column_entities:
-                    words_processed = str(each).lower().translate(translator).split()
-                    for word in words_processed:
-                        all_value_str_set.add(word)
-                all_value_str = " ".join(all_value_str_set)
-                each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
-                keywords.append(each_keyword)
+                each_column_meta = supplied_data.metadata.query((each_column_res_id, ALL_ELEMENTS, each_column_index))
+                if 'http://schema.org/DateTime' in each_column_meta["semantic_types"]:
+                    column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
+                    column_data_datetime_format = pd.to_datetime(column_data)
+                    start_date = min(column_data_datetime_format)
+                    end_date = max(column_data_datetime_format)
+                    if any(column_data_datetime_format.dt.second != 0):
+                        time_granularity = TemporalGranularity['second']
+                    elif any(column_data_datetime_format.dt.minute != 0):
+                        time_granularity = TemporalGranularity['minute']
+                    elif any(column_data_datetime_format.dt.hour != 0):
+                        time_granularity = TemporalGranularity['hour']
+                    elif any(column_data_datetime_format.dt.day != 0):
+                        time_granularity = TemporalGranularity['day']
+                    elif any(column_data_datetime_format.dt.month != 0):
+                        time_granularity = TemporalGranularity['month']
+                    elif any(column_data_datetime_format.dt.year != 0):
+                        time_granularity = TemporalGranularity['year']
+                    each_keyword = ["time_start", "time_end", special_time_mark]
+                    all_value_str = str(start_date) + "____" + str(end_date)
+
+                elif 'http://schema.org/Text' in each_column_meta["semantic_types"]:
+                    column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
+                    query_column_entities = list(set(column_values.tolist()))
+                    if len(query_column_entities) > MAX_ENTITIES_LENGTH:
+                        query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
+                    for each in query_column_entities:
+                        words_processed = str(each).lower().translate(translator).split()
+                        for word in words_processed:
+                            all_value_str_set.add(word)
+                    all_value_str = " ".join(all_value_str_set)
+                    each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
+                    keywords.append(each_keyword)
+
                 all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
 
         search_query = DatamartQuery(keywords=keywords, variables=all_query_variables)
@@ -605,7 +628,7 @@ class DatamartSearchResult:
     Different datamarts will provide different implementations of this class.
     """
 
-    def __init__(self, search_result, supplied_data, query_json, search_type):
+    def __init__(self, search_result, supplied_data, query_json, search_type, connection_url=None):
         self._logger = logging.getLogger(__name__)
         self.search_result = search_result
         self.supplied_data = supplied_data
@@ -618,7 +641,8 @@ class DatamartSearchResult:
             self.selector_base_type = "df"
         else:
             self.supplied_dataframe = None
-        self.connection_url = WIKIDATA_QUERY_SERVER
+        if connection_url is None:
+            self.connection_url = WIKIDATA_QUERY_SERVER
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
@@ -639,7 +663,6 @@ class DatamartSearchResult:
             self._id = self._id.replace("]", "_")
             self._id = self._id.replace("'", "_")
             self._id = self._id.replace(",", "")
-            # self._id = self._id.replace("___", "_")
             self._score = 1
         else:
             self._id = "wikifier"
@@ -1160,6 +1183,7 @@ class DatamartSearchResult:
         return_df = d3m_DataFrame()
         try:
             sparql = SPARQLWrapper(self.connection_url)
+            self._logger.debug("Connection to datamart blazegraph server at" + self.connection_url)
             sparql.setQuery(sparql_query)
             sparql.setReturnFormat(JSON)
             sparql.setMethod(POST)
