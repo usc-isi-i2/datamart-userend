@@ -49,7 +49,7 @@ SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 AUGMENT_RESOURCE_ID = "learningData"
 WIKIDATA_QUERY_SERVER = config.wikidata_server
 MEMCACHE_SERVER = config.memcache_server
-
+TIME_COLUMN_MARK = "%^&*SPECIAL_TIME_TYPE%^&*"
 # initialize memcache system, if failed, just ignore
 # try:
 #     mc = memcache.Client([MEMCACHE_SERVER], debug=True)
@@ -120,7 +120,8 @@ class DatamartQueryCursor(object):
                 # TODO: now wikifier can only automatically search for all possible columns and do exact match
                 search_res = timeout_call(timeout, self._search_wikidata, [])
             elif self.search_query[self.current_searching_query_index].search_type == "general":
-                search_res = timeout_call(timeout, self._search_datamart, [])
+                # search_res = timeout_call(timeout, self._search_datamart, [])
+                search_res = self._search_datamart()
             else:
                 raise ValueError("Unknown search query type for " +
                                  self.search_query[self.current_searching_query_index].search_type)
@@ -370,27 +371,47 @@ class DatamartQueryCursor(object):
         """
         self._logger.debug("Start searching on datamart...")
         search_result = []
-
-        variables, keywords_search, title = dict(), dict(), dict()
+        variables_search = self.search_query[self.current_searching_query_index].variables_search
+        keywords_search = self.search_query[self.current_searching_query_index].keywords_search
+        variables, title = dict(), dict()
+        variables_temp = dict()  # this temp is specially used to store variable for time query
         for each_variable in self.search_query[self.current_searching_query_index].variables:
-            variables[each_variable.key] = each_variable.values
+            if each_variable.key.startswith(TIME_COLUMN_MARK):
+                variables_temp[each_variable.key.split("____")[1]] = each_variable.values
+                start_time, end_time, granularity = each_variable.values.split("____")
+                variables_search = {"temporal_variable": {
+                                         "start": start_time,
+                                         "end": end_time,
+                                         "granularity": granularity
+                                         }
+                                    }
+            else:
+                variables[each_variable.key] = each_variable.values
 
-        query = {"keywords": self.search_query[self.current_searching_query_index].keywords, "variables": variables,
-                 "keywords_search": self.search_query[self.current_searching_query_index].keywords_search,
-                 "variables_search": self.search_query[self.current_searching_query_index].variables_search}
+        query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
+                 "variables": variables,
+                 "keywords_search": keywords_search,
+                 "variables_search": variables_search,
+                 }
 
         query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
 
-        for i, each in enumerate(query_results):
-            self._logger.debug("Get returned No." + str(i) + " query result as ")
-            self._logger.debug(str(each))
-            if "score" in each.keys() and "start_time" in each.keys() and "end_time" in each.keys():
-                tv = query["variables_search"]["temporal_variable"]
-                start_date, end_date = pd.to_datetime(tv["start"]).timestamp(), \
-                                       pd.to_datetime(tv["end"]).timestamp()  # query time
-                start_time, end_time = pd.to_datetime(each['start_time']['value']).timestamp(), \
-                                       pd.to_datetime(each['end_time']['value']).timestamp()  # dataset
+        if len(variables_temp) != 0:
+            query["variables"] = variables_temp
 
+        for i, each_result in enumerate(query_results):
+            self._logger.debug("Get returned No." + str(i) + " query result as ")
+            self._logger.debug(str(each_result))
+            if "start_time" in each_result.keys() and "end_time" in each_result.keys():
+                tv = query["variables_search"]["temporal_variable"]
+                start_date, end_date = pd.to_datetime(tv["start"]).timestamp(),\
+                                       pd.to_datetime(tv["end"]).timestamp()  # query time
+
+                start_time, end_time = pd.to_datetime(each_result['start_time']['value']).timestamp(), \
+                                       pd.to_datetime(each_result['end_time']['value']).timestamp()  # dataset
+                print("start_date {} end_date {} \n start_time {} end_time {}".format(start_date, end_date, start_time, end_time))
+
+                # TODO: it seems the score calculation still have some problem here
                 if  start_date >= start_time and end_time >= end_date:
                     time_score = 1.0
                 elif start_time >= start_date and end_date >= end_time:
@@ -402,10 +423,13 @@ class DatamartQueryCursor(object):
                 else:
                     time_score = 0.0
 
-                if time_score != 0.0:
-                    old_score = float(each['score']['value'])
-                    each['score']['value'] = (old_score + time_score) / 2
-            temp = DatamartSearchResult(search_result=each, supplied_data=self.supplied_data, query_json=query,
+                if time_score != 0.0 and 'score' in each_result.keys():
+                    old_score = float(each_result['score']['value'])
+                    each_result['score']['value'] = (old_score + time_score) / 2
+                else:
+                    each_result['score'] = {"value": 0.0}
+
+            temp = DatamartSearchResult(search_result=each_result, supplied_data=self.supplied_data, query_json=query,
                                         search_type="general")
             search_result.append(temp)
 
@@ -553,8 +577,7 @@ class Datamart(object):
                                                               data_constraints=data_constraints)
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[search_query], supplied_data=supplied_data)
 
-    @staticmethod
-    def generate_datamart_query_from_data(supplied_data: container.Dataset,
+    def generate_datamart_query_from_data(self, supplied_data: container.Dataset,
                                           data_constraints: typing.List['TabularVariable']) -> "DatamartQuery":
         """
         Inner function used to generate the isi implemented datamart query from given dataset
@@ -566,7 +589,6 @@ class Datamart(object):
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
         TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
-        special_time_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
@@ -575,24 +597,32 @@ class Datamart(object):
                 all_value_str_set = set()
                 each_column_meta = supplied_data.metadata.query((each_column_res_id, ALL_ELEMENTS, each_column_index))
                 if 'http://schema.org/DateTime' in each_column_meta["semantic_types"]:
-                    column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
-                    column_data_datetime_format = pd.to_datetime(column_data)
-                    start_date = min(column_data_datetime_format)
-                    end_date = max(column_data_datetime_format)
-                    if any(column_data_datetime_format.dt.second != 0):
-                        time_granularity = TemporalGranularity['second']
-                    elif any(column_data_datetime_format.dt.minute != 0):
-                        time_granularity = TemporalGranularity['minute']
-                    elif any(column_data_datetime_format.dt.hour != 0):
-                        time_granularity = TemporalGranularity['hour']
-                    elif any(column_data_datetime_format.dt.day != 0):
-                        time_granularity = TemporalGranularity['day']
-                    elif any(column_data_datetime_format.dt.month != 0):
-                        time_granularity = TemporalGranularity['month']
-                    elif any(column_data_datetime_format.dt.year != 0):
-                        time_granularity = TemporalGranularity['year']
-                    each_keyword = ["time_start", "time_end", special_time_mark]
-                    all_value_str = str(start_date) + "____" + str(end_date)
+                    try:
+                        column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
+                        column_data_datetime_format = pd.to_datetime(column_data)
+                        start_date = min(column_data_datetime_format)
+                        end_date = max(column_data_datetime_format)
+                        if any(column_data_datetime_format.dt.second != 0):
+                            time_granularity = 'second'
+                        elif any(column_data_datetime_format.dt.minute != 0):
+                            time_granularity = 'minute'
+                        elif any(column_data_datetime_format.dt.hour != 0):
+                            time_granularity = 'hour'
+                        elif any(column_data_datetime_format.dt.day != 0):
+                            time_granularity = 'day'
+                        elif any(column_data_datetime_format.dt.month != 0):
+                            time_granularity = 'month'
+                        elif any(column_data_datetime_format.dt.year != 0):
+                            time_granularity = 'year'
+                        else:
+                            self._logger.error("No usefully date information found for column No." + str(each_column_index))
+                            continue
+                    except:
+                        self._logger.error("Can't parse current datetime for column No." + str(each_column_index))
+                        continue
+                    each_keyword = TIME_COLUMN_MARK + "____" + supplied_data[each_column_res_id].columns[each_column_index]
+                    keywords.append(each_keyword)
+                    all_value_str = str(start_date) + "____" + str(end_date) + "____" + time_granularity
 
                 elif 'http://schema.org/Text' in each_column_meta["semantic_types"]:
                     column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
@@ -970,6 +1000,16 @@ class DatamartSearchResult:
             logging.warning("multiple joining column pairs found! Will only check first one.")
         elif len(candidate_join_column_pairs) < 1:
             logging.error("Getting joining pairs failed")
+
+        is_time_query = True
+        if "start_time" in self.search_result and "end_time" in self.search_result:
+            for each in self.query_json['keywords']:
+                if TIME_COLUMN_MARK in each:
+                    is_time_query = True
+
+        if is_time_query:
+            # TODO: transfor format for both left df and right df so that we can run exact join
+            pass
 
         pairs = candidate_join_column_pairs[0].get_column_number_pairs()
         # generate the pairs for each join_column_pairs
@@ -1490,7 +1530,8 @@ class DatamartSearchResult:
         if len(unpaired_rows) > 0:
             unpaired_rows_list = [i for i in unpaired_rows]
             df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
-
+        import pdb
+        pdb.set_trace()
         # ensure that the original dataframe columns are at the first left part
         df_joined = df_joined[columns_new]
         # if search with wikidata, we can remove duplicate Q node column
@@ -1665,7 +1706,7 @@ class DatamartSearchResult:
 
         results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
         self._logger.debug("Get join hints finished, the join hints are:")
-        self._logger.debug(str(results))
+        self._logger.debug(str(left_index) + ", " + str(right_index))
         return [results]
 
     def serialize(self):
