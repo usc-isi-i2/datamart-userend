@@ -1530,9 +1530,11 @@ class DatamartSearchResult:
             right_res = download_result.loc[int(r2)]
             if column_names_to_join is None:
                 column_names_to_join = right_res.index.difference(left_res.index)
-                right_join_column_name = self.search_result['variableName']['value']
-                if right_join_column_name in column_names_to_join:
-                    column_names_to_join = column_names_to_join.drop(right_join_column_name)
+                if self.search_type == "general":
+                    # only for general search condition, we should remove the target join columns
+                    right_join_column_name = self.search_result['variableName']['value']
+                    if right_join_column_name in column_names_to_join:
+                        column_names_to_join = column_names_to_join.drop(right_join_column_name)
                 # if specified augment columns given, only append these columns
                 if augment_columns:
                     augment_columns_with_column_names = []
