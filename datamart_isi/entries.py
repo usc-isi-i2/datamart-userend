@@ -391,21 +391,22 @@ class DatamartQueryCursor(object):
                                        pd.to_datetime(tv["end"]).timestamp()  # query time
                 start_time, end_time = pd.to_datetime(each['start_time']['value']).timestamp(), \
                                        pd.to_datetime(each['end_time']['value']).timestamp()  # dataset
+                print("start_date {} end_date {} \n start_time {} end_time {}".format(start_date, end_date, start_time, end_time))
 
-                # if start_time < start_date and end_time > end_date:
-                #     time_score = 1.0
-                # elif start_time > start_date and end_time < end_date:
-                #     time_score = (end_time - start_time) / float(end_date - start_date)
-                # elif start_time < end_date and start_time > start_date and end_time > end_date:
-                #     time_score = (end_date - start_time) / float(end_date - start_date)
-                # elif start_date > start_time and start_date < end_time and end_date > end_time:
-                #     time_score = (end_time - start_date) / float(end_date - start_date)
-                # else:
-                #     time_score = 0.0
-                #
-                # if time_score != 0.0:
-                old_score = float(each['score']['value'])
-                each['score']['value'] = (old_score + 1) / 2
+                if  start_date >= start_time and end_time >= end_date:
+                    time_score = 1.0
+                elif start_time >= start_date and end_date >= end_time:
+                    time_score = (end_time - start_time) / float(end_date - start_date)
+                elif end_date >= end_time and start_time >= start_date and end_time >= end_date:
+                    time_score = (end_date - start_time) / float(end_date - start_date)
+                elif start_date >= start_time and end_time >= start_date and end_date >= end_time:
+                    time_score = (end_time - start_date) / float(end_date - start_date)
+                else:
+                    time_score = 0.0
+
+                if time_score != 0.0:
+                    old_score = float(each['score']['value'])
+                    each['score']['value'] = (old_score + time_score) / 2
             temp = DatamartSearchResult(search_result=each, supplied_data=self.supplied_data, query_json=query,
                                         search_type="general")
             search_result.append(temp)
