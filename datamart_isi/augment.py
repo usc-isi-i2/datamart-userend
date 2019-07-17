@@ -3,6 +3,8 @@ import pandas as pd
 import typing
 import warnings
 import traceback
+import logging
+from datetime import datetime
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
 from datamart_isi.joiners.join_result import JoinResult
@@ -29,8 +31,9 @@ class Augment(object):
 
         self.joiners = dict()
         self.profiler = Profiler()
+        self.logger = logging.getLogger(__name__)
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame=None, **kwargs) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None, **kwargs) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
@@ -40,14 +43,13 @@ class Augment(object):
         Returns:
 
         """
-
         if query:
             query_body = self.parse_sparql_query(query, dataset)
             try:
-                self.qm.setQuery(query_body)    
+                self.qm.setQuery(query_body)
                 results = self.qm.query().convert()['results']['bindings']
-            except:
-                print("[ERROR] Query failed!")
+            except Exception as e:
+                self.logger.error(e, exc_info=True)
                 traceback.print_exc()
                 return []
             return results
@@ -69,7 +71,7 @@ class Augment(object):
             prefix p: <http://www.wikidata.org/prop/>
         '''
         SELECTION = '''
-            SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
+            SELECT ?dataset ?datasetLabel ?variableName ?variable ?score ?rank ?url ?file_type ?title ?start_time ?end_time ?time_granularity ?keywords ?extra_information
         '''
         STRUCTURE = '''
             WHERE {
@@ -100,7 +102,7 @@ class Augment(object):
                 '''
             bind = "?score_var" if bind == "" else bind + "+ ?score_var"
 
-        if "keywords_search" in json_query.keys() and json_query["keywords_search"] != [] :
+        if "keywords_search" in json_query.keys() and json_query["keywords_search"] != []:
             query_keywords = json_query["keywords_search"]
             query_part = " ".join(query_keywords)
             spaqrl_query += '''
@@ -111,15 +113,31 @@ class Augment(object):
                 '''
             bind = "?score_key" if bind == "" else bind + "+ ?score_key"
 
-        if "title_search" in json_query.keys() and json_query["title_search"] != '':
-            query_title = json_query["title_search"]
-            spaqrl_query += '''
-                ?title_url ps:P1476 [
-                          bds:search """''' + query_title + '''""" ;
-                          bds:relevance ?score_title ;
-                        ]. 
-            '''
-            bind = "?score_title" if bind == "" else bind + "+ ?score_title"
+        if "variables_search" in json_query.keys() and json_query["keywords_search"] != {}:
+            if "temporal_variable" in json_query["variables_search"].keys():
+                tv = json_query["variables_search"]["temporal_variable"]
+                TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
+
+                start_date = pd.to_datetime(tv["start"]).isoformat()
+                end_date = pd.to_datetime(tv["end"]).isoformat()
+                granularity = TemporalGranularity[tv["granularity"]]
+                spaqrl_query += '''
+                    ?variable pq:C2013 ?time_granularity . 
+                    ?variable pq:C2011 ?start_time .
+                    ?variable pq:C2012 ?end_time . 
+                    FILTER(?time_granularity >= ''' + str(granularity) + ''') 
+                    FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                    '''
+
+        # if "title_search" in json_query.keys() and json_query["title_search"] != '':
+        #     query_title = json_query["title_search"]
+        #     spaqrl_query += '''
+        #         ?title_url ps:P1476 [
+        #                   bds:search """''' + query_title + '''""" ;
+        #                   bds:relevance ?score_title ;
+        #                 ].
+        #     '''
+        #     bind = "?score_title" if bind == "" else bind + "+ ?score_title"
 
         spaqrl_query += "\n BIND((" + bind + ") AS ?score)" + "\n }" + "\n" + ORDER + "\n" + LIMIT
 
@@ -246,11 +264,11 @@ class Augment(object):
 
         print(" - start joining tables")
         res = self.joiners[joiner].join(left_df=left_df,
-                                         right_df=right_df,
-                                         left_columns=left_columns,
-                                         right_columns=right_columns,
-                                         left_metadata=left_metadata,
-                                         right_metadata=right_metadata,
-                                         )
+                                        right_df=right_df,
+                                        left_columns=left_columns,
+                                        right_columns=right_columns,
+                                        left_metadata=left_metadata,
+                                        right_metadata=right_metadata,
+                                        )
 
         return res

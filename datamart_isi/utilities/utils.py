@@ -10,7 +10,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 
 from datamart_isi.config import wikidata_server
 
-WIKIDATA_SERVER = wikidata_server # "https://query.wikidata.org/sparql"
+WIKIDATA_SERVER = wikidata_server
 
 class Utils:
     DEFAULT_DESCRIPTION = {

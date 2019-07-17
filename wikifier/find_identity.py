@@ -3,8 +3,14 @@ import json
 import requests
 from SPARQLWrapper import SPARQLWrapper, JSON
 import typing
-
-
+try:
+    from datamart_isi import config
+    wikidata_query_server = config.wikidata_server
+    wikifier_server = config.wikifier_server
+except:
+    wikidata_query_server = "http://sitaware.isi.edu:8080/bigdata/namespace/wdq/sparql"
+    wikifier_server = "http://dsbox02.isi.edu/wikifier/get_identifiers"
+    
 P_blacklist = ["P5736", "P3984"]
 
 class FindIdentity:
@@ -107,7 +113,7 @@ class FindIdentity:
     def call_redis(qnodes):
         payload = json.dumps({"ids": qnodes})
         search_headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-        r = requests.post("http://dsbox02.isi.edu/wikifier/get_identifiers", data=payload, headers=search_headers)
+        r = requests.post(wikifier_server, data=payload, headers=search_headers)
         if r:
             val = r.json()
             return val
@@ -125,7 +131,7 @@ class FindIdentity:
         sparql_query = "SELECT DISTINCT ?x WHERE \n { \n" + \
                        "wd:" + node_code + " rdfs:label ?x .\n FILTER(LANG(?x) = 'en') \n} "
         try:
-            sparql = SPARQLWrapper("http://sitaware.isi.edu:8080/bigdata/namespace/wdq/sparql")
+            sparql = SPARQLWrapper(wikidata_query_server)
             sparql.setQuery(sparql_query)
             sparql.setReturnFormat(JSON)
             results = sparql.query().convert()
