@@ -406,7 +406,6 @@ class DatamartQueryCursor(object):
                 tv = query["variables_search"]["temporal_variable"]
                 start_date, end_date = pd.to_datetime(tv["start"]).timestamp(),\
                                        pd.to_datetime(tv["end"]).timestamp()  # query time
-
                 start_time, end_time = pd.to_datetime(each_result['start_time']['value']).timestamp(), \
                                        pd.to_datetime(each_result['end_time']['value']).timestamp()  # dataset
 
