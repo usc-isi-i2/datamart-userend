@@ -79,7 +79,9 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
 
         curData = []
         for each in input_df.iloc[:, column].tolist():
-            if each is np.nan or math.isnan(each):
+            if type(each) is str:
+                curData.append(each)
+            elif each is np.nan or math.isnan(each):
                 curData.append("")
             else:
                 curData.append(str(each))
