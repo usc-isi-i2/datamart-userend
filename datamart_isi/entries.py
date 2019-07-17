@@ -209,7 +209,6 @@ class DatamartQueryCursor(object):
                             "structural_type": str,
                             'semantic_types': (
                                 "http://schema.org/Text",
-                                "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                                 "https://metadata.datadrivendiscovery.org/types/Attribute",
                                 "http://wikidata.org/qnode"
                             )}
@@ -595,6 +594,7 @@ class Datamart(object):
                 each_column_res_id = each_column.resource_id
                 all_value_str_set = set()
                 each_column_meta = supplied_data.metadata.query((each_column_res_id, ALL_ELEMENTS, each_column_index))
+                treat_as_a_text_column = False
                 if 'http://schema.org/DateTime' in each_column_meta["semantic_types"]:
                     try:
                         column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
@@ -615,15 +615,24 @@ class Datamart(object):
                             time_granularity = 'year'
                         else:
                             self._logger.error("No usefully date information found for column No." + str(each_column_index))
-                            continue
-                    except:
-                        self._logger.error("Can't parse current datetime for column No." + str(each_column_index))
-                        continue
-                    each_keyword = TIME_COLUMN_MARK + "____" + supplied_data[each_column_res_id].columns[each_column_index]
-                    keywords.append(each_keyword)
-                    all_value_str = str(start_date) + "____" + str(end_date) + "____" + time_granularity
+                            raise ValueError("No usefully date information found for column No." + str(each_column_index))
 
-                elif 'http://schema.org/Text' in each_column_meta["semantic_types"]:
+                        # for time type, we create a special type of keyword and variables
+                        # so that we can detect it later in general search part
+                        each_keyword = TIME_COLUMN_MARK + "____" + supplied_data[each_column_res_id].columns[each_column_index]
+                        keywords.append(each_keyword)
+                        all_value_str = str(start_date) + "____" + str(end_date) + "____" + time_granularity
+                        all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
+
+                    except Exception as e:
+                        self._logger.error(e, exc_info=True)
+                        self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
+                                           + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
+                        treat_as_a_text_column = True
+                # for some special condition (DA_medical_malpractice), a column could have a DateTime tag but unable to be parsed
+                # in such condition, we should search and treat it as a Text column then
+
+                if 'http://schema.org/Text' in each_column_meta["semantic_types"] or treat_as_a_text_column:
                     column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
                     query_column_entities = list(set(column_values.tolist()))
                     if len(query_column_entities) > MAX_ENTITIES_LENGTH:
@@ -636,7 +645,7 @@ class Datamart(object):
                     each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
                     keywords.append(each_keyword)
 
-                all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
+                    all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
 
         search_query = DatamartQuery(keywords=keywords, variables=all_query_variables)
 
@@ -767,6 +776,7 @@ class DatamartSearchResult:
                     semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each)
             except:
                 semantic_types = (
+                    "http://schema.org/Text",
                     'https://metadata.datadrivendiscovery.org/types/Attribute',
                     AUGMENTED_COLUMN_SEMANTIC_TYPE
                 )
@@ -794,6 +804,7 @@ class DatamartSearchResult:
                 "name": "joining_pairs",
                 "structural_type": list,
                 "semantic_types": (
+                    'http://schema.org/Integer',
                     'https://metadata.datadrivendiscovery.org/types/Attribute',
                     AUGMENTED_COLUMN_SEMANTIC_TYPE
                 ),
@@ -825,7 +836,8 @@ class DatamartSearchResult:
                     'https://metadata.datadrivendiscovery.org/types/Attribute', AUGMENTED_COLUMN_SEMANTIC_TYPE)
             else:
                 semantic_types = (
-                    "http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/Attribute',
+                    "http://schema.org/Text",
+                    'https://metadata.datadrivendiscovery.org/types/Attribute',
                     AUGMENTED_COLUMN_SEMANTIC_TYPE)
             return True, semantic_types
         except:
@@ -1000,15 +1012,17 @@ class DatamartSearchResult:
         elif len(candidate_join_column_pairs) < 1:
             logging.error("Getting joining pairs failed")
 
-        is_time_query = True
+        is_time_query = False
         if "start_time" in self.search_result and "end_time" in self.search_result:
             for each in self.query_json['keywords']:
                 if TIME_COLUMN_MARK in each:
                     is_time_query = True
 
         if is_time_query:
-            # TODO: transfor format for both left df and right df so that we can run exact join
-            pass
+            # if it is the dataset fond with time query, we should transform that time column to same format
+            # then we can run RLTK with exact join same as str join
+            right_join_column_name = self.search_result['variableName']['value']
+            right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
 
         pairs = candidate_join_column_pairs[0].get_column_number_pairs()
         # generate the pairs for each join_column_pairs
@@ -1158,16 +1172,23 @@ class DatamartSearchResult:
                 structural_type = float
             else:
                 structural_type = str
-            metadata_each_column = {"name": each_column, "structural_type": structural_type,
-                                    'semantic_types': ('https://metadata.datadrivendiscovery.org/types/Attribute',)}
+            metadata_each_column = {"name": each_column,
+                                    "structural_type": structural_type,
+                                    'semantic_types': ("http://schema.org/Text",
+                                                       'https://metadata.datadrivendiscovery.org/types/Attribute',
+                                                       )
+                                    }
             metadata_return = metadata_return.update(metadata=metadata_each_column, selector=metadata_selector)
 
         if return_format == "ds":
             metadata_selector = (augment_resource_id, ALL_ELEMENTS, i + 1)
         elif return_format == "df":
             metadata_selector = (ALL_ELEMENTS, i + 1)
-        metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
-                                  'semantic_types': ("http://schema.org/Integer",)}
+
+        metadata_joining_pairs = {"name": "joining_pairs",
+                                  "structural_type": typing.List[int],
+                                  'semantic_types': ("http://schema.org/Integer",)
+                                  }
         metadata_return = metadata_return.update(metadata=metadata_joining_pairs, selector=metadata_selector)
 
         return metadata_return
@@ -1419,10 +1440,10 @@ class DatamartSearchResult:
                         "structural_type": str,
                         'semantic_types': (
                             "http://schema.org/Text",
-                            # "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                             "https://metadata.datadrivendiscovery.org/types/Attribute",
                             "http://wikidata.org/qnode"
-                        )}
+                            )
+                        }
             output_ds.metadata = output_ds.metadata.update(selector, metadata)
         self._logger.debug("Running wikifier finished.")
         return output_ds
@@ -1494,6 +1515,7 @@ class DatamartSearchResult:
 
         df_dict = dict()
         start = time.time()
+        columns_new = None
         for r1, r2 in self.pairs:
             i += 1
             r1_int = int(r1)
@@ -1504,6 +1526,9 @@ class DatamartSearchResult:
             right_res = download_result.loc[int(r2)]
             if column_names_to_join is None:
                 column_names_to_join = right_res.index.difference(left_res.index)
+                right_join_column_name = self.search_result['variableName']['value']
+                if right_join_column_name in column_names_to_join:
+                    column_names_to_join = column_names_to_join.drop(right_join_column_name)
                 # if specified augment columns given, only append these columns
                 if augment_columns:
                     augment_columns_with_column_names = []
@@ -1513,7 +1538,7 @@ class DatamartSearchResult:
                             each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
                             augment_columns_with_column_names.append(each_column_meta["name"])
                         else:
-                            print("[ERROR] Index out of range, will ignore: " + str(each.column_index))
+                            self._logger.error("Index out of range, will ignore: " + str(each.column_index))
                     column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
 
                 columns_new = left_res.index.tolist()
@@ -1529,10 +1554,12 @@ class DatamartSearchResult:
         if len(unpaired_rows) > 0:
             unpaired_rows_list = [i for i in unpaired_rows]
             df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
-        import pdb
-        pdb.set_trace()
+
         # ensure that the original dataframe columns are at the first left part
-        df_joined = df_joined[columns_new]
+        if columns_new is not None:
+            df_joined = df_joined[columns_new]
+        else:
+            self._logger.warning("Attention! It seems augment do not add any extra columns!")
         # if search with wikidata, we can remove duplicate Q node column
         self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
         if self.search_type == "wikidata" and 'q_node' in df_joined.columns:
@@ -1574,7 +1601,7 @@ class DatamartSearchResult:
                         )
                     else:
                         semantic_types = (
-                            # "https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                            "http://schema.org/Text",
                             "https://metadata.datadrivendiscovery.org/types/Attribute",
                             AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
@@ -1629,7 +1656,8 @@ class DatamartSearchResult:
                     new_metadata_i = {
                         "name": current_column_name,
                         "structural_type": str,
-                        "semantic_types": ("https://metadata.datadrivendiscovery.org/types/Attribute",),
+                        "semantic_types": ("http://schema.org/Text",
+                                           "https://metadata.datadrivendiscovery.org/types/Attribute",),
                     }
                     self._logger.error("Please check!")
                     self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
