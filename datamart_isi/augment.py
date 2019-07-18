@@ -88,7 +88,7 @@ class Augment(object):
         '''
         bind = ""
         ORDER = "ORDER BY DESC(?score)"
-        LIMIT = "LIMIT 50"
+        LIMIT = "LIMIT 10"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
 
         if "variables" in json_query.keys() and json_query["variables"] != {}:

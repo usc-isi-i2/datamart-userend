@@ -14,6 +14,8 @@ import string
 import wikifier
 import time
 import memcache
+import pickle
+import hashlib
 from ast import literal_eval
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 
@@ -23,6 +25,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
+from pandas.util import hash_pandas_object
 
 from datamart_isi.augment import Augment
 from datamart_isi.utilities.utils import Utils
@@ -50,11 +53,12 @@ AUGMENT_RESOURCE_ID = "learningData"
 WIKIDATA_QUERY_SERVER = config.wikidata_server
 MEMCACHE_SERVER = config.memcache_server
 TIME_COLUMN_MARK = "%^&*SPECIAL_TIME_TYPE%^&*"
+
 # initialize memcache system, if failed, just ignore
-# try:
-#     mc = memcache.Client([MEMCACHE_SERVER], debug=True)
-# except:
-mc = None
+try:
+    mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+except:
+    mc = None
 
 
 class DatamartQueryCursor(object):
@@ -68,7 +72,11 @@ class DatamartQueryCursor(object):
         self.search_query = search_query
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
-
+        self._skip_wikifier_column_type = {"https://metadata.datadrivendiscovery.org/types/PrimaryKey",
+                                               "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
+                                           "https://metadata.datadrivendiscovery.org/types/TrueTarget",
+                                               "https://metadata.datadrivendiscovery.org/types/Target",
+                                           "https://metadata.datadrivendiscovery.org/types/SuggestedTarget"}
         self.remained_part = None
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
@@ -190,6 +198,15 @@ class DatamartQueryCursor(object):
             specific_q_nodes = None
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
             target_columns = list(range(supplied_dataframe.shape[1]))
+            temp = copy.deepcopy(target_columns)
+
+            for each in target_columns:
+                each_column_semantic_type = self.supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
+                if set(each_column_semantic_type).intersection(self._skip_wikifier_column_type):
+                    temp.remove(each)
+
+            target_columns = temp
+
             wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_q_nodes)
             output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
             # update metadata on column length
@@ -297,7 +314,11 @@ class DatamartQueryCursor(object):
                     # TODO: add to use memcache to get results faster, memcache should run on dsbox server and let the backend the get the cache via internal
                     # Q node format (wd:Q23)(wd: Q42)
                     q_node_query_part = ""
+                    # ensure every time we get same order of q nodes
                     unique_qnodes = set(q_nodes_list)
+                    unique_qnodes = list(unique_qnodes)
+                    unique_qnodes.sort()
+
                     for each in unique_qnodes:
                         if len(each) > 0:
                             q_node_query_part += "(wd:" + each + ")"
@@ -306,19 +327,33 @@ class DatamartQueryCursor(object):
                                    + "  values ( ?type ) \n  {\n    ( wikibase:Quantity )\n" \
                                    + "    ( wikibase:Time )\n    ( wikibase:Monolingualtext )\n  }" \
                                    + "  ?wd_property wikibase:propertyType ?type .\n}\norder by ?item ?property "
-
+                    hash_generator = hashlib.md5()
+                    hash_generator.update(q_node_query_part.encode('utf-8'))
+                    hash_key = hash_generator.hexdigest()
+                    self._logger.debug("Current query's hash tag is " + hash_key)
                     if mc is not None:
                         # check whether we have cache or not
-                        results = mc.get("results_" + str(hash(sparql_query)))
+                        results = mc.get("results_" + hash_key)
                     else:
                         results = None
 
+                    # just to ensure it is really a good results
+                    if results is not None:
+                        try:
+                            results = pickle.loads(results)
+                        except:
+                            self._logger.warning("Hitted results are broken! Need to rerun the query!")
+                            results = None
+
                     if results is not None:
                         self._logger.info("Memcache hit in dsbox server! Will use cached results.")
+                        cache_hitted = True
 
                     else:
+                        cache_hitted = False
                         self._logger.info("Cache not hit, will run general query.")
                         try:
+                            self._logger.debug("Start running wikidata query on " + WIKIDATA_QUERY_SERVER)
                             sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
                             sparql.setQuery(sparql_query)
                             sparql.setReturnFormat(JSON)
@@ -327,18 +362,18 @@ class DatamartQueryCursor(object):
                             results = sparql.query().convert()['results']['bindings']
                         except:
                             self._logger.error("Query on search_wikidata failed!")
-                            traceback.print_exc()
                             continue
 
                         # add search result to cache
-                        if mc is not None:
-                            mc.set("results_" + str(hash(sparql_query)), results)
+                        if mc is not None and not cache_hitted:
+                            mc.set("results_" + hash_key, pickle.dumps(results))
                             # add timestamp to let the system know when to update
-                            mc.set("timestamp_" + str(hash(sparql_query)), str(datetime.datetime.now().timestamp()))
+                            mc.set("timestamp_" + hash_key, str(datetime.datetime.now().timestamp()))
                             # add real query
-                            mc.set("query_" + str(hash(sparql_query)), sparql_query)
+                            mc.set("query_" + hash_key, sparql_query)
 
-                    self._logger.debug("Response from server for column " + str(each_column) +
+                    self._logger.debug("Response from server for column No." + str(each_column) + "(" +
+                                       supplied_dataframe.columns[each_column] + ")" +
                                        " received, start parsing the returned data from server.")
                     for each in results:
                         p_count[each['property']['value'].split("/")[-1]] += 1
@@ -528,6 +563,13 @@ class Datamart(object):
             else:
                 selector = (ALL_ELEMENTS, each)
             each_column_meta = supplied_data.metadata.query(selector)
+            try:
+                pd.to_datetime(self.supplied_dataframe.iloc[:, each])
+                new_semantic_type = {"semantic_types": ("http://schema.org/DateTime",
+                                                        "https://metadata.datadrivendiscovery.org/types/Attribute")}
+                supplied_data.metadata = supplied_data.metadata.update(selector, new_semantic_type)
+            except:
+                pass
             if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
                     or "http://schema.org/DateTime" in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
@@ -629,7 +671,7 @@ class Datamart(object):
                         all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
 
                     except Exception as e:
-                        self._logger.error(e, exc_info=True)
+                        # self._logger.error(e, exc_info=True)
                         self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
                                            + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
                         treat_as_a_text_column = True
@@ -1220,9 +1262,15 @@ class DatamartSearchResult:
                                                                               resource_id=None)
             self.supplied_dataframe = copy.deepcopy(supplied_dataframe)
             self.supplied_data = supplied_data
-
-        q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
+        try:
+            q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
+        except ValueError:
+            raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
+                             ". Maybe use the wrong search results?")
         q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
+        q_nodes_list = list(q_nodes_list)
+        q_nodes_list.sort()
+        p_nodes_needed.sort()
         q_nodes_query = ""
         p_nodes_query_part = ""
         p_nodes_optional_part = ""
@@ -1247,24 +1295,57 @@ class DatamartSearchResult:
         # else:
         #     print("[INFO] User-defined connection url given as: " + self.connection_url)
         return_df = d3m_DataFrame()
-        try:
-            sparql = SPARQLWrapper(self.connection_url)
-            self._logger.debug("Connection to datamart blazegraph server at" + self.connection_url)
-            sparql.setQuery(sparql_query)
-            sparql.setReturnFormat(JSON)
-            sparql.setMethod(POST)
+        hash_generator = hashlib.md5()
+        hash_generator.update(sparql_query.encode('utf-8'))
+        hash_key = hash_generator.hexdigest()
+        self._logger.debug("Current query's hash tag is " + hash_key)
+        if mc is not None:
+            # check whether we have cache or not
+            results = mc.get("results_" + hash_key)
+        else:
+            results = None
 
-            sparql.setRequestMethod(URLENCODED)
-            results = sparql.query().convert()
-        except:
-            self._logger.error("Getting query of wiki data failed!")
-            return return_df
-        self._logger.debug("Download data finished, start generating d3m metadata.")
+        # just to ensure it is really a good results
+        if results is not None:
+            try:
+                results = pickle.loads(results)
+            except:
+                self._logger.warning("Hitted results are broken! Need to rerun the query!")
+                results = None
+
+        if results is not None:
+            self._logger.info("Memcache hit in dsbox server! Will use cached results.")
+            cache_hitted = True
+        else:
+            cache_hitted = False
+            self._logger.info("Cache not hit, will run general query.")
+            try:
+                sparql = SPARQLWrapper(self.connection_url)
+                self._logger.debug("Connection to wikidata server at " + self.connection_url)
+                sparql.setQuery(sparql_query)
+                sparql.setReturnFormat(JSON)
+                sparql.setMethod(POST)
+
+                sparql.setRequestMethod(URLENCODED)
+                results = sparql.query().convert()["results"]["bindings"]
+            except:
+                self._logger.error("Getting values for download from wikidata failed!")
+                return return_df
+
+            self._logger.debug("Download data finished, start generating d3m metadata.")
+
+        # add search result to cache
+        if mc is not None and not cache_hitted:
+            mc.set("results_" + hash_key, pickle.dumps(results))
+            # add timestamp to let the system know when to update
+            mc.set("timestamp_" + hash_key, str(datetime.datetime.now().timestamp()))
+            # add real query
+            mc.set("query_" + hash_key, sparql_query)
 
         semantic_types_dict = {
             "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
         q_node_name_appeared = set()
-        for result in results["results"]["bindings"]:
+        for result in results:
             each_result = {}
             q_node_name = result.pop("q")["value"].split("/")[-1]
             if q_node_name in q_node_name_appeared:
@@ -1307,12 +1388,13 @@ class DatamartSearchResult:
         metadata_new = DataMetadata()
         self.metadata = dict()
         # add remained attributes metadata
+
         for each_column in range(0, return_df.shape[1] - 1):
             current_column_name = p_name_dict[return_df.columns[each_column]]
             if return_format == "df":
                 each_selector = (ALL_ELEMENTS, each_column)
             elif return_format == "ds":
-                each_selector = (self._res_id, ALL_ELEMENTS, each_column)
+                each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column)
             # here we do not modify the original data, we just add an extra "expected_semantic_types" to metadata
             metadata_each_column = {"name": current_column_name, "structural_type": str,
                                     'semantic_types': semantic_types_dict[return_df.columns[each_column]]}
@@ -1324,7 +1406,7 @@ class DatamartSearchResult:
         if return_format == "df":
             each_selector = (ALL_ELEMENTS, each_column + 1)
         elif return_format == "ds":
-            each_selector = (self._res_id, ALL_ELEMENTS, each_column + 1)
+            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column + 1)
         metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
                                   'semantic_types': ("http://schema.org/Integer",)}
         if generate_metadata:
@@ -1334,7 +1416,7 @@ class DatamartSearchResult:
         if return_format == "ds":
             return_df = d3m_DataFrame(return_df, generate_metadata=False)
             return_df = return_df.rename(columns=p_name_dict)
-            resources = {augment_resource_id: return_df}
+            resources = {AUGMENT_RESOURCE_ID: return_df}
             return_result = d3m_Dataset(resources=resources, generate_metadata=False)
             if generate_metadata:
                 return_result.metadata = metadata_new
@@ -1420,6 +1502,9 @@ class DatamartSearchResult:
             elif type(supplied_data) is d3m_DataFrame:
                 selector = (ALL_ELEMENTS, each)
             each_column_semantic_type = supplied_data.metadata.query(selector)['semantic_types']
+            each_column_name = supplied_data[self._res_id].columns[each]
+            if each_column_name == "d3mIndex":
+                continue
             if 'http://schema.org/Integer' not in each_column_semantic_type and \
                     'http://schema.org/Float' not in each_column_semantic_type:
                 can_wikifier_columns.append(each)
@@ -1470,6 +1555,32 @@ class DatamartSearchResult:
             A connection string used to connect to a specific Datamart deployment. If not provided, a different
             deployment might be used.
         """
+
+        if type(supplied_data) is d3m_Dataset:
+            self.supplied_data = supplied_data
+            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None, has_hyperparameter=False)
+
+        if mc and self.search_type != "wikifier":
+            try:
+                hash_supplied_data = hash_pandas_object(self.supplied_dataframe).sum()
+                hash_generator = hashlib.md5()
+                hash_generator.update(self.serialize().encode('utf-8'))
+                hash_search_result = hash_generator.hexdigest()
+                hash_key = "augment_data_" + str(hash_supplied_data) + str(hash_search_result)
+                self._logger.info("The augment result's hash key is " + hash_key)
+                res = mc.get(hash_key)
+                if res is not None:
+                    try:
+                        cached_result = pickle.loads(res)
+                        self._logger.info("Previous running augment res found! Will use that!")
+                        return cached_result
+                    except:
+                        self._logger.error("Unpickling the cached result failed, maybe the bad cache?")
+                else:
+                    self._logger.info("Cache not hitted.")
+            except:
+                self._logger.warning("Running memcache searching failed. Skip!")
+
         if connection_url:
             self.connection_url = connection_url
 
@@ -1481,8 +1592,6 @@ class DatamartSearchResult:
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
                                 return_format="df", augment_resource_id=augment_resource_id)
         elif type(supplied_data) is d3m_Dataset:
-            self._res_id, self.supplied_data = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None,
-                                                                              has_hyperparameter=False)
             res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
                                 return_format="ds", augment_resource_id=augment_resource_id)
         else:
@@ -1490,6 +1599,25 @@ class DatamartSearchResult:
         # res[augment_resource_id] = res[augment_resource_id].astype(str)
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
         res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+
+        if mc:
+            try:
+                self._logger.info("Start pushing the augment results to memcache...")
+                hash_supplied_data = hash_pandas_object(self.supplied_data).sum()
+                hash_generator = hashlib.md5()
+                hash_generator.update(self.serialize().encode('utf-8'))
+                hash_search_result = hash_generator.hexdigest()
+                hash_key = "augment_data_" + str(hash_supplied_data) + str(hash_search_result)
+                dumped_res = pickle.dumps(res)
+                return_val = mc.set(hash_key, dumped_res)
+                if return_val != 0:
+                    self._logger.info("Pushing augment results to memcache succeeded!")
+                else:
+                    self._logger.error("Pushing augment results to memcache failed! Maybe the augmented results are too large as "
+                                       + str(len(dumped_res)))
+            except:
+                self._logger.error("Pushing augment results to memcache failed!")
+
         return res
 
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
@@ -1714,6 +1842,15 @@ class DatamartSearchResult:
         """
         self.join_pairs = join_pairs
 
+    def get_join_hints_with_nothing(self):
+        if self.search_type == "wikidata":
+            target_q_node_column_name = self.search_result["target_q_node_column_name"]
+            q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
+            right_column = len(self.search_result["p_nodes_needed"])
+            pair = (q_node_column_number, right_column)
+
+        return pair
+
     def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List[
         "TabularJoinSpec"]:
         """
@@ -1725,21 +1862,25 @@ class DatamartSearchResult:
         :return: a list of join hints. Note that datamart is encouraged to return join hints but not required to do so.
         """
         self._logger.debug("Start getting join hints.")
-        right_join_column_name = self.search_result['variableName']['value']
-        left_columns = []
-        right_columns = []
 
-        for each in self.query_json['variables'].keys():
-            left_index = left_df.columns.tolist().index(each)
-            right_index = right_df.columns.tolist().index(right_join_column_name)
-            left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
-            right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
-            left_columns.append([left_index_column])
-            right_columns.append([right_index_column])
+        if self.search_type == "general":
+            right_join_column_name = self.search_result['variableName']['value']
+            left_columns = []
+            right_columns = []
 
-        results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
-        self._logger.debug("Get join hints finished, the join hints are:")
-        self._logger.debug(str(left_index) + ", " + str(right_index))
+            for each in self.query_json['variables'].keys():
+                left_index = left_df.columns.tolist().index(each)
+                right_index = right_df.columns.tolist().index(right_join_column_name)
+                left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
+                right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
+                left_columns.append([left_index_column])
+                right_columns.append([right_index_column])
+
+            results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
+            self._logger.debug("Get join hints finished, the join hints are:")
+            self._logger.debug(str(left_index) + ", " + str(right_index))
+        else:
+            raise ValueError("Unsupport type to get join hints with type" + self.search_type)
         return [results]
 
     def serialize(self):
