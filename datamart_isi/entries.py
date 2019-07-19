@@ -56,7 +56,7 @@ TIME_COLUMN_MARK = "%^&*SPECIAL_TIME_TYPE%^&*"
 
 # initialize memcache system, if failed, just ignore
 try:
-    mc = memcache.Client([MEMCACHE_SERVER], debug=True)
+    mc = memcache.Client([MEMCACHE_SERVER], debug=True, server_max_value_length=1024*1024*100)
 except:
     mc = None
 
@@ -366,11 +366,15 @@ class DatamartQueryCursor(object):
 
                         # add search result to cache
                         if mc is not None and not cache_hitted:
-                            mc.set("results_" + hash_key, pickle.dumps(results))
+                            self._logger.info("Start pushing the search result of wikidata to memcache.")
+                            response_code = mc.set("results_" + hash_key, pickle.dumps(results))
+                            if not response_code:
+                                self._logger.warning("Pushing wikidata search result failed! Maybe the size too big?")
                             # add timestamp to let the system know when to update
                             mc.set("timestamp_" + hash_key, str(datetime.datetime.now().timestamp()))
                             # add real query
                             mc.set("query_" + hash_key, sparql_query)
+                            self._logger.debug("Pushing search result finished.")
 
                     self._logger.debug("Response from server for column No." + str(each_column) + "(" +
                                        supplied_dataframe.columns[each_column] + ")" +
