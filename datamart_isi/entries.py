@@ -1,6 +1,7 @@
 import typing
 import pandas as pd
 import copy
+import os
 import random
 import frozendict
 import collections
@@ -11,13 +12,9 @@ import datetime
 import d3m.metadata.base as metadata_base
 import json
 import string
-import wikifier
 import time
-import memcache
 import pickle
-import hashlib
 from ast import literal_eval
-from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 
 from d3m import container
 from d3m import utils
@@ -25,7 +22,6 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
-from pandas.util import hash_pandas_object
 
 from datamart_isi.augment import Augment
 from datamart_isi.utilities.utils import Utils
@@ -33,7 +29,9 @@ from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
 from datamart_isi import config
 from datamart_isi.utilities.timeout import Timeout, timeout_call
-
+from datamart_isi.utilities.wikidata_cache import QueryCache
+from datamart_isi.utilities.general_search_cache import GeneralSearchCache
+from datamart_isi.utilities import d3m_wikifier
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
@@ -43,41 +41,41 @@ __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchRe
            'DatamartQuery',
            'VariableConstraint', 'NamedEntityVariable', 'TemporalVariable', 'GeospatialVariable', 'TabularVariable')
 
-Q_NODE_SEMANTIC_TYPE = "http://wikidata.org/qnode"
-AUGMENTED_COLUMN_SEMANTIC_TYPE = "https://metadata.datadrivendiscovery.org/types/Datamart_augmented_column"
-MAX_ENTITIES_LENGTH = 10000
-CONTAINER_SCHEMA_VERSION = 'https://metadata.datadrivendiscovery.org/schemas/v0/container.json'
-P_NODE_IGNORE_LIST = {"P1549"}
-SPECIAL_REQUEST_FOR_P_NODE = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
-AUGMENT_RESOURCE_ID = "learningData"
-WIKIDATA_QUERY_SERVER = config.wikidata_server
-MEMCACHE_SERVER = config.memcache_server
-TIME_COLUMN_MARK = "%^&*SPECIAL_TIME_TYPE%^&*"
-
-# initialize memcache system, if failed, just ignore
-try:
-    mc = memcache.Client([MEMCACHE_SERVER], debug=True, server_max_value_length=1024*1024*100)
-except:
-    mc = None
-
+Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
+AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
+MAX_ENTITIES_LENGTH = config.max_entities_length
+CONTAINER_SCHEMA_VERSION = config.d3m_container_version
+P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
+SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
+AUGMENT_RESOURCE_ID = config.augmented_resource_id
+WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
+MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
+DEFAULT_DATAMRT_URL = config.default_datamart_url
+TIME_COLUMN_MARK = config.time_column_mark
+SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST = config.skip_wikifier_column_type_list
 
 class DatamartQueryCursor(object):
     """
     Cursor to iterate through Datamarts search results.
     """
 
-    def __init__(self, augmenter, search_query, supplied_data, need_run_wikifier=None):
+    def __init__(self, augmenter, search_query, supplied_data, need_run_wikifier=None, connection_url=None):
         self._logger = logging.getLogger(__name__)
+        if connection_url:
+            self._logger.info("Using user-defined connection url as " + connection_url)
+            self.connection_url = connection_url
+        else:
+            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            self.connection_url = connection_url
+        self._logger.debug("Current datamart connection url is: " + self.connection_url)
         self.augmenter = augmenter
         self.search_query = search_query
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
-        self._skip_wikifier_column_type = {"https://metadata.datadrivendiscovery.org/types/PrimaryKey",
-                                               "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
-                                           "https://metadata.datadrivendiscovery.org/types/TrueTarget",
-                                               "https://metadata.datadrivendiscovery.org/types/Target",
-                                           "https://metadata.datadrivendiscovery.org/types/SuggestedTarget"}
+        self._skip_wikifier_column_type = SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST
         self.remained_part = None
+        self.wikidata_cache = QueryCache(connection_url=self.connection_url)
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
@@ -128,8 +126,8 @@ class DatamartQueryCursor(object):
                 # TODO: now wikifier can only automatically search for all possible columns and do exact match
                 search_res = timeout_call(timeout, self._search_wikidata, [])
             elif self.search_query[self.current_searching_query_index].search_type == "general":
-                # search_res = timeout_call(timeout, self._search_datamart, [])
-                search_res = self._search_datamart()
+                search_res = timeout_call(timeout, self._search_datamart, [])
+                # search_res = self._search_datamart()
             else:
                 raise ValueError("Unknown search query type for " +
                                  self.search_query[self.current_searching_query_index].search_type)
@@ -166,7 +164,7 @@ class DatamartQueryCursor(object):
         If already exist Q nodes, return False to indicate no need to run wikifier
         :return: a bool value to indicate whether need to run wikifier or not
         """
-        if self.supplied_data == None:
+        if self.supplied_data is None:
             return False
         if type(self.supplied_data) is d3m_Dataset:
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
@@ -187,57 +185,17 @@ class DatamartQueryCursor(object):
         self._logger.info("No Q nodes columns found in input data, will run wikifier.")
         return True
 
-    def _run_wikifier(self) -> None:
+    def run_wikifier(self, input_data: d3m_Dataset) -> d3m_Dataset:
         """
-        function used to run wikifier, will update self.supplied_data
+        function used to run wikifier, and then return a d3m_dataset as the wikified results if success,
+        otherwise return original input
         :return: None
         """
         self._logger.debug("Start running wikifier...")
-        try:
-            output_ds = copy.copy(self.supplied_data)
-            specific_q_nodes = None
-            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
-            target_columns = list(range(supplied_dataframe.shape[1]))
-            temp = copy.deepcopy(target_columns)
-
-            for each in target_columns:
-                each_column_semantic_type = self.supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
-                if set(each_column_semantic_type).intersection(self._skip_wikifier_column_type):
-                    temp.remove(each)
-
-            target_columns = temp
-
-            wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_q_nodes)
-            output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
-            # update metadata on column length
-            selector = (res_id, ALL_ELEMENTS)
-            old_meta = dict(output_ds.metadata.query(selector))
-            old_meta_dimension = dict(old_meta['dimension'])
-            old_column_length = old_meta_dimension['length']
-            old_meta_dimension['length'] = wikifier_res.shape[1]
-            old_meta['dimension'] = frozendict.FrozenOrderedDict(old_meta_dimension)
-            new_meta = frozendict.FrozenOrderedDict(old_meta)
-            output_ds.metadata = output_ds.metadata.update(selector, new_meta)
-
-            # update each column's metadata
-            for i in range(old_column_length, wikifier_res.shape[1]):
-                selector = (res_id, ALL_ELEMENTS, i)
-                metadata = {"name": wikifier_res.columns[i],
-                            "structural_type": str,
-                            'semantic_types': (
-                                "http://schema.org/Text",
-                                "https://metadata.datadrivendiscovery.org/types/Attribute",
-                                "http://wikidata.org/qnode"
-                            )}
-                output_ds.metadata = output_ds.metadata.update(selector, metadata)
-            # replace the old supplied_data
-            self.supplied_data = output_ds
-        except:
-            traceback.print_exc()
-            self._logger.error("Wikifier running failed.")
-
+        results = d3m_wikifier.run_wikifier(supplied_data=input_data, skip_column_type=SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
+        return results
 
     def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
                          search_threshold=0.5) -> typing.List["DatamartSearchResult"]:
@@ -263,31 +221,22 @@ class DatamartQueryCursor(object):
                 selector_base_type = "df"
 
             # check whether Qnode is given in the inputs, if given, use this to wikidata and search
-            required_variables_names = None
+            # required_variables_names = None
             metadata_input = supplied_data.metadata
 
-            if query is not None and 'required_variables' in query:
-                required_variables_names = []
-                for each in query['required_variables']:
-                    required_variables_names.extend(each['names'])
             for i in range(supplied_dataframe.shape[1]):
                 if selector_base_type == "ds":
                     metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
                 else:
                     metadata_selector = (metadata_base.ALL_ELEMENTS, i)
                 if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
-                    # if no required variables given, attach any Q nodes found
-                    if required_variables_names is None:
-                        q_nodes_columns.append(i)
-                    # otherwise this column has to be inside required_variables
-                    else:
-                        if supplied_dataframe.columns[i] in required_variables_names:
-                            q_nodes_columns.append(i)
+                    q_nodes_columns.append(i)
 
             if len(q_nodes_columns) == 0:
                 self._logger.warning("No wikidata Q nodes detected on corresponding required_variables!")
                 self._logger.warning("Will skip wikidata search part")
                 return wikidata_results
+
             else:
                 self._logger.info("Wikidata Q nodes inputs detected! Will search with it.")
                 self._logger.info("Totally " + str(len(q_nodes_columns)) + " Q nodes columns detected!")
@@ -310,11 +259,10 @@ class DatamartQueryCursor(object):
                         for each_p in each_p_list:
                             p_count[each_p] += 1
                     """
-                    # TODO: temporary change here, may change back in the future
-                    # TODO: add to use memcache to get results faster, memcache should run on dsbox server and let the backend the get the cache via internal
+                    # TODO: temporary change to call wikidata service, may change back in the future
                     # Q node format (wd:Q23)(wd: Q42)
                     q_node_query_part = ""
-                    # ensure every time we get same order of q nodes
+                    # ensure every time we get same order of q nodes so the hash tag will be same
                     unique_qnodes = set(q_nodes_list)
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
@@ -327,58 +275,19 @@ class DatamartQueryCursor(object):
                                    + "  values ( ?type ) \n  {\n    ( wikibase:Quantity )\n" \
                                    + "    ( wikibase:Time )\n    ( wikibase:Monolingualtext )\n  }" \
                                    + "  ?wd_property wikibase:propertyType ?type .\n}\norder by ?item ?property "
-                    hash_generator = hashlib.md5()
-                    hash_generator.update(q_node_query_part.encode('utf-8'))
-                    hash_key = hash_generator.hexdigest()
-                    self._logger.debug("Current query's hash tag is " + hash_key)
-                    if mc is not None:
-                        # check whether we have cache or not
-                        results = mc.get("results_" + hash_key)
-                    else:
-                        results = None
 
-                    # just to ensure it is really a good results
-                    if results is not None:
-                        try:
-                            results = pickle.loads(results)
-                        except:
-                            self._logger.warning("Hitted results are broken! Need to rerun the query!")
-                            results = None
+                    results = self.wikidata_cache.get_result(sparql_query)
 
-                    if results is not None:
-                        self._logger.info("Memcache hit in dsbox server! Will use cached results.")
-                        cache_hitted = True
-
-                    else:
-                        cache_hitted = False
-                        self._logger.info("Cache not hit, will run general query.")
-                        try:
-                            self._logger.debug("Start running wikidata query on " + WIKIDATA_QUERY_SERVER)
-                            sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
-                            sparql.setQuery(sparql_query)
-                            sparql.setReturnFormat(JSON)
-                            sparql.setMethod(POST)
-                            sparql.setRequestMethod(URLENCODED)
-                            results = sparql.query().convert()['results']['bindings']
-                        except:
-                            self._logger.error("Query on search_wikidata failed!")
-                            continue
-
-                        # add search result to cache
-                        if mc is not None and not cache_hitted:
-                            self._logger.info("Start pushing the search result of wikidata to memcache.")
-                            response_code = mc.set("results_" + hash_key, pickle.dumps(results))
-                            if not response_code:
-                                self._logger.warning("Pushing wikidata search result failed! Maybe the size too big?")
-                            # add timestamp to let the system know when to update
-                            mc.set("timestamp_" + hash_key, str(datetime.datetime.now().timestamp()))
-                            # add real query
-                            mc.set("query_" + hash_key, sparql_query)
-                            self._logger.debug("Pushing search result finished.")
+                    if results is None:
+                        # if response none, it means get wikidata query results failed
+                        self._logger.error("Can't get wikidata search results for column No." + str(each_column) + "(" +
+                                           supplied_dataframe.columns[each_column] + ")")
+                        continue
 
                     self._logger.debug("Response from server for column No." + str(each_column) + "(" +
                                        supplied_dataframe.columns[each_column] + ")" +
                                        " received, start parsing the returned data from server.")
+                    # count the appeared times and find the p nodes appeared  rate that higher than threshold
                     for each in results:
                         p_count[each['property']['value'].split("/")[-1]] += 1
 
@@ -396,9 +305,10 @@ class DatamartQueryCursor(object):
                 self._logger.debug("Running search on wikidata finished.")
             return wikidata_results
 
-        except:
+        except Exception as e:
             self._logger.error("Searching with wikidata failed!")
-            traceback.print_exc()
+            self._logger.debug(e, exc_info=True)
+
         finally:
             return wikidata_results
 
@@ -474,7 +384,7 @@ class DatamartQueryCursor(object):
                                         search_type="general")
             search_result.append(temp)
 
-        search_result.sort(key=lambda x: x._score, reverse=True)
+        search_result.sort(key=lambda x: x.score(), reverse=True)
 
         self._logger.debug("Searching on datamart finished.")
         return search_result
@@ -485,16 +395,19 @@ class Datamart(object):
     ISI implement of datamart
     """
 
-    def __init__(self, connection_url: str) -> None:
-        self.connection_url = connection_url
+    def __init__(self, connection_url: str=None) -> None:
         self._logger = logging.getLogger(__name__)
-        # query_server = "http://dsbox02.isi.edu:9001/blazegraph/namespace/datamart3/sparql"
+        if connection_url:
+            self._logger.info("Using user-defined connection url as " + connection_url)
+            self.connection_url = connection_url
+        else:
+            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            self.connection_url = connection_url
+
+        self._logger.debug("Current datamart connection url is: " + self.connection_url)
         self.augmenter = Augment(endpoint=self.connection_url)
         self.supplied_dataframe = None
-
-    def set_test_mode(self) -> None:
-        query_server = config.wikidata_server_test
-        self.augmenter = Augment(endpoint=query_server)
 
     def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
         """This entry point supports search using a query specification.
@@ -514,7 +427,8 @@ class Datamart(object):
             A cursor pointing to search results.
         """
 
-        return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None)
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None,
+                                   connection_url=self.connection_url)
 
     def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
             -> DatamartQueryCursor:
@@ -567,6 +481,7 @@ class Datamart(object):
             else:
                 selector = (ALL_ELEMENTS, each)
             each_column_meta = supplied_data.metadata.query(selector)
+            # try to parse each column to DateTime type. If success, add new semantic type, otherwise do nothing
             try:
                 pd.to_datetime(self.supplied_dataframe.iloc[:, each])
                 new_semantic_type = {"semantic_types": ("http://schema.org/DateTime",
@@ -574,12 +489,13 @@ class Datamart(object):
                 supplied_data.metadata = supplied_data.metadata.update(selector, new_semantic_type)
             except:
                 pass
+
             if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
                     or "http://schema.org/DateTime" in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
 
         if len(can_query_columns) == 0:
-            self._logger.warning("No columns can be augment with datamart!")
+            self._logger.warning("No column can be used for augment with datamart!")
 
         for each_column_index in can_query_columns:
             column_formated = DatasetColumn(res_id, each_column_index)
@@ -589,7 +505,7 @@ class Datamart(object):
             search_queries.append(each_search_query)
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
-                                   need_run_wikifier=need_run_wikifier)
+                                   need_run_wikifier=need_run_wikifier, connection_url=self.connection_url)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
@@ -623,7 +539,8 @@ class Datamart(object):
 
         search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
                                                               data_constraints=data_constraints)
-        return DatamartQueryCursor(augmenter=self.augmenter, search_query=[search_query], supplied_data=supplied_data)
+        return DatamartQueryCursor(augmenter=self.augmenter, search_query=[search_query], supplied_data=supplied_data,
+                                   connection_url=self.connection_url)
 
     def generate_datamart_query_from_data(self, supplied_data: container.Dataset,
                                           data_constraints: typing.List['TabularVariable']) -> "DatamartQuery":
@@ -675,7 +592,7 @@ class Datamart(object):
                         all_query_variables.append(VariableConstraint(key=each_keyword, values=all_value_str))
 
                     except Exception as e:
-                        # self._logger.error(e, exc_info=True)
+                        self._logger.debug(e, exc_info=True)
                         self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
                                            + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
                         treat_as_a_text_column = True
@@ -731,8 +648,17 @@ class DatamartSearchResult:
             self.selector_base_type = "df"
         else:
             self.supplied_dataframe = None
-        if connection_url is None:
-            self.connection_url = WIKIDATA_QUERY_SERVER
+
+        if connection_url:
+            self._logger.info("Using user-defined connection url as " + connection_url)
+            self.connection_url = connection_url
+        else:
+            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            self.connection_url = connection_url
+
+        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
+        self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
@@ -776,7 +702,7 @@ class DatamartSearchResult:
         self._logger.debug("Getting d3m metadata finished.")
         return metadata
 
-    def _get_d3m_metadata_for_wikidata(self):
+    def _get_d3m_metadata_for_wikidata(self) -> DataMetadata:
         """
         function used to generate the d3m format metadata - specified for wikidata search result
         because search results don't have value type of each P node, we have to query one sample to find
@@ -862,10 +788,10 @@ class DatamartSearchResult:
             return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 2), metadata=each_metadata)
         return return_metadata
 
-    def _get_wikidata_column_semantic_types(self, q_node_sample, p_node_target):
+    def _get_wikidata_column_semantic_types(self, q_node_sample, p_node_target) -> tuple:
         """
         Inner function used to get the semantic types for given wikidata column
-        :return: a tuple, tuple[0] indicate success get semantic type or not, tuple[1] indicate the found semantic types
+        :return: a tuple, tuple[0] indicate success get semantic type or not, tuple[1] indicate the found semantic types(tuple)
         """
         q_nodes_query = '(wd:' + q_node_sample + ') \n'
         p_nodes_query_part = ' ?' + p_node_target + '\n'
@@ -873,22 +799,21 @@ class DatamartSearchResult:
         sparql_query = "SELECT DISTINCT ?q " + p_nodes_query_part + \
                        "WHERE \n{\n  VALUES (?q) { \n " + q_nodes_query + "}\n" + \
                        p_nodes_optional_part + "}\n"
+
+        results = self.wikidata_cache_manager.get_result(sparql_query)
         try:
-            sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
-            sparql.setQuery(sparql_query)
-            sparql.setReturnFormat(JSON)
-            sparql.setMethod(POST)
-            sparql.setRequestMethod(URLENCODED)
-            p_val = sparql.query().convert()['results']['bindings'][0][p_node_target]
+            # try to get the results if success (sometimes may failed if no Q nodes corresponded found)
+            p_val = results[0][p_node_target]
             if "datatype" in p_val.keys():
                 semantic_types = (
-                    self.get_semantic_type(p_val["datatype"]),
+                    self.transfer_semantic_type(p_val["datatype"]),
                     'https://metadata.datadrivendiscovery.org/types/Attribute', AUGMENTED_COLUMN_SEMANTIC_TYPE)
             else:
                 semantic_types = (
                     "http://schema.org/Text",
                     'https://metadata.datadrivendiscovery.org/types/Attribute',
                     AUGMENTED_COLUMN_SEMANTIC_TYPE)
+
             return True, semantic_types
         except:
             return False, None
@@ -977,7 +902,8 @@ class DatamartSearchResult:
         return result
 
     def download(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None,
-                 connection_url: str = None, generate_metadata=True, return_format="ds") -> container.Dataset:
+                 connection_url: str = None, generate_metadata=True, return_format="ds") \
+            -> typing.Union[container.Dataset, container.DataFrame]:
         """
         Produces a D3M dataset (data plus metadata) corresponding to the search result.
         Every time the download method is called on a search result, it will produce the exact same columns
@@ -1002,7 +928,12 @@ class DatamartSearchResult:
             Optional choice is to get dataframe type output. Only valid in isi datamart
         """
         if connection_url:
-            self.connection_url = connection_url
+            # if a new connection url given
+            if self.connection_url != connection_url:
+                self.connection_url = connection_url
+                self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
+                self._logger.info("New connection url given from download part as " + self.connection_url)
+
         if self.search_type == "general":
             res = self.download_general(supplied_data, generate_metadata, return_format)
         elif self.search_type == "wikidata":
@@ -1010,8 +941,8 @@ class DatamartSearchResult:
         else:
             raise ValueError("Unknown search type with " + self.search_type)
 
+        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
         if return_format == "ds":
-            # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
             res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
         else:
             res.reset_index(drop=True)
@@ -1019,8 +950,7 @@ class DatamartSearchResult:
         return res
 
     def download_general(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None, generate_metadata=True,
-                         return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) -> typing.Union[
-        d3m_Dataset, d3m_DataFrame]:
+                         return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) -> typing.Union[d3m_Dataset, d3m_DataFrame]:
         """
         Specified download function for general datamart Datasets
         :param supplied_data: given supplied data
@@ -1099,9 +1029,10 @@ class DatamartSearchResult:
                 join_pairs_result.append(result)
                 # TODO: figure out some way to compute the joining quality
                 candidate_join_column_scores.append(1)
-            except:
+
+            except Exception as e:
                 self._logger.error("failed when getting pairs for", each_pair)
-                traceback.print_exc()
+                self._logger.debug(e, exc_info=True)
 
         # choose the best joining results
         all_results = []
@@ -1111,7 +1042,7 @@ class DatamartSearchResult:
 
         all_results.sort(key=lambda x: x[1], reverse=True)
         if len(all_results) == 0:
-            raise ValueError("All join failed")
+            raise ValueError("All join attempt failed!")
 
         if return_format == "ds":
             return_df = d3m_DataFrame(all_results[0][2], generate_metadata=False)
@@ -1141,7 +1072,7 @@ class DatamartSearchResult:
                                                                                          return_format,
                                                                                          augment_resource_id=None)
         else:
-            raise ValueError("Invalid return format was given")
+            raise ValueError("Invalid return format was given as " + str(return_format))
         self._logger.debug("download_general function finished.")
         return return_result
 
@@ -1293,58 +1224,17 @@ class DatamartSearchResult:
         sparql_query = "SELECT DISTINCT ?q " + p_nodes_query_part + \
                        " \nWHERE \n{\n  VALUES (?q) { \n " + q_nodes_query + "}\n" + \
                        p_nodes_optional_part + special_request_part + "}\n"
-        # if not self.connection_url:
-        #     self.connection_url = WIKIDATA_QUERY_SERVER
-        #     print("[INFO] Using default connection url: " + self.connection_url)
-        # else:
-        #     print("[INFO] User-defined connection url given as: " + self.connection_url)
+
+        results = self.wikidata_cache_manager.get_result(sparql_query)
         return_df = d3m_DataFrame()
-        hash_generator = hashlib.md5()
-        hash_generator.update(sparql_query.encode('utf-8'))
-        hash_key = hash_generator.hexdigest()
-        self._logger.debug("Current query's hash tag is " + hash_key)
-        if mc is not None:
-            # check whether we have cache or not
-            results = mc.get("results_" + hash_key)
-        else:
-            results = None
 
-        # just to ensure it is really a good results
-        if results is not None:
-            try:
-                results = pickle.loads(results)
-            except:
-                self._logger.warning("Hitted results are broken! Need to rerun the query!")
-                results = None
-
-        if results is not None:
-            self._logger.info("Memcache hit in dsbox server! Will use cached results.")
-            cache_hitted = True
-        else:
-            cache_hitted = False
-            self._logger.info("Cache not hit, will run general query.")
-            try:
-                sparql = SPARQLWrapper(self.connection_url)
-                self._logger.debug("Connection to wikidata server at " + self.connection_url)
-                sparql.setQuery(sparql_query)
-                sparql.setReturnFormat(JSON)
-                sparql.setMethod(POST)
-
-                sparql.setRequestMethod(URLENCODED)
-                results = sparql.query().convert()["results"]["bindings"]
-            except:
-                self._logger.error("Getting values for download from wikidata failed!")
-                return return_df
-
-            self._logger.debug("Download data finished, start generating d3m metadata.")
-
-        # add search result to cache
-        if mc is not None and not cache_hitted:
-            mc.set("results_" + hash_key, pickle.dumps(results))
-            # add timestamp to let the system know when to update
-            mc.set("timestamp_" + hash_key, str(datetime.datetime.now().timestamp()))
-            # add real query
-            mc.set("query_" + hash_key, sparql_query)
+        # if results is None, it means download failed, return blank dataFrame directly
+        if results is None:
+            # print 3 times to ensure easy to find
+            self._logger.error("Download failed!!!")
+            self._logger.error("Download failed!!!")
+            self._logger.error("Download failed!!!")
+            return return_df
 
         semantic_types_dict = {
             "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
@@ -1362,7 +1252,7 @@ class DatamartSearchResult:
                 if p_name not in semantic_types_dict:
                     if "datatype" in p_val.keys():
                         semantic_types_dict[p_name] = (
-                            self.get_semantic_type(p_val["datatype"]),
+                            self.transfer_semantic_type(p_val["datatype"]),
                             'https://metadata.datadrivendiscovery.org/types/Attribute',
                             AUGMENTED_COLUMN_SEMANTIC_TYPE
                         )
@@ -1408,9 +1298,9 @@ class DatamartSearchResult:
 
         # special for joining_pairs column
         if return_format == "df":
-            each_selector = (ALL_ELEMENTS, each_column + 1)
+            each_selector = (ALL_ELEMENTS, return_df.shape[1] - 1)
         elif return_format == "ds":
-            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column + 1)
+            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, return_df.shape[1] - 1)
         metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
                                   'semantic_types': ("http://schema.org/Integer",)}
         if generate_metadata:
@@ -1441,6 +1331,8 @@ class DatamartSearchResult:
                 for each_selector, each_metadata in metadata_shape_part_dict.items():
                     return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                            metadata=each_metadata)
+        else:
+            raise ValueError("Invalid return format was given as " + str(return_format))
         self._logger.debug("download_wikidata function finished.")
         return return_result
 
@@ -1452,19 +1344,15 @@ class DatamartSearchResult:
         """
         sparql_query = "SELECT DISTINCT ?x WHERE \n { \n" + \
                        "wd:" + node_code + " rdfs:label ?x .\n FILTER(LANG(?x) = 'en') \n} "
-        try:
-            sparql = SPARQLWrapper(WIKIDATA_QUERY_SERVER)
-            sparql.setQuery(sparql_query)
-            sparql.setReturnFormat(JSON)
-            sparql.setMethod(POST)
-            sparql.setRequestMethod(URLENCODED)
-            results = sparql.query().convert()
-            return results['results']['bindings'][0]['x']['value']
-        except:
+
+        results = self.wikidata_cache_manager.get_result(sparql_query)
+        if results:
+            return results[0]['x']['value']
+        else:
             self._logger.error("Getting name of node " + node_code + " failed!")
             return node_code
 
-    def get_semantic_type(self, datatype: str):
+    def transfer_semantic_type(self, datatype: str):
         """
         Inner function used to transfer the wikidata semantic type to D3M semantic type
         :param datatype: a str indicate the semantic type adapted from wikidata
@@ -1480,68 +1368,21 @@ class DatamartSearchResult:
             return special_type_dict[datatype]
         else:
             self._logger.warning("Not seen data type: ", datatype)
+            self._logger.warning("Please check this new type!!!")
             return default_type
 
-    def _do_wikifier(self, supplied_data):
+    def _run_wikifier(self, supplied_data) -> d3m_Dataset:
         """
-        Inner function to do wikifier type augment
+        Inner function to do wikifier type augment, this is purposed for doing augment with d3m primitive
         :param supplied_data:
-        :return:
+        :return: a wikifiered d3m_Dataset if success
         """
         self._logger.debug("Start running wikifier.")
-        if type(supplied_data) is d3m_Dataset:
-            self._res_id, _ = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None,
-                                                             has_hyperparameter=False)
-            supplied_data_df = supplied_data[self._res_id]
-        elif type(supplied_data) is d3m_DataFrame:
-            supplied_data_df = supplied_data
-        else:
-            raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
-        import wikifier
-        all_columns = list(range(supplied_data_df.shape[1]))
-        can_wikifier_columns = []
-        for each in all_columns:
-            if type(supplied_data) is d3m_Dataset:
-                selector = (self._res_id, ALL_ELEMENTS, each)
-            elif type(supplied_data) is d3m_DataFrame:
-                selector = (ALL_ELEMENTS, each)
-            each_column_semantic_type = supplied_data.metadata.query(selector)['semantic_types']
-            each_column_name = supplied_data[self._res_id].columns[each]
-            if each_column_name == "d3mIndex":
-                continue
-            if 'http://schema.org/Integer' not in each_column_semantic_type and \
-                    'http://schema.org/Float' not in each_column_semantic_type:
-                can_wikifier_columns.append(each)
-
-        output_ds = copy.deepcopy(supplied_data)
-        wikifier_res = wikifier.produce(pd.DataFrame(supplied_data_df), can_wikifier_columns, None)
-        output_ds[self._res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
-        # update metadata on column length
-        selector = (self._res_id, ALL_ELEMENTS)
-        old_meta = dict(output_ds.metadata.query(selector))
-        old_meta_dimension = dict(old_meta['dimension'])
-        old_column_length = old_meta_dimension['length']
-        old_meta_dimension['length'] = wikifier_res.shape[1]
-        old_meta['dimension'] = frozendict.FrozenOrderedDict(old_meta_dimension)
-        new_meta = frozendict.FrozenOrderedDict(old_meta)
-        output_ds.metadata = output_ds.metadata.update(selector, new_meta)
-
-        # update each column's metadata
-        for i in range(old_column_length, wikifier_res.shape[1]):
-            selector = (self._res_id, ALL_ELEMENTS, i)
-            metadata = {"name": wikifier_res.columns[i],
-                        "structural_type": str,
-                        'semantic_types': (
-                            "http://schema.org/Text",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute",
-                            "http://wikidata.org/qnode"
-                            )
-                        }
-            output_ds.metadata = output_ds.metadata.update(selector, metadata)
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, skip_column_type=SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST)
         self._logger.debug("Running wikifier finished.")
-        return output_ds
+        return results
 
-    def augment(self, supplied_data, augment_columns=None, connection_url: str = None, augment_resource_id=AUGMENT_RESOURCE_ID):
+    def augment(self, supplied_data, augment_columns=None, connection_url: str=None, augment_resource_id=AUGMENT_RESOURCE_ID):
         """
         Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
         The augment methods is a baseline implementation of download plus augment.
@@ -1558,69 +1399,60 @@ class DatamartSearchResult:
         connection_url : str
             A connection string used to connect to a specific Datamart deployment. If not provided, a different
             deployment might be used.
+        augment_resource_id: str
+            The augmented dataframe's resource id in return dataset
         """
 
         if type(supplied_data) is d3m_Dataset:
             self.supplied_data = supplied_data
-            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None, has_hyperparameter=False)
-
-        if mc and self.search_type != "wikifier":
-            try:
-                hash_supplied_data = hash_pandas_object(self.supplied_dataframe).sum()
-                hash_generator = hashlib.md5()
-                hash_generator.update(self.serialize().encode('utf-8'))
-                hash_search_result = hash_generator.hexdigest()
-                hash_key = "augment_data_" + str(hash_supplied_data) + str(hash_search_result)
-                self._logger.info("The augment result's hash key is " + hash_key)
-                res = mc.get(hash_key)
-                if res is not None:
-                    try:
-                        cached_result = pickle.loads(res)
-                        self._logger.info("Previous running augment res found! Will use that!")
-                        return cached_result
-                    except:
-                        self._logger.error("Unpickling the cached result failed, maybe the bad cache?")
-                else:
-                    self._logger.info("Cache not hitted.")
-            except:
-                self._logger.warning("Running memcache searching failed. Skip!")
+            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
+                                                                                   resource_id=None,
+                                                                                   has_hyperparameter=False)
+        else:
+            self.supplied_dataframe = supplied_data
 
         if connection_url:
+            self._logger.info("Using user-defined connection url as " + connection_url)
+            self.connection_url = connection_url
+        else:
+            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
             self.connection_url = connection_url
 
-        if self.search_type == "wikifier":
-            result = self._do_wikifier(supplied_data)
-            return result
+        cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
+                                                                   search_result_serialized=self.serialize())
+        cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
+        if cache_result is not None:
+            self._logger.info("Using caching results")
+            return cache_result
 
-        if type(supplied_data) is d3m_DataFrame:
-            res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="df", augment_resource_id=augment_resource_id)
-        elif type(supplied_data) is d3m_Dataset:
-            res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                return_format="ds", augment_resource_id=augment_resource_id)
+        self._logger.info("Cache not hit, start running augment.")
+
+        if self.search_type == "wikifier":
+            res = self._run_wikifier(supplied_data)
+
         else:
-            raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
+            if type(supplied_data) is d3m_DataFrame:
+                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                                    return_format="df", augment_resource_id=augment_resource_id)
+            elif type(supplied_data) is d3m_Dataset:
+                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                                    return_format="ds", augment_resource_id=augment_resource_id)
+            else:
+                raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
         # res[augment_resource_id] = res[augment_resource_id].astype(str)
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-        res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+            res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
 
-        if mc:
-            try:
-                self._logger.info("Start pushing the augment results to memcache...")
-                hash_supplied_data = hash_pandas_object(self.supplied_data).sum()
-                hash_generator = hashlib.md5()
-                hash_generator.update(self.serialize().encode('utf-8'))
-                hash_search_result = hash_generator.hexdigest()
-                hash_key = "augment_data_" + str(hash_supplied_data) + str(hash_search_result)
-                dumped_res = pickle.dumps(res)
-                return_val = mc.set(hash_key, dumped_res)
-                if return_val != 0:
-                    self._logger.info("Pushing augment results to memcache succeeded!")
-                else:
-                    self._logger.error("Pushing augment results to memcache failed! Maybe the augmented results are too large as "
-                                       + str(len(dumped_res)))
-            except:
-                self._logger.error("Pushing augment results to memcache failed!")
+        response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
+                                                          search_result_serialized=self.serialize(),
+                                                          augment_results=res,
+                                                          hash_key=cache_key
+                                                          )
+        if not response:
+            self._logger.warning("Push augment results to results failed!")
+        else:
+            self._logger.info("Push augment results to memcache success!")
 
         return res
 

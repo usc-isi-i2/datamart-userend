@@ -8,6 +8,7 @@ from datetime import datetime
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
 from datamart_isi.joiners.join_result import JoinResult
+from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from itertools import chain
 
@@ -24,16 +25,14 @@ class Augment(object):
 
         """
 
-        self.qm = SPARQLWrapper(endpoint)
+        self.qm = SPARQLWrapper(connection.get_genearl_search_server_url(endpoint))
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)
-
-        self.joiners = dict()
         self.profiler = Profiler()
         self.logger = logging.getLogger(__name__)
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None, **kwargs) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
