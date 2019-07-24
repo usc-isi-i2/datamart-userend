@@ -4,3 +4,6 @@ general_search_server = "http://dsbox02.isi.edu:9001/blazegraph/namespace/datama
 memcache_server = "dsbox02.isi.edu:11211"
 wikifier_server = "http://dsbox02.isi.edu/wikifier/get_identifiers"
 cache_expire_time = 3600*24
+em_es_url = "http://sitaware.isi.edu:9200"
+em_es_index = "wiki_fb_embeddings_1"
+em_es_type = "vectors"
