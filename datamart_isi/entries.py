@@ -13,7 +13,6 @@ import d3m.metadata.base as metadata_base
 import json
 import string
 import time
-import pickle
 from ast import literal_eval
 
 from d3m import container
@@ -28,7 +27,7 @@ from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
 from datamart_isi import config
-from datamart_isi.utilities.timeout import Timeout, timeout_call
+from datamart_isi.utilities.timeout import timeout_call
 from datamart_isi.utilities.wikidata_cache import QueryCache
 from datamart_isi.utilities.general_search_cache import GeneralSearchCache
 from datamart_isi.utilities import d3m_wikifier
@@ -50,9 +49,10 @@ SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
 MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
-DEFAULT_DATAMRT_URL = config.default_datamart_url
+DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
 SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST = config.skip_wikifier_column_type_list
+
 
 class DatamartQueryCursor(object):
     """
@@ -60,13 +60,22 @@ class DatamartQueryCursor(object):
     """
 
     def __init__(self, augmenter, search_query, supplied_data, need_run_wikifier=None, connection_url=None):
+        """
+        :param augmenter: The manager used to parse query and search on datamart general part(blaze graph),
+                          because it search quick and need instance update, we should not cache this part
+        :param search_query: query generated from Datamart class
+        :param supplied_data: supplied data for search
+        :param need_run_wikifier: an optional parameter, can help to control whether need to run wikifier to get
+                                  wikidata-related parts, it can help to improve the speed when processing large data
+        :param connection_url: control paramter for the connection url
+        """
         self._logger = logging.getLogger(__name__)
         if connection_url:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
             # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
         self.augmenter = augmenter
@@ -75,7 +84,7 @@ class DatamartQueryCursor(object):
         self.current_searching_query_index = 0
         self._skip_wikifier_column_type = SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST
         self.remained_part = None
-        self.wikidata_cache = QueryCache(connection_url=self.connection_url)
+        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
@@ -108,7 +117,7 @@ class DatamartQueryCursor(object):
 
         # if need to run wikifier, run it before any search
         if self.current_searching_query_index == 0 and self.need_run_wikifier:
-            self._run_wikifier()
+            self.supplied_data = self.run_wikifier(self.supplied_data)
 
         # if already remained enough part
         current_result = self.remained_part or []
@@ -140,7 +149,7 @@ class DatamartQueryCursor(object):
                 self._logger.info("Remained searching time: " + str(timeout) + " seconds.")
             elif timeout <= 0:
                 self._logger.error(
-                    "Running search on query No." + str(self.current_searching_query_index) + " timeouted!")
+                    "Running search on query No." + str(self.current_searching_query_index) + " timeout!")
                 break
             else:
                 self._logger.error("Running search on query No." + str(self.current_searching_query_index) + " failed!")
@@ -276,7 +285,7 @@ class DatamartQueryCursor(object):
                                    + "    ( wikibase:Time )\n    ( wikibase:Monolingualtext )\n  }" \
                                    + "  ?wd_property wikibase:propertyType ?type .\n}\norder by ?item ?property "
 
-                    results = self.wikidata_cache.get_result(sparql_query)
+                    results = self.wikidata_cache_manager.get_result(sparql_query)
 
                     if results is None:
                         # if response none, it means get wikidata query results failed
@@ -352,10 +361,10 @@ class DatamartQueryCursor(object):
             self._logger.debug(str(each_result))
             if "start_time" in each_result.keys() and "end_time" in each_result.keys():
                 tv = query["variables_search"]["temporal_variable"]
-                start_date, end_date = pd.to_datetime(tv["start"]).timestamp(),\
-                                       pd.to_datetime(tv["end"]).timestamp()  # query time
-                start_time, end_time = pd.to_datetime(each_result['start_time']['value']).timestamp(), \
-                                       pd.to_datetime(each_result['end_time']['value']).timestamp()  # dataset
+                start_date = pd.to_datetime(tv["start"]).timestamp()
+                end_date = pd.to_datetime(tv["end"]).timestamp()  # query time
+                start_time = pd.to_datetime(each_result['start_time']['value']).timestamp()
+                end_time = pd.to_datetime(each_result['end_time']['value']).timestamp()  # dataset
 
                 # TODO: it seems the score calculation still have some problem here
                 denominator = float(end_date - start_date)
@@ -402,7 +411,7 @@ class Datamart(object):
             self.connection_url = connection_url
         else:
             # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
@@ -553,7 +562,6 @@ class Datamart(object):
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
-        TemporalGranularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
@@ -654,7 +662,7 @@ class DatamartSearchResult:
             self.connection_url = connection_url
         else:
             # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
@@ -1416,7 +1424,7 @@ class DatamartSearchResult:
             self.connection_url = connection_url
         else:
             # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMRT_URL)
+            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
@@ -1445,10 +1453,10 @@ class DatamartSearchResult:
             res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
 
         response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
-                                                          search_result_serialized=self.serialize(),
-                                                          augment_results=res,
-                                                          hash_key=cache_key
-                                                          )
+                                                                     search_result_serialized=self.serialize(),
+                                                                     augment_results=res,
+                                                                     hash_key=cache_key
+                                                                     )
         if not response:
             self._logger.warning("Push augment results to results failed!")
         else:
@@ -1595,9 +1603,7 @@ class DatamartSearchResult:
                     traceback.print_exc()
                     raise ValueError("Getting left metadata information failed!")
             elif return_format == "ds":
-                left_df_column_length = \
-                supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension'][
-                    'length']
+                left_df_column_length = supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension']['length']
 
             # add the original metadata
             for i in range(left_df_column_length):
@@ -1687,8 +1693,7 @@ class DatamartSearchResult:
 
         return pair
 
-    def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List[
-        "TabularJoinSpec"]:
+    def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List["TabularJoinSpec"]:
         """
         Returns hints for joining supplied data with the data that can be downloaded using this search result.
         In the typical scenario, the hints are based on supplied data that was provided when search was called.
@@ -1769,34 +1774,34 @@ class DatamartSearchResult:
         search_type = serialize_result['metadata']['search_type']
         return DatamartSearchResult(search_result, supplied_data, query_json, search_type)
 
-    def __getstate__(self) -> typing.Dict:
-        """
-        This method is used by the pickler as the state of object.
-        The object can be recovered through this state uniquely.
-        Returns:
-            state: Dict
-                dictionary of important attributes of the object
-        """
-        state = dict()
-        state["search_result"] = self.__dict__["search_result"]
-        state["query_json"] = self.__dict__["query_json"]
-        state["search_type"] = self.__dict__["search_type"]
-
-        return state
-
-    def __setstate__(self, state: typing.Dict) -> None:
-        """
-        This method is used for unpickling the object. It takes a dictionary
-        of saved state of object and restores the object to that state.
-        Args:
-            state: typing.Dict
-                dictionary of the objects picklable state
-        Returns:
-        """
-        self = self.__init__(search_result=state['search_result'],
-                             supplied_data=None,
-                             query_json=state['query_json'],
-                             search_type=state['search_type'])
+    # def __getstate__(self) -> typing.Dict:
+    #     """
+    #     This method is used by the pickler as the state of object.
+    #     The object can be recovered through this state uniquely.
+    #     Returns:
+    #         state: Dict
+    #             dictionary of important attributes of the object
+    #     """
+    #     state = dict()
+    #     state["search_result"] = self.__dict__["search_result"]
+    #     state["query_json"] = self.__dict__["query_json"]
+    #     state["search_type"] = self.__dict__["search_type"]
+    #
+    #     return state
+    #
+    # def __setstate__(self, state: typing.Dict) -> None:
+    #     """
+    #     This method is used for unpickling the object. It takes a dictionary
+    #     of saved state of object and restores the object to that state.
+    #     Args:
+    #         state: typing.Dict
+    #             dictionary of the objects picklable state
+    #     Returns:
+    #     """
+    #     self = self.__init__(search_result=state['search_result'],
+    #                          supplied_data=None,
+    #                          query_json=state['query_json'],
+    #                          search_type=state['search_type'])
 
 
 class AugmentSpec:
