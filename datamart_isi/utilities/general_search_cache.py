@@ -82,8 +82,8 @@ class GeneralSearchCache(object):
             if not response_code2:
                 self._logger.warning("Pushing timestamp failed! What happened???")
 
-            # add supplied data for further updating
-            path_to_supplied_dataframe = os.path.join(config.cache_file_storage_base_loc, hash_supplied_dataframe + ".pkl")
+            # add supplied data for further updating if needed
+            path_to_supplied_dataframe = os.path.join(config.cache_file_storage_base_loc, str(hash_supplied_dataframe) + ".pkl")
             with open(path_to_supplied_dataframe, "wb") as f:
                 pickle.dump(supplied_dataframe, f)
             response_code3 = self.mc.set("supplied_data" + hash_key, path_to_supplied_dataframe)
