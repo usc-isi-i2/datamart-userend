@@ -3,6 +3,9 @@ import json
 import requests
 from SPARQLWrapper import SPARQLWrapper, JSON
 import typing
+import logging
+_logger = logging.getLogger(__name__)
+
 try:
     from datamart_isi import config
     wikidata_query_server = config.wikidata_server
@@ -17,27 +20,27 @@ class FindIdentity:
     def __init__(self):
         pass
 
-    # input: strings, output dictionary of string and Qnode in wikidate
-    @staticmethod
-    def get_identtifier(strings):
-        id_nodes_dict = FindIdentity.call_redis(strings)
-        keys = set(id_nodes_dict.keys())
-        output = {}  # key string, value:Q123
-        print(len(keys))
-        P_list = []
-        for s in strings:
-            if s in keys:
-                P_list.extend([P_Q.split('/')[0] for P_Q in id_nodes_dict[s]])
-        P_predict = Counter(P_list).most_common(1)[0][0]  # [('P932', 8), ('P1566', 6), ('P698', 2)]
-        for s in strings:
-            if s in keys:
-                for P_Q in id_nodes_dict[s]:  # for P_Q in P_Qlist
-                    P_Q_splited = P_Q.split('/')
-                    if P_Q_splited[0] == P_predict:
-                        output[s] = P_Q_splited[1]
-            else:
-                output[s] = ''
-        return output
+    # # input: strings, output dictionary of string and Qnode in wikidate
+    # @staticmethod
+    # def get_identtifier(strings):
+    #     id_nodes_dict = FindIdentity.call_redis(strings)
+    #     keys = set(id_nodes_dict.keys())
+    #     output = {}  # key string, value:Q123
+    #     print(len(keys))
+    #     P_list = []
+    #     for s in strings:
+    #         if s in keys:
+    #             P_list.extend([P_Q.split('/')[0] for P_Q in id_nodes_dict[s]])
+    #     P_predict = Counter(P_list).most_common(1)[0][0]  # [('P932', 8), ('P1566', 6), ('P698', 2)]
+    #     for s in strings:
+    #         if s in keys:
+    #             for P_Q in id_nodes_dict[s]:  # for P_Q in P_Qlist
+    #                 P_Q_splited = P_Q.split('/')
+    #                 if P_Q_splited[0] == P_predict:
+    #                     output[s] = P_Q_splited[1]
+    #         else:
+    #             output[s] = ''
+    #     return output
 
     @staticmethod
     def get_identifier_3(strings:typing.List[str], column_name: str=None, target_p_node: str=None):
@@ -58,7 +61,7 @@ class FindIdentity:
 
         if target_p_node is not None:
             P_predicts = [target_p_node]
-            print("User-defined P node is " + P_predicts[0])
+            _logger.info("User-defined P node is " + P_predicts[0])
         else:
             P_predicts = [x[0] for x in Counter(P_list).most_common(5)]  # [('P932', 8), ('P1566', 6), ('P698', 2)]
 
@@ -68,7 +71,7 @@ class FindIdentity:
                 except:
                     pass
             if len(P_predicts) == 0:
-                print("[ERROR] No candidate P nodes found for input column : [" + column_name + "]")
+                _logger.warning("No candidate P nodes found for input column : [" + column_name + "]")
                 return result
 
         """
@@ -91,7 +94,7 @@ class FindIdentity:
         else:
             best_predicts = [P_predicts[0]]
 
-        print("The best matching P node is " + best_predicts[0])
+        _logger.info("The best matching P node is " + best_predicts[0])
 
         # print('Top 3 possible properties:')
         # print(P_predicts)
@@ -118,7 +121,7 @@ class FindIdentity:
             val = r.json()
             return val
         else:
-            print("[ERROR] Server no response!")
+            _logger.warning("Server no response or nothing found!")
             return {}
 
     @staticmethod
