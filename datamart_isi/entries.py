@@ -14,6 +14,7 @@ import json
 import string
 import time
 from ast import literal_eval
+import requests
 
 from d3m import container
 from d3m import utils
@@ -52,6 +53,10 @@ MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
 SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST = config.skip_wikifier_column_type_list
+WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
+EM_ES_URL = config.em_es_url
+EM_ES_INDEX = config.em_es_index
+EM_ES_TYPE = config.em_es_type
 
 
 class DatamartQueryCursor(object):
@@ -136,7 +141,8 @@ class DatamartQueryCursor(object):
                 search_res = timeout_call(timeout, self._search_wikidata, [])
             elif self.search_query[self.current_searching_query_index].search_type == "general":
                 search_res = timeout_call(timeout, self._search_datamart, [])
-                # search_res = self._search_datamart()
+            elif self.search_query[self.current_searching_query_index].search_type == "vector":
+                search_res = timeout_call(timeout, self._search_vector, [])
             else:
                 raise ValueError("Unknown search query type for " +
                                  self.search_query[self.current_searching_query_index].search_type)
@@ -399,6 +405,68 @@ class DatamartQueryCursor(object):
         return search_result
 
 
+    def _search_vector(self) -> typing.List["DatamartSearchResult"]:
+        """
+        The search function used for vector search
+        :return: List[DatamartSearchResult]
+        """
+        self._logger.debug("Start running search on Vectors...")
+
+        vector_results = []
+        try:
+            q_nodes_columns = []
+            if type(self.supplied_data) is d3m_Dataset:
+                res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
+                selector_base_type = "ds"
+            else:
+                supplied_dataframe = self.supplied_data
+                selector_base_type = "df"
+
+            # check whether Qnode is given in the inputs, if given, use this to search
+            metadata_input = self.supplied_data.metadata
+
+            for i in range(supplied_dataframe.shape[1]):
+                if selector_base_type == "ds":
+                    metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
+                else:
+                    metadata_selector = (metadata_base.ALL_ELEMENTS, i)
+                if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
+                    # if no required variables given, attach any Q nodes found
+                    q_nodes_columns.append(i)
+
+            if len(q_nodes_columns) == 0:
+                self._logger.warning("No Wikidata Q nodes detected!")
+                self._logger.warning("Will skip vector search part")
+                return vector_results
+            else:
+                self._logger.info("Wikidata Q nodes inputs detected! Will search with it.")
+                self._logger.info("Totally " + str(len(q_nodes_columns)) + " Q nodes columns detected!")
+
+                # do a vector search for each Q nodes column
+                for each_column in q_nodes_columns:
+                    self._logger.debug("Start searching on column " + str(each_column))
+                    q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
+                    unique_qnodes = list(set(q_nodes_list))
+                    unique_qnodes.sort()
+
+                    vector_search_result = {"number_of_vectors": str(len(unique_qnodes)),
+                                            "target_q_node_column_name": supplied_dataframe.columns[each_column],
+                                            "q_nodes_list": unique_qnodes}
+                    vector_results.append(DatamartSearchResult(search_result=vector_search_result,
+                                                                 supplied_data=self.supplied_data,
+                                                                 query_json=None,
+                                                                 search_type="vector")
+                                            )
+
+                self._logger.debug("Running search on vector finished.")
+            return vector_results
+        except:
+            self._logger.error("Searching with vector failed!")
+            traceback.print_exc()
+        finally:
+            return vector_results
+
+
 class Datamart(object):
     """
     ISI implement of datamart
@@ -474,7 +542,7 @@ class Datamart(object):
             need_run_wikifier = False
         else:
             need_run_wikifier = None
-            search_queries = [DatamartQuery(search_type="wikidata")]
+            search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector")]
 
         if type(supplied_data) is d3m_Dataset:
             res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
@@ -688,6 +756,11 @@ class DatamartSearchResult:
             self._id = self._id.replace("'", "_")
             self._id = self._id.replace(",", "")
             self._score = 1
+        elif self.search_type == "vector":
+            self._id = "vector search on Q nodes with column " + \
+                       self.search_result['target_q_node_column_name']
+            self._id = self._id.replace(" ", "_")
+            self._score = 1
         else:
             self._id = "wikifier"
             self._score = 1
@@ -704,6 +777,8 @@ class DatamartSearchResult:
         elif self.search_type == "wikifier":
             self._logger.warning("No metadata can provide for wikifier augment")
             metadata = DataMetadata()
+        elif self.search_type == "vector":
+            metadata = self._get_d3m_metadata_for_vector()
         else:
             self._logger.error("Unknown search type as " + str(self.search_type))
             metadata = DataMetadata()
@@ -863,6 +938,88 @@ class DatamartSearchResult:
                 return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i), metadata=each_metadata)
         return return_metadata
 
+    def _get_d3m_metadata_for_vector(self):
+        """
+        function used to generate the d3m format metadata - specified for vector search result
+        """
+        return_metadata = DataMetadata()
+        if self.supplied_dataframe is not None:
+            data_length = self.supplied_dataframe.shape[0]
+        elif self.supplied_data is not None:
+            res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data,
+                                                                             resource_id=None)
+            data_length = self.supplied_dataframe.shape[0]
+        else:
+            self._logger.warning("Can't calculate the row length for vector search results without supplied data")
+            data_length = None
+
+        metadata_all = {"structural_type": d3m_DataFrame,
+                        "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
+                        "dimension": {
+                            "name": "rows",
+                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
+                            "length": data_length,
+                        },
+                        "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
+                        }
+        return_metadata = return_metadata.update(selector=(), metadata=metadata_all)
+        # fetch the num of columns
+        res_dict = self.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
+        length = len(list(res_dict.values())[0].split(','))
+        metadata_all_elements = {
+            "dimension": {
+                "name": "columns",
+                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
+                "length": length,
+            }
+        }
+        return_metadata = return_metadata.update(selector=(ALL_ELEMENTS,), metadata=metadata_all_elements)
+
+        for i in range(length):
+            target_q_node_column_name = self.search_result['target_q_node_column_name']
+            semantic_types = (
+                "http://schema.org/Number",
+                'https://metadata.datadrivendiscovery.org/types/Attribute',
+                AUGMENTED_COLUMN_SEMANTIC_TYPE
+            )
+            if i < 10:
+                s = '00' + str(i)
+            elif i < 100:
+                s = '0' + str(i)
+            else:
+                s = str(i)
+
+            each_metadata = {
+                "name": "vector_" + s + "_of_qnode_with_" + target_q_node_column_name,
+                "structural_type": float,
+                "semantic_types": semantic_types,
+            }
+            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i), metadata=each_metadata)
+
+            each_metadata = {
+                "name": "q_node",
+                "structural_type": str,
+                "semantic_types": (
+                    'http://schema.org/Text',
+                    'https://metadata.datadrivendiscovery.org/types/Attribute',
+                    Q_NODE_SEMANTIC_TYPE,
+                    AUGMENTED_COLUMN_SEMANTIC_TYPE
+                ),
+            }
+            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 1), metadata=each_metadata)
+
+            each_metadata = {
+                "name": "joining_pairs",
+                "structural_type": list,
+                "semantic_types": (
+                    'http://schema.org/Integer',
+                    'https://metadata.datadrivendiscovery.org/types/Attribute',
+                    AUGMENTED_COLUMN_SEMANTIC_TYPE
+                ),
+            }
+            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 2), metadata=each_metadata)
+        return return_metadata
+
     def display(self) -> pd.DataFrame:
         """
         function used to see what found inside this search result class in a human vision
@@ -905,6 +1062,29 @@ class DatamartSearchResult:
             result = pd.DataFrame({"title": title, "columns": "", "join columns": "", "score": self._score},
                                   index=[0])
 
+        elif self.search_type == "vector":
+            title = "vector"
+            # fetch the num of columns
+            column_names = []
+            res_dict = self.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
+            length = len(list(res_dict.values())[0].split(','))
+            for i in range(length):
+                if i < 10:
+                    s = '00' + str(i)
+                elif i < 100:
+                    s = '0' + str(i)
+                else:
+                    s = str(i)
+                each_name = "vector_" + s + "_of_qnode_with_" + self.search_result["target_q_node_column_name"]
+                column_names.append(each_name)
+            column_names = ", ".join(column_names)
+            required_variable = list()
+            required_variable.append(self.search_result["target_q_node_column_name"])
+            result = pd.DataFrame({"title": "vector search result for "
+                                            + self.search_result["target_q_node_column_name"],
+                                    "columns": column_names, "join columns": required_variable,
+                                    "score": self._score, "number_of_vectors": self.search_result["number_of_vectors"]},
+                                  index=[0])
         else:
             raise ValueError("Unknown search type with " + self.search_type)
         return result
@@ -946,6 +1126,8 @@ class DatamartSearchResult:
             res = self.download_general(supplied_data, generate_metadata, return_format)
         elif self.search_type == "wikidata":
             res = self.download_wikidata(supplied_data, generate_metadata, return_format)
+        elif self.search_type == "vector":
+            res = self.download_vector(supplied_data, generate_metadata, return_format)
         else:
             raise ValueError("Unknown search type with " + self.search_type)
 
@@ -1344,6 +1526,149 @@ class DatamartSearchResult:
         self._logger.debug("download_wikidata function finished.")
         return return_result
 
+    def download_vector(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame], generate_metadata=True,
+                          return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) \
+            -> typing.Union[d3m_Dataset, d3m_DataFrame]:
+        """
+        :param supplied_data: input DataFrame
+        :param generate_metadata: control whether to automatically generate metadata of the return DataFrame or not
+        :param: return_format: the control parameter to set the return format
+        :param: augment_resource_id: the returned dataset id for the augmented data, only valid when return format is "ds"
+        :return: return_df: the materialized vector d3m_DataFrame,
+                            with corresponding pairing information to original_data at last column
+        """
+        self._logger.debug("Start downloading for vector...")
+        target_q_node_column_name = self.search_result["target_q_node_column_name"]
+        if type(supplied_data) is d3m_DataFrame:
+            self.supplied_dataframe = copy.deepcopy(supplied_data)
+            self.supplied_data = supplied_data
+        elif type(supplied_data) is d3m_Dataset:
+            self._res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
+                                                                              resource_id=None)
+            self.supplied_dataframe = copy.deepcopy(supplied_dataframe)
+            self.supplied_data = supplied_data
+        try:
+            q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
+        except ValueError:
+            raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
+                             ". Maybe use the wrong search results?")
+        q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
+        q_nodes_list = list(q_nodes_list)
+        q_nodes_list.sort()
+        return_df = d3m_DataFrame()
+
+        semantic_types_dict = {
+            "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
+        vectors_dict = self.fetch_fb_embeddings(q_nodes_list)
+        for key, val in vectors_dict.items():
+            each_result = {}
+            each_result["q_node"] = key
+            vectors = val.split(',')
+            for i in range(len(vectors)):
+                if i < 10:
+                    s = '00' + str(i)
+                elif i < 100:
+                    s = '0' + str(i)
+                else:
+                    s = str(i)
+                v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
+                each_result[v_name] = vectors[i]
+                semantic_types_dict[v_name] = (
+                    "http://schema.org/Number",
+                    "https://metadata.datadrivendiscovery.org/types/Attribute",
+                    AUGMENTED_COLUMN_SEMANTIC_TYPE)
+            return_df = return_df.append(each_result, ignore_index=True)
+
+        # use rltk joiner to find the joining pairs
+        joiner = RLTKJoinerWikidata()
+        joiner.set_join_target_column_names((self.supplied_dataframe.columns[q_node_column_number], "q_node"))
+        result, self.pairs = joiner.find_pair(left_df=self.supplied_dataframe, right_df=return_df)
+
+        # if this condition is true, it means "id" column was added which should not be here
+        if "id" in return_df.columns:
+            return_df = return_df.drop(columns=["id"])
+
+        metadata_new = DataMetadata()
+        self.metadata = dict()
+        # add remained attributes metadata
+
+        for each_column in range(0, return_df.shape[1] - 1):
+            current_column_name = return_df.columns[each_column]
+            if return_format == "df":
+                each_selector = (ALL_ELEMENTS, each_column)
+            elif return_format == "ds":
+                each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column)
+            # here we do not modify the original data, we just add an extra "expected_semantic_types" to metadata
+            metadata_each_column = {"name": current_column_name, "structural_type": float,
+                                    'semantic_types': semantic_types_dict[current_column_name]}
+            self.metadata[current_column_name] = metadata_each_column
+            if generate_metadata:
+                metadata_new = metadata_new.update(metadata=metadata_each_column, selector=each_selector)
+
+        # special for joining_pairs column
+        if return_format == "df":
+            each_selector = (ALL_ELEMENTS, each_column + 1)
+        elif return_format == "ds":
+            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column + 1)
+        metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
+                                  'semantic_types': ("http://schema.org/Integer",)}
+        if generate_metadata:
+            metadata_new = metadata_new.update(metadata=metadata_joining_pairs, selector=each_selector)
+
+        # start adding shape metadata for dataset
+        if return_format == "ds":
+            return_df = d3m_DataFrame(return_df, generate_metadata=False)
+            resources = {AUGMENT_RESOURCE_ID: return_df}
+            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
+            if generate_metadata:
+                return_result.metadata = metadata_new
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
+                                                                              supplied_data=self.supplied_data)
+                for each_selector, each_metadata in metadata_shape_part_dict.items():
+                    return_result.metadata = return_result.metadata.update(selector=each_selector,
+                                                                           metadata=each_metadata)
+            # update column names to be property names instead of number
+
+        elif return_format == "df":
+            return_result = d3m_DataFrame(return_df, generate_metadata=False)
+            if generate_metadata:
+                return_result.metadata = metadata_new
+                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
+                                                                              supplied_data=self.supplied_data)
+                for each_selector, each_metadata in metadata_shape_part_dict.items():
+                    return_result.metadata = return_result.metadata.update(selector=each_selector,
+                                                                           metadata=each_metadata)
+        self._logger.debug("download_vector function finished.")
+        return return_result
+
+    def fetch_fb_embeddings(self, q_nodes_list):
+        # add vectors columns in wikifier_res
+        qnodes = list(filter(None, q_nodes_list))
+        qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
+        # do elastic search
+        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris)%1024 != 0 else len(qnode_uris)/1024
+        res = dict()
+        for i in range(num_of_try):
+            query = {
+                'query': {
+                    'terms': {
+                        'key.keyword': qnode_uris[1024*i:1024*i+1024]
+                    }
+                },
+                "size": len(qnode_uris[1024*i:1024*i+1024])
+            }
+            url = '{}/{}/{}/_search'.format(EM_ES_URL, EM_ES_INDEX, EM_ES_TYPE)
+            resp = requests.get(url, json=query)
+            if resp.status_code == 200:
+                result = resp.json()
+                hits = result['hits']['hits']
+                for hit in hits:
+                    source = hit['_source']
+                    _qnode = source['key'].split('/')[-1][:-1]
+                    res[_qnode] = ",".join(source['value'])
+
+        return res
+
     def get_node_name(self, node_code) -> str:
         """
         Function used to get the properties(P nodes) names with given P node
@@ -1540,7 +1865,7 @@ class DatamartSearchResult:
             self._logger.warning("Attention! It seems augment do not add any extra columns!")
         # if search with wikidata, we can remove duplicate Q node column
         self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
-        if self.search_type == "wikidata" and 'q_node' in df_joined.columns:
+        if 'q_node' in df_joined.columns:
             df_joined = df_joined.drop(columns=['q_node'])
 
         if 'id' in df_joined.columns:
@@ -1756,6 +2081,12 @@ class DatamartSearchResult:
                 self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
+            augmentation['right_columns'] = [right_col_number]
+        elif self.search_type == "vector":
+            left_col_number = self.supplied_dataframe.columns.tolist().index(
+                self.search_result['target_q_node_column_name'])
+            augmentation['left_columns'] = [left_col_number]
+            right_col_number = len(self.search_result['number_of_vectors']) # num of rows, not columns
             augmentation['right_columns'] = [right_col_number]
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
