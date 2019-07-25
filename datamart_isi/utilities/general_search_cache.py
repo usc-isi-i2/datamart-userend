@@ -48,7 +48,8 @@ class GeneralSearchCache(object):
             if results:
                 self._logger.info("Cache hit! will use this results.")
                 try:
-                    results_loaded = pickle.load(results)
+                    with open(results, "rb") as f:
+                        results_loaded = pickle.load(f)
                     return results_loaded
                 except Exception as e:
                     self._logger.warning("Hit results are broken! Need to rerun the query!")
