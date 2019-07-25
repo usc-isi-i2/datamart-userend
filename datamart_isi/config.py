@@ -11,6 +11,7 @@ wikidata_server_suffix = "/wikidata"
 memcache_server_suffix = ":11211"
 wikifier_server_suffix = "/wikifier/get_identifiers"
 general_search_server_suffix = ":9001/blazegraph/namespace/datamart3/sparql"
+rest_api_suffix = ":9000"
 
 # current memcache server's max size is 100MB
 memcache_max_value_size = 1024*1024*100

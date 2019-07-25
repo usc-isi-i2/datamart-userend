@@ -24,6 +24,8 @@ def run_wikifier(supplied_data: d3m_Dataset, skip_column_type: set):
             each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
             if set(each_column_semantic_type).intersection(skip_column_type):
                 temp.remove(each)
+            elif supplied_dataframe.columns[each] == "d3mIndex":
+                temp.remove(each)
 
         target_columns = temp
 
