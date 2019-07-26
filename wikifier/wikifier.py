@@ -1,37 +1,33 @@
-# import os
-# from .sparql import DEFAULT_SAVE_LOCATION, save_prop_idents
-from .find_identity import FindIdentity
+import os
 import typing
 import numpy as np
-from collections import Counter
 import copy
 import math
-# class Wikifier:
-#     def __init__(self, base_file_loc:str=None):
-#         if base_file_loc:
-#             pass
-#         else:
-#             print("No base file given, try to find the base file on default location")
-#             if os.path.exists(DEFAULT_SAVE_LOCATION):
-#                 pass
-#                 # with open(DEFAULT_SAVE_LOCATION, "r")
-#             else:
-#                 print(" No base file found on default save location please run Wikifier.initialize() first")
-#
-#     @staticmethod
-#     def initialize():
-#         save_prop_idents()
+import hashlib
+import json
+import logging
+from .find_identity import FindIdentity
+from collections import Counter
+
+try:
+    from datamart_isi.config import default_temp_path
+    DEFAULT_TEMP_PATH = default_temp_path
+except:
+    DEFAULT_TEMP_PATH = "/tmp"
+
+_logger = logging.getLogger(__name__)
 
 
-def produce(inputs, target_columns: typing.List[int]=None, target_p_node: typing.List[str]=None, input_type: str="pandas"):
+def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas"):
     if input_type == "pandas":
-        return produce_for_pandas(input_df=inputs, target_columns=target_columns, target_p_node=target_p_node)
+        return produce_for_pandas(input_df=inputs, target_columns=target_columns, target_p_nodes=target_p_nodes)
     # elif input_type == "d3m_ds":
     #     return produce_for_d3m_dataset(input_ds=inputs, target_columns=target_columns)
     # elif input_type == "d3m_df":
     #     return produce_for_d3m_dataframe(input_df=inputs, target_columns=target_columns)
     else:
         raise ValueError("unknown type of input!")
+
 
 def all_in_range_0_to_100(inputs):
     min_val = min(inputs)
@@ -41,6 +37,7 @@ def all_in_range_0_to_100(inputs):
     else:
         return False
 
+
 def are_almost_continues_numbers(inputs, threshold=0.7):
     min_val = min(inputs)
     max_val = max(inputs)
@@ -49,12 +46,13 @@ def are_almost_continues_numbers(inputs, threshold=0.7):
     else:
         return False
 
-def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p_node: typing.List[str]=None, threshold_for_converage=0.7):
+
+def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_converage=0.7):
     """
     function used to produce for input type is pandas.dataFrame
     :param input_df: input pd.dataFrame
     :param target_columns: target columns to find with wikidata
-    :param target_p_node: user-speicified P node want to get, can be None if want automatic search
+    :param target_p_nodes: user-speicified P node want to get, can be None if want automatic search
     :param threshold_for_converage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
@@ -63,16 +61,17 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
         target_columns = list(range(input_df.shape[1]))
 
     return_df = copy.deepcopy(input_df)
+    column_to_p_node_dict = dict()
     for column in target_columns:
         current_column_name = input_df.columns[column]
         # curData = [str(x) for x in list(input_df[column])]
-        print('Current column: ' + current_column_name)
+        _logger.debug('Current column: ' + current_column_name)
         try:
             temp = set()
             for each in input_df.iloc[:, column].dropna().tolist():
                 temp.add(int(each))
             if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_converage):
-                print("A columns with all numerical values and useless detected, skipped")
+                _logger.debug("Column with all numerical values and useless detected, skipped")
                 continue
         except:
             pass
@@ -87,13 +86,14 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
                 curData.append(str(each))
 
         if coverage(curData) < threshold_for_converage:
-            print("[WARNING] Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(threshold_for_converage))
+            _logger.debug("Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(threshold_for_converage))
             continue
         # for each column, try to find corresponding possible P nodes id first
-        if target_p_node is not None:
-            target_p_node_to_send = target_p_node[column]
+        if target_p_nodes is not None and current_column_name in target_p_nodes:
+            target_p_node_to_send = target_p_nodes[current_column_name]
         else:
             target_p_node_to_send = None
+
         for idx, res in enumerate(FindIdentity.get_identifier_3(strings=curData, column_name=current_column_name,
                                                                 target_p_node=target_p_node_to_send)):
             # res[0] is the send input P node
@@ -103,15 +103,41 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
                 if curData[i] in top1_dict:
                     new_col[i] = top1_dict[curData[i]]
             if coverage(new_col) < threshold_for_converage:
-                print(
-                    "[WARNING] Coverage of Q nodes is " + str(coverage(new_col)) + " which is less than threshold " + str(threshold_for_converage))
+                _logger.debug("[WARNING] Coverage of Q nodes is " + str(coverage(new_col)) +
+                              " which is less than threshold " + str(threshold_for_converage))
                 continue
+            column_to_p_node_dict[current_column_name] = res[0]
             col_name = current_column_name + '_wikidata'
             return_df[col_name] = new_col
             break
+
+    save_specific_p_nodes(input_df, column_to_p_node_dict)
     return return_df
 
 
 def coverage(column):
     count_stats = Counter(column)
     return (len(column)-count_stats[''])/len(column)
+
+
+def save_specific_p_nodes(original_dataframe, column_to_p_node_dict) -> bool:
+    try:
+        original_columns_list = original_dataframe.columns.tolist()
+        original_columns_list.sort()
+        hash_generator = hashlib.md5()
+
+        hash_generator.update(str(original_columns_list).encode('utf-8'))
+        hash_key = str(hash_generator.hexdigest())
+        temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
+        specific_q_nodes_file = os.path.join(temp_path, hash_key)
+        if os.path.exists(specific_q_nodes_file):
+            _logger.warning("The specific p nodes file already exist! Will replace the old one!")
+
+        with open(specific_q_nodes_file, 'w') as f:
+            json.dump(column_to_p_node_dict, f)
+
+        return True
+
+    except Exception as e:
+        _logger.debug(e, exc_info=True)
+        return False

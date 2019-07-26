@@ -34,6 +34,7 @@ skip_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/type
                                   "https://metadata.datadrivendiscovery.org/types/TrueTarget",
                                   "https://metadata.datadrivendiscovery.org/types/Target",
                                   "https://metadata.datadrivendiscovery.org/types/SuggestedTarget"}
+default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
 wikidata_uri_template = '<http://www.wikidata.org/entity/{}>'
