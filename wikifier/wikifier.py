@@ -129,7 +129,7 @@ def save_specific_p_nodes(original_dataframe, column_to_p_node_dict) -> bool:
         hash_generator.update(str(original_columns_list).encode('utf-8'))
         hash_key = str(hash_generator.hexdigest())
         temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
-        specific_q_nodes_file = os.path.join(temp_path, hash_key)
+        specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
         if os.path.exists(specific_q_nodes_file):
             _logger.warning("The specific p nodes file already exist! Will replace the old one!")
 

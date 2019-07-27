@@ -29,11 +29,17 @@ special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 max_entities_length = 10000
 
+need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                                  "http://schema.org/Text"
+                                  }
+
 skip_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/PrimaryKey",
                                   "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
                                   "https://metadata.datadrivendiscovery.org/types/TrueTarget",
                                   "https://metadata.datadrivendiscovery.org/types/Target",
-                                  "https://metadata.datadrivendiscovery.org/types/SuggestedTarget"}
+                                  "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
+                                  "http://schema.org/Float",
+                                  "http://schema.org/Integer"}
 default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
