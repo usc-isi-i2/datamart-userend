@@ -13,6 +13,7 @@ import d3m.metadata.base as metadata_base
 import json
 import string
 import time
+import numpy as np
 from ast import literal_eval
 import requests
 
@@ -1786,9 +1787,12 @@ class DatamartSearchResult:
                                     return_format="ds", augment_resource_id=augment_resource_id)
             else:
                 raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
-        # res[augment_resource_id] = res[augment_resource_id].astype(str)
+
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-            res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+            res[augment_resource_id].reset_index(drop=True)
+
+        res[augment_resource_id] = res[augment_resource_id].fillna('', inplace=True)
+        res[augment_resource_id] = res[augment_resource_id].astype(str)
 
         response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                      search_result_serialized=self.serialize(),
