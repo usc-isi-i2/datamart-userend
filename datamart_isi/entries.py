@@ -1791,7 +1791,7 @@ class DatamartSearchResult:
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
             res[augment_resource_id].reset_index(drop=True)
 
-        res[augment_resource_id] = res[augment_resource_id].fillna('', inplace=True)
+        res[augment_resource_id].fillna('', inplace=True)
         res[augment_resource_id] = res[augment_resource_id].astype(str)
 
         response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
