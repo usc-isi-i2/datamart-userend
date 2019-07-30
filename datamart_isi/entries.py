@@ -13,6 +13,7 @@ import d3m.metadata.base as metadata_base
 import json
 import string
 import time
+import wikifier
 import numpy as np
 from ast import literal_eval
 import requests
@@ -1836,6 +1837,9 @@ class DatamartSearchResult:
                                                                      augment_results=res,
                                                                      hash_key=cache_key
                                                                      )
+        # save the augmented result's metadata if second augment is conducted
+        Utils.save_metadata_from_dataset(res)
+
         if not response:
             self._logger.warning("Push augment results to results failed!")
         else:
