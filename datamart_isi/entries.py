@@ -1827,6 +1827,7 @@ class DatamartSearchResult:
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
         download_result = download_result.drop(columns=['joining_pairs'])
+
         column_names_to_join = None
         r1_paired = set()
         i = 0

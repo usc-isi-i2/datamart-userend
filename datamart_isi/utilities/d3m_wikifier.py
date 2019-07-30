@@ -12,8 +12,9 @@ from d3m.container import Dataset as d3m_Dataset
 from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi import config
+from datamart_isi.utilities.utils import Utils
 from os import path
-import logging
+
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 DEFAULT_TEMP_PATH = config.default_temp_path
 _logger = logging.getLogger(__name__)
@@ -32,6 +33,8 @@ def run_wikifier(supplied_data: d3m_Dataset):
         temp = copy.deepcopy(target_columns)
 
         skip_column_type = set()
+        # if we detect some special type of semantic type (like PrimaryKey here), it means some metadata is adapted
+        # from exist dataset but not all auto-generated, so we can have more restricts
         for each in target_columns:
             each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
             if "https://metadata.datadrivendiscovery.org/types/PrimaryKey" in each_column_semantic_type:
@@ -40,12 +43,15 @@ def run_wikifier(supplied_data: d3m_Dataset):
 
         for each in target_columns:
             each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
+            # if the column type inside here found, this coumn should be wikified
             if set(each_column_semantic_type).intersection(need_column_type):
                 continue
+            # if the column type inside here found, this column should not be wikified
             elif set(each_column_semantic_type).intersection(skip_column_type):
                 temp.remove(each)
             elif supplied_dataframe.columns[each] == "d3mIndex":
                 temp.remove(each)
+
         target_columns = temp
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_p_nodes)
@@ -59,6 +65,11 @@ def run_wikifier(supplied_data: d3m_Dataset):
         old_meta['dimension'] = frozendict.FrozenOrderedDict(old_meta_dimension)
         new_meta = frozendict.FrozenOrderedDict(old_meta)
         output_ds.metadata = output_ds.metadata.update(selector, new_meta)
+
+        # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
+        # TODO: In this way, we will not search on augmented columns if run second time of wikifier
+        wikifier.save_specific_p_nodes(original_dataframe=wikifier_res, column_to_p_node_dict=dict())
+        Utils.save_metadata_from_dataset(output_ds)
 
         # update each column's metadata
         for i in range(old_column_length, wikifier_res.shape[1]):
@@ -94,7 +105,7 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
     else:
         return None
 
-#
+
 # def save_specific_p_nodes(original_dataframe, wikifiered_dataframe) -> bool:
 #     try:
 #         original_columns_list = set(original_dataframe.columns.tolist())

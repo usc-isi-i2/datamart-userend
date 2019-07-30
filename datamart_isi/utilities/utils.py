@@ -252,30 +252,40 @@ class Utils:
                 current_dataset_paths = [os.path.join(each_dataset_path, o) for o in os.listdir(each_dataset_path)
                                          if os.path.isdir(os.path.join(each_dataset_path, o))]
                 for current_dataset_path in current_dataset_paths:
-                    try:
-                        current_dataset_metadata_dict = dict()
-                        dataset_doc_json_path = os.path.join(current_dataset_path, current_dataset_path.split("/")[-1] + "_dataset", "datasetDoc.json")
-                        print(dataset_doc_json_path)
-                        all_dataset_uri = 'file://{}'.format(dataset_doc_json_path)
-                        current_dataset = loader.load(dataset_uri=all_dataset_uri)
-                        res_id, current_dataframe = d3m_utils.get_tabular_resource(dataset=current_dataset, resource_id=None)
-                        current_dataset_metadata_dict["dataset_id"] = current_dataset.metadata.query(())['id']
-                        for i in range(current_dataframe.shape[1]):
-                            each_metadata = current_dataset.metadata.query((res_id, ALL_ELEMENTS, i))
-                            current_dataset_metadata_dict[current_dataframe.columns[i]] = each_metadata['semantic_types']
-                        input_columns = current_dataframe.columns.tolist()
-                        input_columns.sort()
-                        hash_generator = hashlib.md5()
-                        hash_generator.update(str(input_columns).encode('utf-8'))
-                        hash_key = str(hash_generator.hexdigest())
-                        file_loc = os.path.join(cache_folder, hash_key + "_metadata")
-                        with open(file_loc, "w") as f:
-                            json.dump(current_dataset_metadata_dict, f)
-                        _logger.info("Saving " + current_dataset_metadata_dict["dataset_id"] + " to " + file_loc + " success!")
-                    except Exception as e:
+                    dataset_doc_json_path = os.path.join(current_dataset_path,
+                                                         current_dataset_path.split("/")[-1] + "_dataset",
+                                                         "datasetDoc.json")
+                    print(dataset_doc_json_path)
+                    all_dataset_uri = 'file://{}'.format(dataset_doc_json_path)
+                    current_dataset = loader.load(dataset_uri=all_dataset_uri)
+                    response = Utils.save_metadata_from_dataset(current_dataset, cache_folder)
+                    if not response:
                         _logger.error("Saving dataset from " + current_dataset_path + " failed!")
-                        _logger.debug(e, exc_info=True)
 
             else:
-                _logger.error("Path " + each_dataset_path + "do not exist!")
+                _logger.error("Path " + each_dataset_path + " do not exist!")
 
+    @staticmethod
+    def save_metadata_from_dataset(current_dataset: d3m_Dataset, cache_folder: str = seed_dataset_store_location) -> bool:
+        try:
+            current_dataset_metadata_dict = dict()
+            res_id, current_dataframe = d3m_utils.get_tabular_resource(dataset=current_dataset, resource_id=None)
+            current_dataset_metadata_dict["dataset_id"] = current_dataset.metadata.query(())['id']
+            for i in range(current_dataframe.shape[1]):
+                each_metadata = current_dataset.metadata.query((res_id, ALL_ELEMENTS, i))
+                current_dataset_metadata_dict[current_dataframe.columns[i]] = each_metadata['semantic_types']
+            input_columns = current_dataframe.columns.tolist()
+            input_columns.sort()
+            hash_generator = hashlib.md5()
+            hash_generator.update(str(input_columns).encode('utf-8'))
+            hash_key = str(hash_generator.hexdigest())
+            file_loc = os.path.join(cache_folder, hash_key + "_metadata")
+            with open(file_loc, "w") as f:
+                json.dump(current_dataset_metadata_dict, f)
+            _logger.info("Saving " + current_dataset_metadata_dict["dataset_id"] + " to " + file_loc + " success!")
+            return True
+
+        except Exception as e:
+            _logger.error("Saving dataset failed!")
+            _logger.debug(e, exc_info=True)
+            return False
