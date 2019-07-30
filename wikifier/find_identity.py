@@ -16,6 +16,7 @@ except:
     
 P_blacklist = ["P5736", "P3984"]
 
+
 class FindIdentity:
     def __init__(self):
         pass
@@ -43,7 +44,7 @@ class FindIdentity:
     #     return output
 
     @staticmethod
-    def get_identifier_3(strings:typing.List[str], column_name: str=None, target_p_node: str=None):
+    def get_identifier_3(strings: typing.List[str], column_name: str = None, target_p_node: str = None):
 
         id_nodes_dict = FindIdentity.call_redis(strings)
         result = []
@@ -98,7 +99,6 @@ class FindIdentity:
 
         # print('Top 3 possible properties:')
         # print(P_predicts)
-
         for P_predict in best_predicts:
             output = {}  # key string, value:Q123
             for s in strings:

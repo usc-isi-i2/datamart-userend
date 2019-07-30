@@ -11,6 +11,7 @@ wikidata_server_suffix = "/wikidata"
 memcache_server_suffix = ":11211"
 wikifier_server_suffix = "/wikifier/get_identifiers"
 general_search_server_suffix = ":9001/blazegraph/namespace/datamart3/sparql"
+rest_api_suffix = ":9000"
 
 # current memcache server's max size is 100MB
 memcache_max_value_size = 1024*1024*100
@@ -28,11 +29,18 @@ special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 max_entities_length = 10000
 
+need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",
+                                  "http://schema.org/Text"
+                                  }
+
 skip_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/PrimaryKey",
                                   "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
                                   "https://metadata.datadrivendiscovery.org/types/TrueTarget",
                                   "https://metadata.datadrivendiscovery.org/types/Target",
-                                  "https://metadata.datadrivendiscovery.org/types/SuggestedTarget"}
+                                  "https://metadata.datadrivendiscovery.org/types/SuggestedTarget",
+                                  "http://schema.org/Float",
+                                  "http://schema.org/Integer"}
+default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
 wikidata_uri_template = '<http://www.wikidata.org/entity/{}>'

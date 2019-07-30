@@ -13,6 +13,7 @@ import d3m.metadata.base as metadata_base
 import json
 import string
 import time
+import numpy as np
 from ast import literal_eval
 import requests
 import re
@@ -54,7 +55,6 @@ WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
 MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
-SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST = config.skip_wikifier_column_type_list
 WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
 EM_ES_URL = config.em_es_url
 EM_ES_INDEX = config.em_es_index
@@ -89,7 +89,6 @@ class DatamartQueryCursor(object):
         self.search_query = search_query
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
-        self._skip_wikifier_column_type = SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST
         self.remained_part = None
         self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
         if need_run_wikifier is None:
@@ -220,7 +219,7 @@ class DatamartQueryCursor(object):
         :return: None
         """
         self._logger.debug("Start running wikifier...")
-        results = d3m_wikifier.run_wikifier(supplied_data=input_data, skip_column_type=SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST)
+        results = d3m_wikifier.run_wikifier(supplied_data=input_data)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
         return results
@@ -580,10 +579,15 @@ class Datamart(object):
             need_run_wikifier = None
             search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector")]
 
+        # try to update with more correct metadata if possible
+        updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+        if updated_result[0]:  # [0] store whether it success find the metadata
+            supplied_data = updated_result[1]
+
         if type(supplied_data) is d3m_Dataset:
             res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
         else:
-            self.supplied_dataframe = supplied_data
+            raise ValueError("Incorrect supplied data type as " + str(type(supplied_data)))
 
         # if query is None:
         # if not query given, try to find the Text columns from given dataframe and use it to find some candidates
@@ -649,6 +653,11 @@ class Datamart(object):
         """
 
         # put entities of all given columns from "data_constraints" into the query's variable part and run the query
+
+        # try to update with more correct metadata if possible
+        updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+        if updated_result[0]:  # [0] store whether it success find the metadata
+            supplied_data = updated_result[1]
 
         search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
                                                               data_constraints=data_constraints)
@@ -1748,7 +1757,7 @@ class DatamartSearchResult:
         :return: a wikifiered d3m_Dataset if success
         """
         self._logger.debug("Start running wikifier.")
-        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, skip_column_type=SKIP_WIKIFIER_COLUMN_SEMANTIC_TYPE_LIST)
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data)
         self._logger.debug("Running wikifier finished.")
         return results
 
@@ -1774,10 +1783,15 @@ class DatamartSearchResult:
         """
 
         if type(supplied_data) is d3m_Dataset:
+            # try to update with more correct metadata if possible
+            updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+            if updated_result[0]:  # [0] store whether it success find the metadata
+                supplied_data = updated_result[1]
             self.supplied_data = supplied_data
             self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
                                                                                    resource_id=None,
                                                                                    has_hyperparameter=False)
+
         else:
             self.supplied_dataframe = supplied_data
 
@@ -1810,9 +1824,12 @@ class DatamartSearchResult:
                                     return_format="ds", augment_resource_id=augment_resource_id)
             else:
                 raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
-        # res[augment_resource_id] = res[augment_resource_id].astype(str)
+
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-            res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+            res[augment_resource_id].reset_index(drop=True)
+
+        res[augment_resource_id].fillna('', inplace=True)
+        res[augment_resource_id] = res[augment_resource_id].astype(str)
 
         response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                      search_result_serialized=self.serialize(),
@@ -1847,6 +1864,7 @@ class DatamartSearchResult:
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
         download_result = download_result.drop(columns=['joining_pairs'])
+
         column_names_to_join = None
         r1_paired = set()
         i = 0
