@@ -479,7 +479,7 @@ class DatamartQueryCursor(object):
                 # do a vector search for each Q nodes column
                 for each_column in q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
-                    q_nodes_list = supplied_dataframe.iloc[:, each_column].dropna().tolist()
+                    q_nodes_list = list(filter(None, supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
                     unique_qnodes.sort()
                     self._logger.info("Unique Q nodes " + str(len(unique_qnodes)) + " are detected!")
@@ -1023,7 +1023,7 @@ class DatamartSearchResult:
         for i in range(length):
             target_q_node_column_name = self.search_result['target_q_node_column_name']
             semantic_types = (
-                "http://schema.org/Number",
+                "http://schema.org/Float",
                 'https://metadata.datadrivendiscovery.org/types/Attribute',
                 AUGMENTED_COLUMN_SEMANTIC_TYPE
             )
@@ -1619,7 +1619,7 @@ class DatamartSearchResult:
                 v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
                 each_result[v_name] = vectors[i]
                 semantic_types_dict[v_name] = (
-                    "http://schema.org/Number",
+                    "http://schema.org/Float",
                     "https://metadata.datadrivendiscovery.org/types/Attribute",
                     AUGMENTED_COLUMN_SEMANTIC_TYPE)
             return_df = return_df.append(each_result, ignore_index=True)
