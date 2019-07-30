@@ -66,11 +66,6 @@ def run_wikifier(supplied_data: d3m_Dataset):
         new_meta = frozendict.FrozenOrderedDict(old_meta)
         output_ds.metadata = output_ds.metadata.update(selector, new_meta)
 
-        # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
-        # TODO: In this way, we will not search on augmented columns if run second time of wikifier
-        wikifier.save_specific_p_nodes(original_dataframe=wikifier_res, column_to_p_node_dict=dict())
-        Utils.save_metadata_from_dataset(output_ds)
-
         # update each column's metadata
         for i in range(old_column_length, wikifier_res.shape[1]):
             selector = (res_id, ALL_ELEMENTS, i)
@@ -82,6 +77,14 @@ def run_wikifier(supplied_data: d3m_Dataset):
                             Q_NODE_SEMANTIC_TYPE
                         )}
             output_ds.metadata = output_ds.metadata.update(selector, metadata)
+
+        # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
+        # TODO: In this way, we will not search on augmented columns if run second time of wikifier
+        import pdb
+        pdb.set_trace()
+        wikifier.save_specific_p_nodes(original_dataframe=wikifier_res, column_to_p_node_dict=dict())
+        Utils.save_metadata_from_dataset(output_ds)
+
         return output_ds
 
     except Exception as e:
