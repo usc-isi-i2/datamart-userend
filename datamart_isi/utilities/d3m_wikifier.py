@@ -3,6 +3,7 @@ import pandas as pd
 import copy
 import os
 import typing
+import re
 import frozendict
 import logging
 import json
@@ -21,6 +22,13 @@ _logger = logging.getLogger(__name__)
 
 
 def run_wikifier(supplied_data: d3m_Dataset):
+    # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
+    # TODO: In this way, we will not search on augmented columns if run second time of wikifier
+    exist_q_nodes = check_q_nodes_exists_or_not(supplied_data)
+    if exist_q_nodes:
+        _logger.warning("The input dataset already have Q nodes, will not run wikifier again!")
+        return supplied_data
+
     try:
         output_ds = copy.copy(supplied_data)
         need_column_type = config.need_wikifier_column_type_list
@@ -77,14 +85,6 @@ def run_wikifier(supplied_data: d3m_Dataset):
                             Q_NODE_SEMANTIC_TYPE
                         )}
             output_ds.metadata = output_ds.metadata.update(selector, metadata)
-
-        # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
-        # TODO: In this way, we will not search on augmented columns if run second time of wikifier
-        import pdb
-        pdb.set_trace()
-        wikifier.save_specific_p_nodes(original_dataframe=wikifier_res, column_to_p_node_dict=dict())
-        Utils.save_metadata_from_dataset(output_ds)
-
         return output_ds
 
     except Exception as e:
@@ -101,6 +101,9 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
     hash_key = str(hash_generator.hexdigest())
     temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
     specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
+    _logger.debug("Current searching path is: " + temp_path)
+    _logger.debug("Current columns are: " + str(columns_list))
+    _logger.debug("Current dataset's hash key is: " + hash_key)
     if path.exists(specific_q_nodes_file):
         with open(specific_q_nodes_file, 'r') as f:
             res = json.load(f)
@@ -109,6 +112,42 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
         return None
 
 
+def check_q_nodes_exists_or_not(input) -> bool:
+    """
+    Function used to detect whether a dataset or a dataframe already contains q nodes columns or not
+    Usually, we should not run wikifier again if there already exist q nodes
+    :param input:
+    :return:
+    """
+    if type(input) is d3m_Dataset:
+        input_type = "ds"
+        res_id, input_dataframe = d3m_utils.get_tabular_resource(dataset=input, resource_id=None)
+    elif type(input) is d3m_DataFrame:
+        input_type = "df"
+        input_dataframe = input
+    else:
+        _logger.error("Wrong type of input as :" + str(type(input)))
+        return False
+
+    for i in range(input_dataframe.shape[1]):
+        if input_type == "ds":
+            selector = (res_id, ALL_ELEMENTS, i)
+        elif input_type == "df":
+            selector = (ALL_ELEMENTS, i)
+
+        each_metadata = input.metadata.query(selector)
+        if Q_NODE_SEMANTIC_TYPE in each_metadata['semantic_types']:
+            _logger.info("Q nodes columns found in input data, will not run wikifier.")
+            return True
+
+        elif 'http://schema.org/Text' in each_metadata["semantic_types"]:
+            # detect Q-nodes by content
+            data = list(filter(None, input_dataframe.iloc[:, i].dropna().tolist()))
+            if all(re.match(r'^Q\d+$', x) for x in data):
+                _logger.info("Q nodes columns found in input data, will not run wikifier.")
+                return True
+
+    return False
 # def save_specific_p_nodes(original_dataframe, wikifiered_dataframe) -> bool:
 #     try:
 #         original_columns_list = set(original_dataframe.columns.tolist())

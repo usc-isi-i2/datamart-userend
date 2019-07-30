@@ -222,6 +222,8 @@ class Utils:
         hash_generator = hashlib.md5()
         hash_generator.update(str(input_columns).encode('utf-8'))
         hash_key = str(hash_generator.hexdigest())
+        _logger.debug("Current columns are: " + str(input_columns))
+        _logger.debug("Current dataset's hash key is: " + hash_key)
         try:
             file_loc = os.path.join(cache_folder, hash_key + "_metadata")
             if os.path.exists(file_loc):
@@ -279,6 +281,8 @@ class Utils:
             hash_generator = hashlib.md5()
             hash_generator.update(str(input_columns).encode('utf-8'))
             hash_key = str(hash_generator.hexdigest())
+            _logger.debug("Current columns are: " + str(input_columns))
+            _logger.debug("Current dataset's hash key is: " + hash_key)
             file_loc = os.path.join(cache_folder, hash_key + "_metadata")
             with open(file_loc, "w") as f:
                 json.dump(current_dataset_metadata_dict, f)
