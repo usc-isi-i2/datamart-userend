@@ -18,7 +18,6 @@ import numpy as np
 from ast import literal_eval
 import requests
 import re
-import numpy as np
 
 from d3m import container
 from d3m import utils
@@ -283,7 +282,7 @@ class DatamartQueryCursor(object):
                 # do a wikidata search for each Q nodes column
                 for each_column in q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
-                    q_nodes_list = supplied_dataframe.iloc[:, each_column].dropna().tolist()
+                    q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
                     p_count = collections.defaultdict(int)
                     p_nodes_needed = []
                     # old method, the generated results are not very good
@@ -482,7 +481,6 @@ class DatamartQueryCursor(object):
                     q_nodes_list = list(filter(None, supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
                     unique_qnodes.sort()
-                    self._logger.info("Unique Q nodes " + str(len(unique_qnodes)) + " are detected!")
 
                     vector_search_result = {"number_of_vectors": str(len(unique_qnodes)),
                                             "target_q_node_column_name": supplied_dataframe.columns[each_column],
@@ -1597,7 +1595,7 @@ class DatamartSearchResult:
         except ValueError:
             raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
                              ". Maybe use the wrong search results?")
-        q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].dropna().tolist())
+        q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
         q_nodes_list = list(q_nodes_list)
         q_nodes_list.sort()
         return_df = d3m_DataFrame()
@@ -1623,7 +1621,6 @@ class DatamartSearchResult:
                     "https://metadata.datadrivendiscovery.org/types/Attribute",
                     AUGMENTED_COLUMN_SEMANTIC_TYPE)
             return_df = return_df.append(each_result, ignore_index=True)
-        self.supplied_dataframe.iloc[:, q_node_column_number] = self.supplied_dataframe.iloc[:, q_node_column_number].astype(str)
 
         # use rltk joiner to find the joining pairs
         joiner = RLTKJoinerWikidata()
@@ -2025,7 +2022,6 @@ class DatamartSearchResult:
             return_result = None
 
             # start adding shape metadata for dataset
-            df_joined = df_joined.replace(np.nan, '', regex=True)
             if return_format == "ds":
                 return_df = d3m_DataFrame(df_joined, generate_metadata=False)
                 resources = {augment_resource_id: return_df}
