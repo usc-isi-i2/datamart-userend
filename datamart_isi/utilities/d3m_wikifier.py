@@ -24,7 +24,7 @@ _logger = logging.getLogger(__name__)
 def run_wikifier(supplied_data: d3m_Dataset):
     # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
     # TODO: In this way, we will not search on augmented columns if run second time of wikifier
-    exist_q_nodes = check_q_nodes_exists_or_not(supplied_data)
+    exist_q_nodes, supplied_data = check_and_correct_q_nodes_semantic_type(supplied_data)
     if exist_q_nodes:
         _logger.warning("The input dataset already have Q nodes, will not run wikifier again!")
         return supplied_data
@@ -112,13 +112,14 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
         return None
 
 
-def check_q_nodes_exists_or_not(input) -> bool:
+def check_and_correct_q_nodes_semantic_type(input):
     """
     Function used to detect whether a dataset or a dataframe already contains q nodes columns or not
     Usually, we should not run wikifier again if there already exist q nodes
     :param input:
     :return:
     """
+    find_q_node_columns = False
     if type(input) is d3m_Dataset:
         input_type = "ds"
         res_id, input_dataframe = d3m_utils.get_tabular_resource(dataset=input, resource_id=None)
@@ -138,16 +139,21 @@ def check_q_nodes_exists_or_not(input) -> bool:
         each_metadata = input.metadata.query(selector)
         if Q_NODE_SEMANTIC_TYPE in each_metadata['semantic_types']:
             _logger.info("Q nodes columns found in input data, will not run wikifier.")
-            return True
+            find_q_node_columns = True
 
         elif 'http://schema.org/Text' in each_metadata["semantic_types"]:
             # detect Q-nodes by content
             data = list(filter(None, input_dataframe.iloc[:, i].dropna().tolist()))
             if all(re.match(r'^Q\d+$', x) for x in data):
+                input.metadata = input.metadata.update(selector=(res_id, ALL_ELEMENTS, i), metadata={
+                    "semantic_types": ('http://schema.org/Text',
+                                       'https://metadata.datadrivendiscovery.org/types/Attribute',
+                                       Q_NODE_SEMANTIC_TYPE)
+                })
                 _logger.info("Q nodes columns found in input data, will not run wikifier.")
-                return True
+                find_q_node_columns = True
 
-    return False
+    return find_q_node_columns, input
 # def save_specific_p_nodes(original_dataframe, wikifiered_dataframe) -> bool:
 #     try:
 #         original_columns_list = set(original_dataframe.columns.tolist())
