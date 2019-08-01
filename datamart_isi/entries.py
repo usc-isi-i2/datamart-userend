@@ -428,7 +428,6 @@ class DatamartQueryCursor(object):
         self._logger.debug("Searching on datamart finished.")
         return search_result
 
-
     def _search_vector(self) -> typing.List["DatamartSearchResult"]:
         """
         The search function used for vector search
