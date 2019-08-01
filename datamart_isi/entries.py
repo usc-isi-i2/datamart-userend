@@ -17,6 +17,7 @@ import wikifier
 import numpy as np
 from ast import literal_eval
 import requests
+import re
 
 from d3m import container
 from d3m import utils
@@ -197,6 +198,17 @@ class DatamartQueryCursor(object):
             if Q_NODE_SEMANTIC_TYPE in each_metadata['semantic_types']:
                 self._logger.info("Q nodes columns found in input data, will not run wikifier.")
                 return False
+            elif 'http://schema.org/Text' in each_metadata["semantic_types"]:
+                # detect Q-nodes by content
+                data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
+                if all(re.match(r'^Q\d+$', x) for x in data):
+                    self.supplied_data.metadata = self.supplied_data.metadata.update(selector=(res_id, ALL_ELEMENTS, i), metadata={
+                        "semantic_types": ('http://schema.org/Text',
+                                           'https://metadata.datadrivendiscovery.org/types/Attribute',
+                                           Q_NODE_SEMANTIC_TYPE)
+                    })
+                    self._logger.info("Q nodes columns found in input data, will not run wikifier.")
+                    return False
         self._logger.info("No Q nodes columns found in input data, will run wikifier.")
         return True
 
@@ -246,6 +258,17 @@ class DatamartQueryCursor(object):
                     metadata_selector = (metadata_base.ALL_ELEMENTS, i)
                 if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
                     q_nodes_columns.append(i)
+                elif 'http://schema.org/Text' in metadata_input.query(metadata_selector)["semantic_types"]:
+                    # detect Q-nodes columns
+                    data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
+                    if all(re.match(r'^Q\d+$', x) for x in data):
+                        metadata_input = metadata_input.update(
+                            selector=(res_id, ALL_ELEMENTS, i), metadata={
+                                "semantic_types": ('http://schema.org/Text',
+                                                   'https://metadata.datadrivendiscovery.org/types/Attribute',
+                                                   Q_NODE_SEMANTIC_TYPE)
+                            })
+                        q_nodes_columns.append(i)
 
             if len(q_nodes_columns) == 0:
                 self._logger.warning("No wikidata Q nodes detected on corresponding required_variables!")
@@ -432,6 +455,17 @@ class DatamartQueryCursor(object):
                 if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
                     # if no required variables given, attach any Q nodes found
                     q_nodes_columns.append(i)
+                elif 'http://schema.org/Text' in metadata_input.query(metadata_selector)["semantic_types"]:
+                    # detect Q-nodes columns
+                    data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
+                    if all(re.match(r'^Q\d+$', x) for x in data):
+                        metadata_input = metadata_input.update(
+                            selector=(res_id, ALL_ELEMENTS, i), metadata={
+                                "semantic_types": ('http://schema.org/Text',
+                                                   'https://metadata.datadrivendiscovery.org/types/Attribute',
+                                                   Q_NODE_SEMANTIC_TYPE)
+                            })
+                        q_nodes_columns.append(i)
 
             if len(q_nodes_columns) == 0:
                 self._logger.warning("No Wikidata Q nodes detected!")
@@ -444,7 +478,7 @@ class DatamartQueryCursor(object):
                 # do a vector search for each Q nodes column
                 for each_column in q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
-                    q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
+                    q_nodes_list = list(filter(None, supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
                     unique_qnodes.sort()
 
@@ -987,7 +1021,7 @@ class DatamartSearchResult:
         for i in range(length):
             target_q_node_column_name = self.search_result['target_q_node_column_name']
             semantic_types = (
-                "http://schema.org/Number",
+                "http://schema.org/Float",
                 'https://metadata.datadrivendiscovery.org/types/Attribute',
                 AUGMENTED_COLUMN_SEMANTIC_TYPE
             )
@@ -1583,7 +1617,7 @@ class DatamartSearchResult:
                 v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
                 each_result[v_name] = vectors[i]
                 semantic_types_dict[v_name] = (
-                    "http://schema.org/Number",
+                    "http://schema.org/Float",
                     "https://metadata.datadrivendiscovery.org/types/Attribute",
                     AUGMENTED_COLUMN_SEMANTIC_TYPE)
             return_df = return_df.append(each_result, ignore_index=True)
@@ -1655,7 +1689,7 @@ class DatamartSearchResult:
         qnodes = list(filter(None, q_nodes_list))
         qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
         # do elastic search
-        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris)%1024 != 0 else len(qnode_uris)/1024
+        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris)%1024 != 0 else int(len(qnode_uris)/1024)
         res = dict()
         for i in range(num_of_try):
             query = {
