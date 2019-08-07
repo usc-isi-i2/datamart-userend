@@ -35,32 +35,39 @@ def run_wikifier(supplied_data: d3m_Dataset):
         res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
         specific_p_nodes = get_specific_p_nodes(supplied_dataframe)
         if specific_p_nodes:
-            _logger.info("Get specific column<->p_nodes relationship from previous TRAIN run.")
+            target_columns = list()
+            _logger.info("Get specific column<->p_nodes relationship from previous TRAIN run. Will only wikifier those columns!")
             _logger.info(str(specific_p_nodes))
-        target_columns = list(range(supplied_dataframe.shape[1]))
-        temp = copy.deepcopy(target_columns)
+            for i, each_column_name in enumerate(supplied_dataframe.columns.tolist()):
+                if each_column_name in specific_p_nodes:
+                    target_columns.append(i)
 
-        skip_column_type = set()
-        # if we detect some special type of semantic type (like PrimaryKey here), it means some metadata is adapted
-        # from exist dataset but not all auto-generated, so we can have more restricts
-        for each in target_columns:
-            each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
-            if "https://metadata.datadrivendiscovery.org/types/PrimaryKey" in each_column_semantic_type:
-                skip_column_type = config.skip_wikifier_column_type_list
-                break
+        else:
+            # if specific p nodes not given, try to find possible candidate p nodes columns
+            target_columns = list(range(supplied_dataframe.shape[1]))
+            temp = copy.deepcopy(target_columns)
 
-        for each in target_columns:
-            each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
-            # if the column type inside here found, this coumn should be wikified
-            if set(each_column_semantic_type).intersection(need_column_type):
-                continue
-            # if the column type inside here found, this column should not be wikified
-            elif set(each_column_semantic_type).intersection(skip_column_type):
-                temp.remove(each)
-            elif supplied_dataframe.columns[each] == "d3mIndex":
-                temp.remove(each)
+            skip_column_type = set()
+            # if we detect some special type of semantic type (like PrimaryKey here), it means some metadata is adapted
+            # from exist dataset but not all auto-generated, so we can have more restricts
+            for each in target_columns:
+                each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
+                if "https://metadata.datadrivendiscovery.org/types/PrimaryKey" in each_column_semantic_type:
+                    skip_column_type = config.skip_wikifier_column_type_list
+                    break
 
-        target_columns = temp
+            for each in target_columns:
+                each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
+                # if the column type inside here found, this coumn should be wikified
+                if set(each_column_semantic_type).intersection(need_column_type):
+                    continue
+                # if the column type inside here found, this column should not be wikified
+                elif set(each_column_semantic_type).intersection(skip_column_type):
+                    temp.remove(each)
+                elif supplied_dataframe.columns[each] == "d3mIndex":
+                    temp.remove(each)
+            target_columns = temp
+
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_p_nodes)
         output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
