@@ -1648,8 +1648,6 @@ class DatamartSearchResult:
             if generate_metadata:
                 metadata_new = metadata_new.update(metadata=metadata_each_column, selector=each_selector)
 
-        import pdb
-        pdb.set_trace()
         # special for joining_pairs column
         if return_format == "df":
             each_selector = (ALL_ELEMENTS, each_column + 1)
