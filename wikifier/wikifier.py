@@ -77,7 +77,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
             pass
 
         curData = []
-        for each in input_df.iloc[:, column].tolist():
+        for each in input_df.iloc[:, column]:
             if type(each) is str:
                 curData.append(each)
             elif each is np.nan or math.isnan(each):
@@ -85,15 +85,20 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
             else:
                 curData.append(str(each))
 
-        if coverage(curData) < threshold_for_converage:
-            _logger.debug("Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(threshold_for_converage))
-            continue
-        # for each column, try to find corresponding possible P nodes id first
+        # for each column, try to find corresponding specific P nodes required
         if target_p_nodes is not None and current_column_name in target_p_nodes:
+            # if found, we should always create the extra column, even the coverage is less than threshold
             target_p_node_to_send = target_p_nodes[current_column_name]
+            _logger.info("Specific P node given, will wikifier this column anyway.")
         else:
+            # if not found, check if coverage reach the threshold
             target_p_node_to_send = None
+            if coverage(curData) < threshold_for_converage:
+                _logger.debug("Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(
+                    threshold_for_converage))
+                continue
 
+        # get wikifiered result for this column
         for idx, res in enumerate(FindIdentity.get_identifier_3(strings=curData, column_name=current_column_name,
                                                                 target_p_node=target_p_node_to_send)):
             # res[0] is the send input P node
@@ -102,7 +107,8 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
             for i in range(len(curData)):
                 if curData[i] in top1_dict:
                     new_col[i] = top1_dict[curData[i]]
-            if coverage(new_col) < threshold_for_converage:
+            # same as previous, only check when no specific P nodes given
+            if not target_p_node_to_send and coverage(new_col) < threshold_for_converage:
                 _logger.debug("[WARNING] Coverage of Q nodes is " + str(coverage(new_col)) +
                               " which is less than threshold " + str(threshold_for_converage))
                 continue

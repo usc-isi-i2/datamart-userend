@@ -13,8 +13,6 @@ import d3m.metadata.base as metadata_base
 import json
 import string
 import time
-import wikifier
-import numpy as np
 from ast import literal_eval
 import requests
 import re
@@ -95,6 +93,7 @@ class DatamartQueryCursor(object):
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
             self.need_run_wikifier = need_run_wikifier
+        self.q_nodes_columns = list()
 
     def get_next_page(self, *, limit: typing.Optional[int] = 20, timeout: int = None) \
             -> typing.Optional[typing.Sequence['DatamartSearchResult']]:
@@ -166,6 +165,7 @@ class DatamartQueryCursor(object):
                 current_result.extend(search_res)
 
         if len(current_result) == 0:
+            self._logger.warning("No search results found!")
             return None
         else:
             if len(current_result) > limit:
@@ -175,13 +175,24 @@ class DatamartQueryCursor(object):
 
     def _check_need_wikifier_or_not(self) -> bool:
         """
-        inner function used to check whether there already exist Q nodes in the supplied ata
-        If not, will return True to indicate need to run wikifier
-        If already exist Q nodes, return False to indicate no need to run wikifier
-        :return: a bool value to indicate whether need to run wikifier or not
+        Check whether need to run wikifier or not, if wikidata type column detected, this column's semantic type will also be
+        checked if no Q node semantic exist
+        :return: a bool value
+        True means Q nodes column already detected and skip running wikifier
+        False means no Q nodes column detected, need to run wikifier
         """
-        if self.supplied_data is None:
-            return False
+        need_wikifier_or_not, self.supplied_data = d3m_wikifier.check_and_correct_q_nodes_semantic_type(self.supplied_data)
+        if not need_wikifier_or_not:
+            # if not need to run wikifier, we can find q node columns now
+            self.q_nodes_columns = self._find_q_node_columns()
+        return need_wikifier_or_not
+
+    def _find_q_node_columns(self) -> typing.List[int]:
+        """
+        Inner function used to find q node columns by semantic type
+        :return: a list of int which indcate the q node columns
+        """
+        q_nodes_columns = list()
         if type(self.supplied_data) is d3m_Dataset:
             res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
             selector_base_type = "ds"
@@ -189,28 +200,17 @@ class DatamartQueryCursor(object):
             supplied_dataframe = self.supplied_data
             selector_base_type = "df"
 
+        # check whether Qnode is given in the inputs, if given, use this to search
+        metadata_input = self.supplied_data.metadata
         for i in range(supplied_dataframe.shape[1]):
             if selector_base_type == "ds":
                 metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
             else:
                 metadata_selector = (metadata_base.ALL_ELEMENTS, i)
-            each_metadata = self.supplied_data.metadata.query(metadata_selector)
-            if Q_NODE_SEMANTIC_TYPE in each_metadata['semantic_types']:
-                self._logger.info("Q nodes columns found in input data, will not run wikifier.")
-                return False
-            elif 'http://schema.org/Text' in each_metadata["semantic_types"]:
-                # detect Q-nodes by content
-                data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
-                if all(re.match(r'^Q\d+$', x) for x in data):
-                    self.supplied_data.metadata = self.supplied_data.metadata.update(selector=(res_id, ALL_ELEMENTS, i), metadata={
-                        "semantic_types": ('http://schema.org/Text',
-                                           'https://metadata.datadrivendiscovery.org/types/Attribute',
-                                           Q_NODE_SEMANTIC_TYPE)
-                    })
-                    self._logger.info("Q nodes columns found in input data, will not run wikifier.")
-                    return False
-        self._logger.info("No Q nodes columns found in input data, will run wikifier.")
-        return True
+            if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
+                # if no required variables given, attach any Q nodes found
+                q_nodes_columns.append(i)
+        return q_nodes_columns
 
     def run_wikifier(self, input_data: d3m_Dataset) -> d3m_Dataset:
         """
@@ -222,6 +222,7 @@ class DatamartQueryCursor(object):
         results = d3m_wikifier.run_wikifier(supplied_data=input_data)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
+        self.q_nodes_columns = self._find_q_node_columns()
         return results
 
     def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
@@ -239,48 +240,22 @@ class DatamartQueryCursor(object):
 
         wikidata_results = []
         try:
-            q_nodes_columns = []
             if type(supplied_data) is d3m_Dataset:
                 res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
-                selector_base_type = "ds"
             else:
                 supplied_dataframe = supplied_data
-                selector_base_type = "df"
 
-            # check whether Qnode is given in the inputs, if given, use this to wikidata and search
-            # required_variables_names = None
-            metadata_input = supplied_data.metadata
-
-            for i in range(supplied_dataframe.shape[1]):
-                if selector_base_type == "ds":
-                    metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
-                else:
-                    metadata_selector = (metadata_base.ALL_ELEMENTS, i)
-                if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
-                    q_nodes_columns.append(i)
-                elif 'http://schema.org/Text' in metadata_input.query(metadata_selector)["semantic_types"]:
-                    # detect Q-nodes columns
-                    data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
-                    if all(re.match(r'^Q\d+$', x) for x in data):
-                        metadata_input = metadata_input.update(
-                            selector=(res_id, ALL_ELEMENTS, i), metadata={
-                                "semantic_types": ('http://schema.org/Text',
-                                                   'https://metadata.datadrivendiscovery.org/types/Attribute',
-                                                   Q_NODE_SEMANTIC_TYPE)
-                            })
-                        q_nodes_columns.append(i)
-
-            if len(q_nodes_columns) == 0:
+            if len(self.q_nodes_columns) == 0:
                 self._logger.warning("No wikidata Q nodes detected on corresponding required_variables!")
                 self._logger.warning("Will skip wikidata search part")
                 return wikidata_results
 
             else:
                 self._logger.info("Wikidata Q nodes inputs detected! Will search with it.")
-                self._logger.info("Totally " + str(len(q_nodes_columns)) + " Q nodes columns detected!")
+                self._logger.info("Totally " + str(len(self.q_nodes_columns)) + " Q nodes columns detected!")
 
                 # do a wikidata search for each Q nodes column
-                for each_column in q_nodes_columns:
+                for each_column in self.q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
                     q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
                     p_count = collections.defaultdict(int)
@@ -388,6 +363,8 @@ class DatamartQueryCursor(object):
         for i, each_result in enumerate(query_results):
             self._logger.debug("Get returned No." + str(i) + " query result as ")
             self._logger.debug(str(each_result))
+
+            # the special way to calculate the score of temporal variable search
             if "start_time" in each_result.keys() and "end_time" in each_result.keys():
                 tv = query["variables_search"]["temporal_variable"]
                 start_date = pd.to_datetime(tv["start"]).timestamp()
@@ -395,7 +372,6 @@ class DatamartQueryCursor(object):
                 start_time = pd.to_datetime(each_result['start_time']['value']).timestamp()
                 end_time = pd.to_datetime(each_result['end_time']['value']).timestamp()  # dataset
 
-                # TODO: it seems the score calculation still have some problem here
                 denominator = float(end_date - start_date)
                 if end_date > end_time:
                     if start_date > end_time:
@@ -433,50 +409,23 @@ class DatamartQueryCursor(object):
         :return: List[DatamartSearchResult]
         """
         self._logger.debug("Start running search on Vectors...")
-
         vector_results = []
         try:
-            q_nodes_columns = []
             if type(self.supplied_data) is d3m_Dataset:
                 res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
-                selector_base_type = "ds"
             else:
                 supplied_dataframe = self.supplied_data
-                selector_base_type = "df"
 
-            # check whether Qnode is given in the inputs, if given, use this to search
-            metadata_input = self.supplied_data.metadata
-
-            for i in range(supplied_dataframe.shape[1]):
-                if selector_base_type == "ds":
-                    metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
-                else:
-                    metadata_selector = (metadata_base.ALL_ELEMENTS, i)
-                if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
-                    # if no required variables given, attach any Q nodes found
-                    q_nodes_columns.append(i)
-                elif 'http://schema.org/Text' in metadata_input.query(metadata_selector)["semantic_types"]:
-                    # detect Q-nodes columns
-                    data = list(filter(None, supplied_dataframe.iloc[:, i].dropna().tolist()))
-                    if all(re.match(r'^Q\d+$', x) for x in data):
-                        metadata_input = metadata_input.update(
-                            selector=(res_id, ALL_ELEMENTS, i), metadata={
-                                "semantic_types": ('http://schema.org/Text',
-                                                   'https://metadata.datadrivendiscovery.org/types/Attribute',
-                                                   Q_NODE_SEMANTIC_TYPE)
-                            })
-                        q_nodes_columns.append(i)
-
-            if len(q_nodes_columns) == 0:
+            if len(self.q_nodes_columns) == 0:
                 self._logger.warning("No Wikidata Q nodes detected!")
                 self._logger.warning("Will skip vector search part")
                 return vector_results
             else:
                 self._logger.info("Wikidata Q nodes inputs detected! Will search with it.")
-                self._logger.info("Totally " + str(len(q_nodes_columns)) + " Q nodes columns detected!")
+                self._logger.info("Totally " + str(len(self.q_nodes_columns)) + " Q nodes columns detected!")
 
                 # do a vector search for each Q nodes column
-                for each_column in q_nodes_columns:
+                for each_column in self.q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
                     q_nodes_list = list(filter(None, supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
@@ -486,16 +435,17 @@ class DatamartQueryCursor(object):
                                             "target_q_node_column_name": supplied_dataframe.columns[each_column],
                                             "q_nodes_list": unique_qnodes}
                     vector_results.append(DatamartSearchResult(search_result=vector_search_result,
-                                                                 supplied_data=self.supplied_data,
-                                                                 query_json=None,
-                                                                 search_type="vector")
+                                                               supplied_data=self.supplied_data,
+                                                               query_json=None,
+                                                               search_type="vector")
                                             )
 
                 self._logger.debug("Running search on vector finished.")
             return vector_results
-        except:
-            self._logger.error("Searching with vector failed!")
-            traceback.print_exc()
+        except Exception as e:
+            self._logger.error("Searching with wikidata vector failed!")
+            self._logger.debug(e, exc_info=True)
+
         finally:
             return vector_results
 
