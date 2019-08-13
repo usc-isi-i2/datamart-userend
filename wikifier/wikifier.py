@@ -24,6 +24,7 @@ _logger = logging.getLogger(__name__)
 NEW_WIKIFIER_SERVER = config.new_wikifier_server
 
 
+
 def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas",
             wikifier_choice: typing.List[str]=None, threshold: float=0.7):
     if input_type == "pandas":
