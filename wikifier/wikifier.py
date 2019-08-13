@@ -6,8 +6,13 @@ import math
 import hashlib
 import json
 import logging
+import requests
+import pandas as pd
+import io
+import csv
 from .find_identity import FindIdentity
 from collections import Counter
+from datamart_isi import config
 
 try:
     from datamart_isi.config import default_temp_path
@@ -16,11 +21,55 @@ except:
     DEFAULT_TEMP_PATH = "/tmp"
 
 _logger = logging.getLogger(__name__)
+NEW_WIKIFIER_SERVER = config.new_wikifier_server
 
 
-def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas"):
+
+def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas",
+            wikifier_choice: typing.List[str]=None, threshold: float=0.7):
     if input_type == "pandas":
-        return produce_for_pandas(input_df=inputs, target_columns=target_columns, target_p_nodes=target_p_nodes)
+        if wikifier_choice is None:
+            return produce_by_automatic(input_df=inputs, target_columns=target_columns,
+                                        target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
+        elif target_columns is None:
+            if wikifier_choice[0] == "identifier":
+                return produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
+            elif wikifier_choice[0] == "new_wikifier":
+                return produce_by_new_wikifier(inputs, target_columns, threshold)
+            else:
+                return produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
+        else:
+            col_name = inputs.columns.tolist()
+            col_idt, col_new, col_at = [], [], []
+            for i in range(len(wikifier_choice)):
+                if wikifier_choice[i] == "identifier":
+                    col_idt.append(target_columns[i])
+                elif wikifier_choice[i] == "new_wikifier":
+                    col_new.append(target_columns[i])
+                else:
+                    col_at.append(target_columns[i])
+            col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new + col_idt + col_at)))
+            return_df = copy.deepcopy(inputs.iloc[:, col_res])
+
+            if col_idt:
+                return_df_idt = produce_for_pandas(inputs.iloc[:, col_idt], [i for i in range(len(col_idt))], target_p_nodes, threshold)
+                # change the column name index
+                col_tmp = return_df_idt.columns.tolist()
+                col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+                return_df = pd.concat([return_df, return_df_idt], axis=1)
+            if col_new:
+                return_df_new = produce_by_new_wikifier(inputs.iloc[:, col_new], [i for i in range(len(col_new))], threshold)
+                col_tmp = return_df_new.columns.tolist()
+                col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+                return_df = pd.concat([return_df, return_df_new], axis=1)
+            if col_at:
+                return_df_at = produce_by_automatic(inputs.iloc[:, col_at], [i for i in range(len(col_at))], target_p_nodes, threshold)
+                col_tmp = return_df_at.columns.tolist()
+                col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+                return_df = pd.concat([return_df, return_df_at], axis=1)
+
+            return return_df[col_name]
+
     # elif input_type == "d3m_ds":
     #     return produce_for_d3m_dataset(input_ds=inputs, target_columns=target_columns)
     # elif input_type == "d3m_df":
@@ -56,6 +105,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
     :param threshold_for_converage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
+    _logger.debug("[INFO] Start to produce Q-nodes by identifier")
     # if no target columns given, just try every str columns
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
@@ -119,6 +169,77 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
 
     save_specific_p_nodes(input_df, column_to_p_node_dict)
     return return_df
+
+
+def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, threshold_for_converage = 0.7):
+    _logger.debug("[INFO] Start to produce Q-nodes by new wikifier")
+    return_df = copy.deepcopy(input_df)
+    if target_columns is None:
+        target_columns = list(range(input_df.shape[1]))
+
+    col_names = []
+    for column in target_columns:
+        current_column_name = input_df.columns[column]
+        _logger.debug('Current column: ' + current_column_name)
+        col_names.append(current_column_name)
+
+    # input_df.to_csv('wikifier.csv', index=False)
+    data = io.BytesIO()
+    data_bytes = input_df.to_csv(index=False).encode("utf-8")
+    data.write(data_bytes)
+    data.seek(0)
+
+    files = {
+        'file': ('wikifier.csv', data),
+        'type': (None, 'text/csv'),
+        'columns': (None, json.dumps({'names': col_names})),
+        'wikifyPercentage': (None, str(threshold_for_converage))
+    }
+
+    response = requests.post(NEW_WIKIFIER_SERVER, files=files)
+    if response.status_code == 200:
+        data = response.content.decode("utf-8")
+        data = list(csv.reader(data.splitlines(), delimiter=','))
+        return_df = pd.DataFrame(data[1:], columns=data[0])
+        _logger.debug("Successfully getting data from the new wikifier")
+    else:
+        _logger.debug('Error: ' + response.text)
+
+    return return_df
+
+
+def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_converage = 0.7):
+    _logger.debug("[INFO] Start to produce Q-nodes by automatic")
+    if target_columns is None:
+        target_columns = list(range(input_df.shape[1]))
+
+    col_new, col_idt = [], []
+    for column in target_columns:
+        current_column_name = input_df.columns[column]
+        _logger.debug('Current column: ' + current_column_name)
+        try:
+            if input_df.iloc[:, column].astype(float).dtypes == "float64" or input_df.iloc[:, column].astype(int).dtypes == "int64":
+                _logger.debug(current_column_name + ' is numeric column, will choose identifier')
+                col_idt.append(column)
+        except:
+            _logger.debug(current_column_name + ' is text column, will choose new wikifier')
+            col_new.append(column)
+
+    col_name = input_df.columns.tolist()
+    return_df_idt = input_df.iloc[:, col_idt]
+    return_df_new = input_df.iloc[:, col_new]
+
+    if col_idt:
+        return_df_idt = produce_for_pandas(return_df_idt, [i for i in range(len(col_idt))], target_p_nodes, threshold_for_converage)
+        col_tmp = return_df_idt.columns.tolist()
+        col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+    if col_new:
+        return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new))], threshold_for_converage)
+        col_tmp = return_df_new.columns.tolist()
+        col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+    return_df = pd.concat([return_df_idt, return_df_new], axis=1)
+
+    return return_df[col_name]
 
 
 def coverage(column):
