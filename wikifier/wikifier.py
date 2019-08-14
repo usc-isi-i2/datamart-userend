@@ -211,6 +211,11 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         data = response.content.decode("utf-8")
         data = list(csv.reader(data.splitlines(), delimiter=','))
         return_df = pd.DataFrame(data[1:], columns=data[0])
+        col_name = return_df.columns.tolist()
+        for cn in col_name:
+            if "_WK" in cn:
+                new_name = cn.split('_')[0] + "_wikidata"
+                return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Successfully getting data from the new wikifier")
     else:
         _logger.debug('[Error] Something wrong in new wikifier server: ' + response.text)
