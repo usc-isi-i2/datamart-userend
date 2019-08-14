@@ -181,7 +181,6 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
     for column in target_columns:
         current_column_name = input_df.columns[column]
         _logger.debug('Current column: ' + current_column_name)
-        # col_names.append(current_column_name)
         try:
             temp = set()
             for each in input_df.iloc[:, column].dropna().tolist():
@@ -215,8 +214,6 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         _logger.debug("Successfully getting data from the new wikifier")
     else:
         _logger.debug('[Error] Something wrong in new wikifier server: ' + response.text)
-    import pdb
-    pdb.set_trace()
 
     return return_df
 
