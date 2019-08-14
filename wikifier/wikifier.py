@@ -96,6 +96,12 @@ def are_almost_continues_numbers(inputs, threshold=0.7):
         return False
 
 
+def one_character_alphabet(inputs):
+    if all(x.isalpha() and len(x) == 1 for x in inputs):
+        return True
+    return False
+
+
 def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_converage=0.7):
     """
     function used to produce for input type is pandas.dataFrame
@@ -228,6 +234,8 @@ def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target
     col_name = input_df.columns.tolist()
     return_df_idt = input_df.iloc[:, col_idt]
     return_df_new = input_df.iloc[:, col_new]
+    col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new + col_idt)))
+    return_df = copy.deepcopy(input_df.iloc[:, col_res])
 
     if col_idt:
         return_df_idt = produce_for_pandas(return_df_idt, [i for i in range(len(col_idt))], target_p_nodes, threshold_for_converage)
@@ -237,7 +245,7 @@ def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target
         return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new))], threshold_for_converage)
         col_tmp = return_df_new.columns.tolist()
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
-    return_df = pd.concat([return_df_idt, return_df_new], axis=1)
+    return_df = pd.concat([return_df, return_df_idt, return_df_new], axis=1)
 
     return return_df[col_name]
 
