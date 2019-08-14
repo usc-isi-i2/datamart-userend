@@ -13,7 +13,6 @@ from d3m.container import Dataset as d3m_Dataset
 from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi import config
-from datamart_isi.utilities.utils import Utils
 from os import path
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type

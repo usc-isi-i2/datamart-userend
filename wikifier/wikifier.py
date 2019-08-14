@@ -105,7 +105,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
     :param threshold_for_converage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
-    _logger.debug("[INFO] Start to produce Q-nodes by identifier")
+    _logger.info("Start to produce Q-nodes by identifier")
     # if no target columns given, just try every str columns
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))

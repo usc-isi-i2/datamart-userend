@@ -14,8 +14,6 @@ import json
 import string
 import time
 from ast import literal_eval
-import requests
-import re
 
 from d3m import container
 from d3m import utils
@@ -33,6 +31,9 @@ from datamart_isi.utilities.timeout import timeout_call
 from datamart_isi.utilities.wikidata_cache import QueryCache
 from datamart_isi.utilities.general_search_cache import GeneralSearchCache
 from datamart_isi.utilities import d3m_wikifier
+from datamart_isi.utilities.metadata_cache import MetadataCache
+from datamart_isi.utilities.d3m_metadata import MetadataGenerator
+from datamart_isi.utilities.download_manager import DownloadManager
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
@@ -45,7 +46,6 @@ __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchRe
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
 MAX_ENTITIES_LENGTH = config.max_entities_length
-CONTAINER_SCHEMA_VERSION = config.d3m_container_version
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
@@ -53,10 +53,8 @@ WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
 MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
-WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
-EM_ES_URL = config.em_es_url
-EM_ES_INDEX = config.em_es_index
-EM_ES_TYPE = config.em_es_type
+
+
 
 
 class DatamartQueryCursor(object):
@@ -528,7 +526,7 @@ class Datamart(object):
             search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector")]
 
         # try to update with more correct metadata if possible
-        updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+        updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
         if updated_result[0]:  # [0] store whether it success find the metadata
             supplied_data = updated_result[1]
 
@@ -603,7 +601,7 @@ class Datamart(object):
         # put entities of all given columns from "data_constraints" into the query's variable part and run the query
 
         # try to update with more correct metadata if possible
-        updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+        updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
         if updated_result[0]:  # [0] store whether it success find the metadata
             supplied_data = updated_result[1]
 
@@ -734,353 +732,18 @@ class DatamartSearchResult:
         self._res_id = None  # only used for input is Dataset
         self.join_pairs = None
         self.right_df = None
-        self.d3m_metadata = self._get_d3m_metadata()
-
-        if self.search_type == "general":
-            self._id = self.search_result['datasetLabel']['value']
-            self._score = float(self.search_result['score']['value'])
-
-        elif self.search_type == "wikidata":
-            self._id = "wikidata search on " + str(self.search_result['p_nodes_needed']) + " with column " + \
-                       self.search_result['target_q_node_column_name']
-            self._id = self._id.replace(" ", "_")
-            self._id = self._id.replace("[", "_")
-            self._id = self._id.replace("]", "_")
-            self._id = self._id.replace("'", "_")
-            self._id = self._id.replace(",", "")
-            self._score = 1
-        elif self.search_type == "vector":
-            self._id = "vector search on Q nodes with column " + \
-                       self.search_result['target_q_node_column_name']
-            self._id = self._id.replace(" ", "_")
-            self._score = 1
-        else:
-            self._id = "wikifier"
-            self._score = 1
-
-    def _get_d3m_metadata(self) -> DataMetadata:
-        """
-        function used to generate the d3m format metadata
-        """
-        self._logger.debug("Start getting d3m metadata...")
-        if self.search_type == "wikidata":
-            metadata = self._get_d3m_metadata_for_wikidata()
-        elif self.search_type == "general":
-            metadata = self._get_d3m_metadata_for_general()
-        elif self.search_type == "wikifier":
-            self._logger.warning("No metadata can provide for wikifier augment")
-            metadata = DataMetadata()
-        elif self.search_type == "vector":
-            metadata = self._get_d3m_metadata_for_vector()
-        else:
-            self._logger.error("Unknown search type as " + str(self.search_type))
-            metadata = DataMetadata()
-        self._logger.debug("Getting d3m metadata finished.")
-        return metadata
-
-    def _get_d3m_metadata_for_wikidata(self) -> DataMetadata:
-        """
-        function used to generate the d3m format metadata - specified for wikidata search result
-        because search results don't have value type of each P node, we have to query one sample to find
-        """
-        return_metadata = DataMetadata()
-        if self.supplied_dataframe is not None:
-            data_length = self.supplied_dataframe.shape[0]
-        elif self.supplied_data is not None:
-            res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data,
-                                                                             resource_id=None)
-            data_length = self.supplied_dataframe.shape[0]
-        else:
-            self._logger.warning("Can't calculate the row length for wikidata search results without supplied data")
-            data_length = None
-
-        metadata_all = {"structural_type": d3m_DataFrame,
-                        "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
-                        "dimension": {
-                            "name": "rows",
-                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
-                            "length": data_length,
-                        },
-                        "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
-                        }
-        return_metadata = return_metadata.update(selector=(), metadata=metadata_all)
-        metadata_all_elements = {
-            "dimension": {
-                "name": "columns",
-                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
-                "length": len(self.search_result['p_nodes_needed']),
-            }
-        }
-        return_metadata = return_metadata.update(selector=(ALL_ELEMENTS,), metadata=metadata_all_elements)
-
-        for i, each in enumerate(self.search_result['p_nodes_needed']):
-            target_q_node_column_name = self.search_result['target_q_node_column_name']
-            try:
-
-                q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
-                sample_row_number = 0
-                q_node_sample = self.supplied_dataframe.iloc[sample_row_number, q_node_column_number]
-                semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each)
-                # if we failed with first test, repeat until we get success one
-                while not semantic_types[0]:
-                    sample_row_number += 1
-                    q_node_sample = self.supplied_dataframe.iloc[sample_row_number, q_node_column_number]
-                    semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each)
-            except:
-                semantic_types = (
-                    "http://schema.org/Text",
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE
-                )
-            each_metadata = {
-                "name": self.get_node_name(
-                    self.search_result['p_nodes_needed'][i]) + "_for_" + target_q_node_column_name,
-                "structural_type": str,
-                "semantic_types": semantic_types,
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i), metadata=each_metadata)
-
-            each_metadata = {
-                "name": "q_node",
-                "structural_type": str,
-                "semantic_types": (
-                    'http://schema.org/Text',
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    Q_NODE_SEMANTIC_TYPE,
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE
-                ),
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 1), metadata=each_metadata)
-
-            each_metadata = {
-                "name": "joining_pairs",
-                "structural_type": list,
-                "semantic_types": (
-                    'http://schema.org/Integer',
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE
-                ),
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 2), metadata=each_metadata)
-        return return_metadata
-
-    def _get_wikidata_column_semantic_types(self, q_node_sample, p_node_target) -> tuple:
-        """
-        Inner function used to get the semantic types for given wikidata column
-        :return: a tuple, tuple[0] indicate success get semantic type or not, tuple[1] indicate the found semantic types(tuple)
-        """
-        q_nodes_query = '(wd:' + q_node_sample + ') \n'
-        p_nodes_query_part = ' ?' + p_node_target + '\n'
-        p_nodes_optional_part = "  OPTIONAL { ?q wdt:" + p_node_target + " ?" + p_node_target + "}\n"
-        sparql_query = "SELECT DISTINCT ?q " + p_nodes_query_part + \
-                       "WHERE \n{\n  VALUES (?q) { \n " + q_nodes_query + "}\n" + \
-                       p_nodes_optional_part + "}\n"
-
-        results = self.wikidata_cache_manager.get_result(sparql_query)
-        try:
-            # try to get the results if success (sometimes may failed if no Q nodes corresponded found)
-            p_val = results[0][p_node_target]
-            if "datatype" in p_val.keys():
-                semantic_types = (
-                    self.transfer_semantic_type(p_val["datatype"]),
-                    'https://metadata.datadrivendiscovery.org/types/Attribute', AUGMENTED_COLUMN_SEMANTIC_TYPE)
-            else:
-                semantic_types = (
-                    "http://schema.org/Text",
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE)
-
-            return True, semantic_types
-        except:
-            return False, None
-
-    def _get_d3m_metadata_for_general(self):
-        """
-        function used to generate the d3m format metadata - specified for general search result
-        """
-        return_metadata = DataMetadata()
-        metadata_dict = literal_eval(self.search_result['extra_information']['value'])
-        data_metadata = metadata_dict.pop('data_metadata')
-        metadata_all = {"structural_type": d3m_DataFrame,
-                        "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
-                        "dimension": {
-                            "name": "rows",
-                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
-                            "length": int(data_metadata['shape_0']),
-                        },
-                        "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
-                        }
-        return_metadata = return_metadata.update(selector=(), metadata=metadata_all)
-        metadata_all_elements = {
-            "dimension": {
-                "name": "columns",
-                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
-                "length": int(data_metadata['shape_1']),
-            }
-        }
-        return_metadata = return_metadata.update(selector=(ALL_ELEMENTS,), metadata=metadata_all_elements)
-
-        for each_key, each_value in metadata_dict.items():
-            if each_key[:12] == 'column_meta_':
-                each_metadata = {
-                    "name": each_value['name'],
-                    "structural_type": str,
-                    "semantic_types": each_value['semantic_type'],
-                }
-                i = int(each_key.split("_")[-1])
-                return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i), metadata=each_metadata)
-        return return_metadata
-
-    def _get_d3m_metadata_for_vector(self):
-        """
-        function used to generate the d3m format metadata - specified for vector search result
-        """
-        return_metadata = DataMetadata()
-        if self.supplied_dataframe is not None:
-            data_length = self.supplied_dataframe.shape[0]
-        elif self.supplied_data is not None:
-            res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data,
-                                                                             resource_id=None)
-            data_length = self.supplied_dataframe.shape[0]
-        else:
-            self._logger.warning("Can't calculate the row length for vector search results without supplied data")
-            data_length = None
-
-        metadata_all = {"structural_type": d3m_DataFrame,
-                        "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
-                        "dimension": {
-                            "name": "rows",
-                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
-                            "length": data_length,
-                        },
-                        "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
-                        }
-        return_metadata = return_metadata.update(selector=(), metadata=metadata_all)
-        # fetch the num of columns
-        res_dict = self.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
-        length = len(list(res_dict.values())[0].split(','))
-        metadata_all_elements = {
-            "dimension": {
-                "name": "columns",
-                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
-                "length": length,
-            }
-        }
-        return_metadata = return_metadata.update(selector=(ALL_ELEMENTS,), metadata=metadata_all_elements)
-
-        for i in range(length):
-            target_q_node_column_name = self.search_result['target_q_node_column_name']
-            semantic_types = (
-                "http://schema.org/Float",
-                'https://metadata.datadrivendiscovery.org/types/Attribute',
-                AUGMENTED_COLUMN_SEMANTIC_TYPE
-            )
-            if i < 10:
-                s = '00' + str(i)
-            elif i < 100:
-                s = '0' + str(i)
-            else:
-                s = str(i)
-
-            each_metadata = {
-                "name": "vector_" + s + "_of_qnode_with_" + target_q_node_column_name,
-                "structural_type": float,
-                "semantic_types": semantic_types,
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i), metadata=each_metadata)
-
-            each_metadata = {
-                "name": "q_node",
-                "structural_type": str,
-                "semantic_types": (
-                    'http://schema.org/Text',
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    Q_NODE_SEMANTIC_TYPE,
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE
-                ),
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 1), metadata=each_metadata)
-
-            each_metadata = {
-                "name": "joining_pairs",
-                "structural_type": list,
-                "semantic_types": (
-                    'http://schema.org/Integer',
-                    'https://metadata.datadrivendiscovery.org/types/Attribute',
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE
-                ),
-            }
-            return_metadata = return_metadata.update(selector=(ALL_ELEMENTS, i + 2), metadata=each_metadata)
-        return return_metadata
+        self.metadata_manager = MetadataGenerator(supplied_data=self.supplied_data, search_result=self.search_result,
+                                                  search_type=self.search_type, connection_url=self.connection_url,
+                                                  wikidata_cache_manager=self.wikidata_cache_manager)
+        self.d3m_metadata = self.metadata_manager.generate_d3m_metadata_for_search_result()
 
     def display(self) -> pd.DataFrame:
         """
         function used to see what found inside this search result class in a human vision
+        contains information for search result's title, columns and join hints
         :return: a pandas DataFrame
         """
-        if self.search_type == "wikidata":
-            column_names = []
-            for each in self.search_result["p_nodes_needed"]:
-                each_name = self.get_node_name(each)
-                column_names.append(each_name)
-            column_names = ", ".join(column_names)
-            required_variable = list()
-            required_variable.append(self.search_result["target_q_node_column_name"])
-            result = pd.DataFrame({"title": "wikidata search result for "
-                                            + self.search_result["target_q_node_column_name"],
-                                   "columns": column_names, "join columns": required_variable, "score": self._score},
-                                  index=[0])
-
-        elif self.search_type == "general":
-            title = self.search_result['title']['value']
-            column_names = []
-            current_column_number = 0
-            temp_selector = (ALL_ELEMENTS, current_column_number)
-            temp_meta = self.d3m_metadata.query(selector=temp_selector)
-            while len(temp_meta) != 0:
-                column_names.append(temp_meta['name'])
-                current_column_number += 1
-                temp_selector = (ALL_ELEMENTS, current_column_number)
-                temp_meta = self.d3m_metadata.query(selector=temp_selector)
-
-            column_names = ", ".join(column_names)
-            join_columns = self.search_result['variableName']['value']
-
-            result = pd.DataFrame(
-                {"title": title, "columns": column_names, "join columns": join_columns, "score": self._score},
-                index=[0])
-
-        elif self.search_type == "wikifier":
-            title = "wikifier"
-            result = pd.DataFrame({"title": title, "columns": "", "join columns": "", "score": self._score},
-                                  index=[0])
-
-        elif self.search_type == "vector":
-            title = "vector"
-            # fetch the num of columns
-            column_names = []
-            res_dict = self.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
-            length = len(list(res_dict.values())[0].split(','))
-            for i in range(length):
-                if i < 10:
-                    s = '00' + str(i)
-                elif i < 100:
-                    s = '0' + str(i)
-                else:
-                    s = str(i)
-                each_name = "vector_" + s + "_of_qnode_with_" + self.search_result["target_q_node_column_name"]
-                column_names.append(each_name)
-            column_names = ", ".join(column_names)
-            required_variable = list()
-            required_variable.append(self.search_result["target_q_node_column_name"])
-            result = pd.DataFrame({"title": "vector search result for "
-                                            + self.search_result["target_q_node_column_name"],
-                                    "columns": column_names, "join columns": required_variable,
-                                    "score": self._score, "number_of_vectors": self.search_result["number_of_vectors"]},
-                                  index=[0])
-        else:
-            raise ValueError("Unknown search type with " + self.search_type)
-        return result
+        return self.metadata_manager.get_simple_view()
 
     def download(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None,
                  connection_url: str = None, generate_metadata=True, return_format="ds") \
@@ -1113,49 +776,60 @@ class DatamartSearchResult:
             if self.connection_url != connection_url:
                 self.connection_url = connection_url
                 self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
+                self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
+                self.metadata_manager = MetadataGenerator(supplied_data=supplied_data, search_result=self.search_result,
+                                                          search_type=self.search_type, connection_url=connection_url,
+                                                          wikidata_cache_manager=self.wikidata_cache_manager)
                 self._logger.info("New connection url given from download part as " + self.connection_url)
 
+        if type(supplied_data) is d3m_Dataset:
+            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+        elif type(supplied_data) is d3m_DataFrame:
+            self.supplied_dataframe = supplied_data
+        else:
+            self._logger.warning("No supplied data given, will try to use the exist one")
+            if self.supplied_dataframe is None and self.supplied_data is None:
+                raise ValueError("No supplied data found!")
+
+        # get the results without metadata
         if self.search_type == "general":
-            res = self.download_general(supplied_data, generate_metadata, return_format)
+            res = self._download_general()
         elif self.search_type == "wikidata":
-            res = self.download_wikidata(supplied_data, generate_metadata, return_format)
+            res = self._download_wikidata()
         elif self.search_type == "vector":
-            res = self.download_vector(supplied_data, generate_metadata, return_format)
+            res = self._download_vector()
         else:
             raise ValueError("Unknown search type with " + self.search_type)
 
         # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+        res.reset_index(drop=True)
+
         if return_format == "ds":
-            res[AUGMENT_RESOURCE_ID].reset_index(drop=True)
+            return_df = d3m_DataFrame(res, generate_metadata=False)
+            resources = {AUGMENT_RESOURCE_ID: return_df}
+            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
+        elif return_format == "df":
+            return_result = d3m_DataFrame(res, generate_metadata=False)
         else:
-            res.reset_index(drop=True)
+            raise ValueError("Invalid return format was given as " + str(return_format))
 
-        return res
+        if generate_metadata:
+            return_result = self.metadata_manager.generate_metadata_for_download_result(return_result, supplied_data)
 
-    def download_general(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None, generate_metadata=True,
-                         return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) -> typing.Union[d3m_Dataset, d3m_DataFrame]:
+        return return_result
+
+    def _download_general(self) -> pd.DataFrame:
         """
         Specified download function for general datamart Datasets
-        :param supplied_data: given supplied data
-        :param generate_metadata: whether need to genreate the metadata or not
-        :param return_format: set the required return format: d3m_Dataset or d3m_DataFrame
-        :param augment_resource_id: the name of the output dataset's resource id, the default is "augmentData"
         :return: a dataset or a dataframe depending on the input
         """
         self._logger.debug("Start downloading for datamart...")
-        res_id = None
-        if type(supplied_data) is d3m_Dataset:
-            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
-        elif type(supplied_data) is d3m_DataFrame:
-            supplied_dataframe = supplied_data
-        else:
-            supplied_dataframe = self.supplied_dataframe
 
         join_pairs_result = []
         candidate_join_column_scores = []
 
         # start finding pairs
-        left_df = copy.deepcopy(supplied_dataframe)
+        left_df = copy.deepcopy(self.supplied_dataframe)
         if self.right_df is None:
             self.right_df = Utils.materialize(metadata=self.search_result)
             right_df = self.right_df
@@ -1167,7 +841,7 @@ class DatamartSearchResult:
         right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
         if self.join_pairs is None:
-            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=res_id)
+            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=self._res_id)
         else:
             candidate_join_column_pairs = self.join_pairs
         if len(candidate_join_column_pairs) > 1:
@@ -1227,144 +901,12 @@ class DatamartSearchResult:
         if len(all_results) == 0:
             raise ValueError("All join attempt failed!")
 
-        if return_format == "ds":
-            return_df = d3m_DataFrame(all_results[0][2], generate_metadata=False)
-            resources = {augment_resource_id: return_df}
-            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
-            if generate_metadata:
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
-                return_result.metadata = self._generate_metadata_column_part_for_general(return_result,
-                                                                                         return_result.metadata,
-                                                                                         return_format,
-                                                                                         augment_resource_id)
-
-        elif return_format == "df":
-            return_result = d3m_DataFrame(all_results[0][2], generate_metadata=False)
-            if generate_metadata:
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
-                return_result.metadata = self._generate_metadata_column_part_for_general(return_result,
-                                                                                         return_result.metadata,
-                                                                                         return_format,
-                                                                                         augment_resource_id=None)
-        else:
-            raise ValueError("Invalid return format was given as " + str(return_format))
+        return_result = all_results[0][2]
         self._logger.debug("download_general function finished.")
         return return_result
 
-    def _generate_metadata_shape_part(self, value, selector, supplied_data=None) -> dict:
+    def _download_wikidata(self) -> pd.DataFrame:
         """
-        recursively generate all metadata for shape part, return a dict
-        :param value: the input data
-        :param selector: a tuple which indicate the selector
-        :return: a dict with key as the selector, value as the metadata
-        """
-        if supplied_data is None:
-            supplied_data = self.supplied_data
-        generated_metadata = dict()
-        generated_metadata['schema'] = CONTAINER_SCHEMA_VERSION
-        if isinstance(value, d3m_Dataset):  # type: ignore
-            generated_metadata['id'] = supplied_data.metadata.query(())['id']
-            generated_metadata['name'] = supplied_data.metadata.query(())['name']
-            generated_metadata['location_uris'] = supplied_data.metadata.query(())['location_uris']
-            generated_metadata['digest'] = supplied_data.metadata.query(())['digest']
-            generated_metadata['description'] = supplied_data.metadata.query(())['description']
-            generated_metadata['source'] = supplied_data.metadata.query(())['source']
-            generated_metadata['version'] = supplied_data.metadata.query(())['version']
-            generated_metadata['structural_type'] = supplied_data.metadata.query(())['structural_type']
-            generated_metadata['dimension'] = {
-                'name': 'resources',
-                'semantic_types': ['https://metadata.datadrivendiscovery.org/types/DatasetResource'],
-                'length': len(value),
-            }
-
-            metadata_dict = collections.OrderedDict([(selector, generated_metadata)])
-
-            for k, v in value.items():
-                metadata_dict.update(self._generate_metadata_shape_part(v, selector + (k,)))
-
-            # It is unlikely that metadata is equal across dataset resources, so we do not try to compact metadata here.
-
-            return metadata_dict
-
-        if isinstance(value, d3m_DataFrame):  # type: ignore
-            generated_metadata['semantic_types'] = ['https://metadata.datadrivendiscovery.org/types/Table']
-            generated_metadata['structural_type'] = d3m_DataFrame
-            generated_metadata['dimension'] = {
-                'name': 'rows',
-                'semantic_types': ['https://metadata.datadrivendiscovery.org/types/TabularRow'],
-                'length': value.shape[0],
-            }
-
-            metadata_dict = collections.OrderedDict([(selector, generated_metadata)])
-
-            # Reusing the variable for next dimension.
-            generated_metadata = {
-                'dimension': {
-                    'name': 'columns',
-                    'semantic_types': ['https://metadata.datadrivendiscovery.org/types/TabularColumn'],
-                    'length': value.shape[1],
-                },
-            }
-
-            selector_all_rows = selector + (ALL_ELEMENTS,)
-            metadata_dict[selector_all_rows] = generated_metadata
-            return metadata_dict
-
-    def _generate_metadata_column_part_for_general(self, data, metadata_return, return_format,
-                                                   augment_resource_id) -> DataMetadata:
-        """
-        Inner function used to generate metadata for general search
-        """
-        # part for adding each column's metadata
-        for i, each_column in enumerate(data[augment_resource_id]):
-            if return_format == "ds":
-                metadata_selector = (augment_resource_id, ALL_ELEMENTS, i)
-            elif return_format == "df":
-                metadata_selector = (ALL_ELEMENTS, i)
-            structural_type = data[augment_resource_id][each_column].dtype.name
-            if "int" in structural_type:
-                structural_type = int
-            elif "float" in structural_type:
-                structural_type = float
-            else:
-                structural_type = str
-            metadata_each_column = {"name": each_column,
-                                    "structural_type": structural_type,
-                                    'semantic_types': ("http://schema.org/Text",
-                                                       'https://metadata.datadrivendiscovery.org/types/Attribute',
-                                                       )
-                                    }
-            metadata_return = metadata_return.update(metadata=metadata_each_column, selector=metadata_selector)
-
-        if return_format == "ds":
-            metadata_selector = (augment_resource_id, ALL_ELEMENTS, i + 1)
-        elif return_format == "df":
-            metadata_selector = (ALL_ELEMENTS, i + 1)
-
-        metadata_joining_pairs = {"name": "joining_pairs",
-                                  "structural_type": typing.List[int],
-                                  'semantic_types': ("http://schema.org/Integer",)
-                                  }
-        metadata_return = metadata_return.update(metadata=metadata_joining_pairs, selector=metadata_selector)
-
-        return metadata_return
-
-    def download_wikidata(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame], generate_metadata=True,
-                          return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) \
-            -> typing.Union[d3m_Dataset, d3m_DataFrame]:
-        """
-        :param supplied_data: input DataFrame
-        :param generate_metadata: control whether to automatically generate metadata of the return DataFrame or not
-        :param: return_format: the control parameter to set the return format
-        :param: augment_resource_id: the returned dataset id for the augmented data, only valid when return format is "ds"
         :return: return_df: the materialized wikidata d3m_DataFrame,
                             with corresponding pairing information to original_data at last column
         """
@@ -1372,14 +914,7 @@ class DatamartSearchResult:
         # prepare the query
         p_nodes_needed = self.search_result["p_nodes_needed"]
         target_q_node_column_name = self.search_result["target_q_node_column_name"]
-        if type(supplied_data) is d3m_DataFrame:
-            self.supplied_dataframe = copy.deepcopy(supplied_data)
-            self.supplied_data = supplied_data
-        elif type(supplied_data) is d3m_Dataset:
-            self._res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
-                                                                              resource_id=None)
-            self.supplied_dataframe = copy.deepcopy(supplied_dataframe)
-            self.supplied_data = supplied_data
+
         try:
             q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
         except ValueError:
@@ -1419,8 +954,6 @@ class DatamartSearchResult:
             self._logger.error("Download failed!!!")
             return return_df
 
-        semantic_types_dict = {
-            "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
         q_node_name_appeared = set()
         for result in results:
             each_result = {}
@@ -1431,115 +964,24 @@ class DatamartSearchResult:
             each_result["q_node"] = q_node_name
             for p_name, p_val in result.items():
                 each_result[p_name] = p_val["value"]
-                # only do this part if generate_metadata is required
-                if p_name not in semantic_types_dict:
-                    if "datatype" in p_val.keys():
-                        semantic_types_dict[p_name] = (
-                            self.transfer_semantic_type(p_val["datatype"]),
-                            'https://metadata.datadrivendiscovery.org/types/Attribute',
-                            AUGMENTED_COLUMN_SEMANTIC_TYPE
-                        )
-                    else:
-                        semantic_types_dict[p_name] = (
-                            "http://schema.org/Text",
-                            'https://metadata.datadrivendiscovery.org/types/Attribute',
-                            AUGMENTED_COLUMN_SEMANTIC_TYPE
-                        )
-
             return_df = return_df.append(each_result, ignore_index=True)
-
-        p_name_dict = {"q_node": "q_node"}
-        for each in return_df.columns.tolist():
-            if each.lower().startswith("p") or each.lower().startswith("c"):
-                p_name_dict[each] = self.get_node_name(each) + "_for_" + target_q_node_column_name
 
         # use rltk joiner to find the joining pairs
         joiner = RLTKJoinerWikidata()
         joiner.set_join_target_column_names((self.supplied_dataframe.columns[q_node_column_number], "q_node"))
         result, self.pairs = joiner.find_pair(left_df=self.supplied_dataframe, right_df=return_df)
 
-        # if this condition is true, it means "id" column was added which should not be here
-        if return_df.shape[1] == len(p_name_dict) + 2 and "id" in return_df.columns:
-            return_df = return_df.drop(columns=["id"])
-
-        metadata_new = DataMetadata()
-        self.metadata = dict()
-        # add remained attributes metadata
-
-        for each_column in range(0, return_df.shape[1] - 1):
-            current_column_name = p_name_dict[return_df.columns[each_column]]
-            if return_format == "df":
-                each_selector = (ALL_ELEMENTS, each_column)
-            elif return_format == "ds":
-                each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column)
-            # here we do not modify the original data, we just add an extra "expected_semantic_types" to metadata
-            metadata_each_column = {"name": current_column_name, "structural_type": str,
-                                    'semantic_types': semantic_types_dict[return_df.columns[each_column]]}
-            self.metadata[current_column_name] = metadata_each_column
-            if generate_metadata:
-                metadata_new = metadata_new.update(metadata=metadata_each_column, selector=each_selector)
-
-        # special for joining_pairs column
-        if return_format == "df":
-            each_selector = (ALL_ELEMENTS, return_df.shape[1] - 1)
-        elif return_format == "ds":
-            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, return_df.shape[1] - 1)
-        metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
-                                  'semantic_types': ("http://schema.org/Integer",)}
-        if generate_metadata:
-            metadata_new = metadata_new.update(metadata=metadata_joining_pairs, selector=each_selector)
-
-        # start adding shape metadata for dataset
-        if return_format == "ds":
-            return_df = d3m_DataFrame(return_df, generate_metadata=False)
-            return_df = return_df.rename(columns=p_name_dict)
-            resources = {AUGMENT_RESOURCE_ID: return_df}
-            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
-            if generate_metadata:
-                return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=self.supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
-            # update column names to be property names instead of number
-
-        elif return_format == "df":
-            return_result = d3m_DataFrame(return_df, generate_metadata=False)
-            return_result = return_result.rename(columns=p_name_dict)
-            if generate_metadata:
-                return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=self.supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
-        else:
-            raise ValueError("Invalid return format was given as " + str(return_format))
         self._logger.debug("download_wikidata function finished.")
-        return return_result
+        return return_df
 
-    def download_vector(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame], generate_metadata=True,
-                          return_format="ds", augment_resource_id=AUGMENT_RESOURCE_ID) \
-            -> typing.Union[d3m_Dataset, d3m_DataFrame]:
+    def _download_vector(self) -> pd.DataFrame:
         """
-        :param supplied_data: input DataFrame
-        :param generate_metadata: control whether to automatically generate metadata of the return DataFrame or not
-        :param: return_format: the control parameter to set the return format
-        :param: augment_resource_id: the returned dataset id for the augmented data, only valid when return format is "ds"
         :return: return_df: the materialized vector d3m_DataFrame,
                             with corresponding pairing information to original_data at last column
         """
         self._logger.debug("Start downloading for vector...")
         target_q_node_column_name = self.search_result["target_q_node_column_name"]
-        if type(supplied_data) is d3m_DataFrame:
-            self.supplied_dataframe = copy.deepcopy(supplied_data)
-            self.supplied_data = supplied_data
-        elif type(supplied_data) is d3m_Dataset:
-            self._res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
-                                                                              resource_id=None)
-            self.supplied_dataframe = copy.deepcopy(supplied_dataframe)
-            self.supplied_data = supplied_data
+
         try:
             q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
         except ValueError:
@@ -1552,9 +994,9 @@ class DatamartSearchResult:
 
         semantic_types_dict = {
             "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
-        vectors_dict = self.fetch_fb_embeddings(q_nodes_list)
+        vectors_dict = DownloadManager.fetch_fb_embeddings(q_nodes_list)
         for key, val in vectors_dict.items():
-            each_result = {}
+            each_result = dict()
             each_result["q_node"] = key
             vectors = val.split(',')
             for i in range(len(vectors)):
@@ -1581,121 +1023,10 @@ class DatamartSearchResult:
         if "id" in return_df.columns:
             return_df = return_df.drop(columns=["id"])
 
-        metadata_new = DataMetadata()
-        self.metadata = dict()
-        # add remained attributes metadata
-
-        for each_column in range(0, return_df.shape[1] - 1):
-            current_column_name = return_df.columns[each_column]
-            if return_format == "df":
-                each_selector = (ALL_ELEMENTS, each_column)
-            elif return_format == "ds":
-                each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column)
-            # here we do not modify the original data, we just add an extra "expected_semantic_types" to metadata
-            metadata_each_column = {"name": current_column_name, "structural_type": float,
-                                    'semantic_types': semantic_types_dict[current_column_name]}
-            self.metadata[current_column_name] = metadata_each_column
-            if generate_metadata:
-                metadata_new = metadata_new.update(metadata=metadata_each_column, selector=each_selector)
-
-        # special for joining_pairs column
-        if return_format == "df":
-            each_selector = (ALL_ELEMENTS, each_column + 1)
-        elif return_format == "ds":
-            each_selector = (AUGMENT_RESOURCE_ID, ALL_ELEMENTS, each_column + 1)
-        metadata_joining_pairs = {"name": "joining_pairs", "structural_type": typing.List[int],
-                                  'semantic_types': ("http://schema.org/Integer",)}
-        if generate_metadata:
-            metadata_new = metadata_new.update(metadata=metadata_joining_pairs, selector=each_selector)
-
-        # start adding shape metadata for dataset
-        if return_format == "ds":
-            return_df = d3m_DataFrame(return_df, generate_metadata=False)
-            resources = {AUGMENT_RESOURCE_ID: return_df}
-            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
-            if generate_metadata:
-                return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=self.supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
-            # update column names to be property names instead of number
-
-        elif return_format == "df":
-            return_result = d3m_DataFrame(return_df, generate_metadata=False)
-            if generate_metadata:
-                return_result.metadata = metadata_new
-                metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result, selector=(),
-                                                                              supplied_data=self.supplied_data)
-                for each_selector, each_metadata in metadata_shape_part_dict.items():
-                    return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                           metadata=each_metadata)
         self._logger.debug("download_vector function finished.")
-        return return_result
+        return return_df
 
-    def fetch_fb_embeddings(self, q_nodes_list):
-        # add vectors columns in wikifier_res
-        qnodes = list(filter(None, q_nodes_list))
-        qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
-        # do elastic search
-        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris)%1024 != 0 else int(len(qnode_uris)/1024)
-        res = dict()
-        for i in range(num_of_try):
-            query = {
-                'query': {
-                    'terms': {
-                        'key.keyword': qnode_uris[1024*i:1024*i+1024]
-                    }
-                },
-                "size": len(qnode_uris[1024*i:1024*i+1024])
-            }
-            url = '{}/{}/{}/_search'.format(EM_ES_URL, EM_ES_INDEX, EM_ES_TYPE)
-            resp = requests.get(url, json=query)
-            if resp.status_code == 200:
-                result = resp.json()
-                hits = result['hits']['hits']
-                for hit in hits:
-                    source = hit['_source']
-                    _qnode = source['key'].split('/')[-1][:-1]
-                    res[_qnode] = ",".join(source['value'])
 
-        return res
-
-    def get_node_name(self, node_code) -> str:
-        """
-        Function used to get the properties(P nodes) names with given P node
-        :param node_code: a str indicate the P node (e.g. "P123")
-        :return: a str indicate the P node label (e.g. "inception")
-        """
-        sparql_query = "SELECT DISTINCT ?x WHERE \n { \n" + \
-                       "wd:" + node_code + " rdfs:label ?x .\n FILTER(LANG(?x) = 'en') \n} "
-
-        results = self.wikidata_cache_manager.get_result(sparql_query)
-        if results:
-            return results[0]['x']['value']
-        else:
-            self._logger.error("Getting name of node " + node_code + " failed!")
-            return node_code
-
-    def transfer_semantic_type(self, datatype: str):
-        """
-        Inner function used to transfer the wikidata semantic type to D3M semantic type
-        :param datatype: a str indicate the semantic type adapted from wikidata
-        :return: a str indicate the semantic type for D3M
-        """
-        special_type_dict = {"http://www.w3.org/2001/XMLSchema#dateTime": "http://schema.org/DateTime",
-                             "http://www.w3.org/2001/XMLSchema#decimal": "http://schema.org/Float",
-                             "http://www.opengis.net/ont/geosparql#wktLiteral":
-                                 "https://metadata.datadrivendiscovery.org/types/Location"
-                             }
-        default_type = "http://schema.org/Text"
-        if datatype in special_type_dict:
-            return special_type_dict[datatype]
-        else:
-            self._logger.warning("Not seen data type: ", datatype)
-            self._logger.warning("Please check this new type!!!")
-            return default_type
 
     def _run_wikifier(self, supplied_data) -> d3m_Dataset:
         """
@@ -1731,7 +1062,7 @@ class DatamartSearchResult:
 
         if type(supplied_data) is d3m_Dataset:
             # try to update with more correct metadata if possible
-            updated_result = Utils.check_and_get_dataset_real_metadata(supplied_data)
+            updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
             if updated_result[0]:  # [0] store whether it success find the metadata
                 supplied_data = updated_result[1]
             self.supplied_data = supplied_data
@@ -1784,7 +1115,7 @@ class DatamartSearchResult:
                                                                      hash_key=cache_key
                                                                      )
         # save the augmented result's metadata if second augment is conducted
-        Utils.save_metadata_from_dataset(res)
+        MetadataCache.save_metadata_from_dataset(res)
 
         if not response:
             self._logger.warning("Push augment results to results failed!")
@@ -1998,10 +1329,10 @@ class DatamartSearchResult:
             return return_result
 
     def score(self) -> float:
-        return self._score
+        return self.metadata_manager.score
 
     def id(self) -> str:
-        return self._id
+        return self.metadata_manager.id
 
     def get_metadata(self) -> DataMetadata:
         return self.d3m_metadata
@@ -2013,15 +1344,6 @@ class DatamartSearchResult:
         :return:
         """
         self.join_pairs = join_pairs
-
-    def get_join_hints_with_nothing(self):
-        if self.search_type == "wikidata":
-            target_q_node_column_name = self.search_result["target_q_node_column_name"]
-            q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
-            right_column = len(self.search_result["p_nodes_needed"])
-            pair = (q_node_column_number, right_column)
-
-        return pair
 
     def get_join_hints(self, left_df, right_df, left_df_src_id=None, right_src_id=None) -> typing.List["TabularJoinSpec"]:
         """
@@ -2056,8 +1378,8 @@ class DatamartSearchResult:
 
     def serialize(self):
         result = dict()
-        result['id'] = self._id
-        result['score'] = self._score
+        result['id'] = self.id()
+        result['score'] = self.score()
 
         result['metadata'] = dict()
         result['metadata']['connection_url'] = self.connection_url
