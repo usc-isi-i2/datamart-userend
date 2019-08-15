@@ -966,8 +966,21 @@ class DatamartSearchResult:
             return_df = return_df.append(each_result, ignore_index=True)
 
         column_name_update = dict()
-        for i in range(return_df.shape[1]):
-            column_name_update[return_df.columns[i]] = self.d3m_metadata.query((ALL_ELEMENTS, i))['name']
+
+        # for some special condition, we may meet this, and we need to ensure q_node column is the last column
+        if return_df.columns[-1] != "q_node":
+            cols = return_df.columns.tolist()
+            cols.append(cols.pop(cols.index("q_node")))
+            return_df = return_df[cols]
+
+        # rename the columns from P node value to real name
+        i = 0
+        while len(self.d3m_metadata.query((ALL_ELEMENTS, i)).keys()) != 0:
+            column_meta = self.d3m_metadata.query((ALL_ELEMENTS, i))
+            if "P_node" in column_meta:
+                column_name_update[column_meta['P_node']] = column_meta['name']
+            i += 1
+
         return_df = return_df.rename(columns=column_name_update)
 
         # use rltk joiner to find the joining pairs

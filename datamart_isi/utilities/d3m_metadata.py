@@ -129,19 +129,19 @@ class MetadataGenerator:
         }
         return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS,), metadata=metadata_all_elements)
 
-        for i, each in enumerate(self.search_result['p_nodes_needed']):
+        for i, each_p_node in enumerate(self.search_result['p_nodes_needed']):
             target_q_node_column_name = self.search_result['target_q_node_column_name']
             # try to get the semantic type of p nodes, if failed, set it to be Text
             try:
                 q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
                 sample_row_number = 0
                 q_node_sample = self.supplied_dataframe.iloc[sample_row_number, q_node_column_number]
-                semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each)
+                semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each_p_node)
                 # if we failed with first test, repeat until we get success one
                 while not semantic_types[0]:
                     sample_row_number += 1
                     q_node_sample = self.supplied_dataframe.iloc[sample_row_number, q_node_column_number]
-                    semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each)
+                    semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each_p_node)
             except:
                 semantic_types = (
                     "http://schema.org/Text",
@@ -151,6 +151,7 @@ class MetadataGenerator:
             each_metadata = {
                 "name": self.get_node_name(
                     self.search_result['p_nodes_needed'][i]) + "_for_" + target_q_node_column_name,
+                "P_node": self.search_result['p_nodes_needed'][i],
                 "structural_type": str,
                 "semantic_types": semantic_types,
             }
