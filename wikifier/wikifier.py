@@ -183,7 +183,7 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         _logger.debug('Current column: ' + current_column_name)
         try:
             temp = set()
-            for each in input_df.iloc[:, column].dropna().tolist():
+            for each in input_df.iloc[:, column].dropna():
                 temp.add(each)
             if one_character_alphabet(temp):
                 _logger.debug("Column with only one letter in each line and useless detected, skipped")
@@ -218,7 +218,9 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
                 return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Successfully getting data from the new wikifier")
     else:
-        _logger.debug('[Error] Something wrong in new wikifier server: ' + response.text)
+        _logger.error('[Error] Something wrong in new wikifier server: ' + response.text)
+        _logger.debug("Wikifier_choice will change to identifier")
+        return_df = produce_for_pandas(input_df=input_df, target_columns=target_columns, threshold_for_converage = 0.7)
 
     return return_df
 
