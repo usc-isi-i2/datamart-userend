@@ -181,7 +181,17 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
     for column in target_columns:
         current_column_name = input_df.columns[column]
         _logger.debug('Current column: ' + current_column_name)
-        col_names.append(current_column_name)
+        try:
+            temp = set()
+            for each in input_df.iloc[:, column].dropna():
+                temp.add(each)
+            if one_character_alphabet(temp):
+                _logger.debug("Column with only one letter in each line and useless detected, skipped")
+                continue
+            else:
+                col_names.append(current_column_name)
+        except:
+            pass
 
     # input_df.to_csv('wikifier.csv', index=False)
     data = io.BytesIO()
@@ -201,9 +211,16 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         data = response.content.decode("utf-8")
         data = list(csv.reader(data.splitlines(), delimiter=','))
         return_df = pd.DataFrame(data[1:], columns=data[0])
+        col_name = return_df.columns.tolist()
+        for cn in col_name:
+            if "_WK" in cn:
+                new_name = cn.split('_')[0] + "_wikidata"
+                return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Successfully getting data from the new wikifier")
     else:
-        _logger.debug('Error: ' + response.text)
+        _logger.error('[Error] Something wrong in new wikifier server: ' + response.text)
+        _logger.debug("Wikifier_choice will change to identifier")
+        return_df = produce_for_pandas(input_df=input_df, target_columns=target_columns, threshold_for_converage = 0.7)
 
     return return_df
 
@@ -233,6 +250,7 @@ def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target
 
     if col_idt:
         return_df_idt = produce_for_pandas(return_df_idt, [i for i in range(len(col_idt))], target_p_nodes, threshold_for_converage)
+        # change the column name index
         col_tmp = return_df_idt.columns.tolist()
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
     if col_new:
