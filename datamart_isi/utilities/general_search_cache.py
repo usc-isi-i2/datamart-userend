@@ -119,5 +119,5 @@ class GeneralSearchCache(object):
         hash_generator.update(search_result_serialized.encode('utf-8'))
         hash_search_result = hash_generator.hexdigest()
         hash_key = str(hash_supplied_data) + str(hash_search_result)
-        self._logger.debug("Current general search's hash tag is " + hash_key)
+        self._logger.debug("Current search's hash tag is " + hash_key)
         return hash_key

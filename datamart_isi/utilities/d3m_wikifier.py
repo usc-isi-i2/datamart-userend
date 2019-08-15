@@ -20,7 +20,7 @@ DEFAULT_TEMP_PATH = config.default_temp_path
 _logger = logging.getLogger(__name__)
 
 
-def run_wikifier(supplied_data: d3m_Dataset):
+def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
     # the augmented dataframe should not run wikifier again to ensure the semantic type is correct
     # TODO: In this way, we will not search on augmented columns if run second time of wikifier
     exist_q_nodes, supplied_data = check_and_correct_q_nodes_semantic_type(supplied_data)
@@ -68,7 +68,9 @@ def run_wikifier(supplied_data: d3m_Dataset):
             target_columns = temp
 
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
-        wikifier_res = wikifier.produce(pd.DataFrame(supplied_dataframe), target_columns, specific_p_nodes)
+        # here because this function is called from augment part, so this part
+        wikifier_res = wikifier.produce(inputs=pd.DataFrame(supplied_dataframe), target_columns=target_columns,
+                                        target_p_nodes=specific_p_nodes, use_cache=use_cache)
         output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
         # update metadata on column length
         selector = (res_id, ALL_ELEMENTS)
@@ -107,7 +109,7 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
     hash_key = str(hash_generator.hexdigest())
     temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
     specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
-    _logger.debug("Current searching path is: " + temp_path)
+    _logger.debug("Current dataset cache searching path is: " + temp_path)
     _logger.debug("Current columns are: " + str(columns_list))
     _logger.debug("Current dataset's hash key is: " + hash_key)
     if path.exists(specific_q_nodes_file):

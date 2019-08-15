@@ -31,7 +31,7 @@ class Utils:
     }
 
     @staticmethod
-    def materialize(metadata) -> pd.DataFrame:
+    def materialize(metadata, run_wikifier) -> pd.DataFrame:
         # general type materializer
         if 'url' in metadata:
             dataset_url = metadata['url']['value']
@@ -59,7 +59,8 @@ class Utils:
             # clean_f.set_training_data(inputs=profiled_df)
             # clean_f.fit()
             # cleaned_df = pd.DataFrame(clean_f.produce(inputs=profiled_df).value)
-            # wikifier_res = wikifier.produce(cleaned_df)
+            if run_wikifier:
+                loaded_data = wikifier.produce(loaded_data)
 
             return loaded_data
 

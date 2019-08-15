@@ -2,6 +2,8 @@ import logging
 import pandas as pd
 import typing
 import collections
+import frozendict
+import traceback
 
 from ast import literal_eval
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
@@ -88,6 +90,8 @@ class MetadataGenerator:
             self._logger.error("Unknown search type as " + str(self.search_type))
             metadata = DataMetadata()
         self._logger.debug("Getting d3m metadata finished.")
+        self.d3m_metadata = metadata
+
         return metadata
 
     def generate_metadata_for_wikidata_search(self, selector_base=tuple()) -> DataMetadata:
@@ -156,7 +160,7 @@ class MetadataGenerator:
                 "name": "q_node",
                 "structural_type": str,
                 "semantic_types": (
-                    'http://schema.org/Text',
+                    "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                     'https://metadata.datadrivendiscovery.org/types/Attribute',
                     Q_NODE_SEMANTIC_TYPE,
                     AUGMENTED_COLUMN_SEMANTIC_TYPE
@@ -174,7 +178,7 @@ class MetadataGenerator:
                 ),
             }
             return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS, i + 2), metadata=each_metadata)
-            self.d3m_metadata = return_metadata
+
         return return_metadata
 
     def _get_wikidata_column_semantic_types(self, q_node_sample, p_node_target) -> tuple:
@@ -242,7 +246,7 @@ class MetadataGenerator:
                 }
                 i = int(each_key.split("_")[-1])
                 return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS, i), metadata=each_metadata)
-        self.d3m_metadata = return_metadata
+
         return return_metadata
     
     def generate_metadata_for_vector_search(self, selector_base=tuple()) -> DataMetadata:
@@ -307,7 +311,7 @@ class MetadataGenerator:
                 "name": "q_node",
                 "structural_type": str,
                 "semantic_types": (
-                    'http://schema.org/Text',
+                    "https://metadata.datadrivendiscovery.org/types/CategoricalData",
                     'https://metadata.datadrivendiscovery.org/types/Attribute',
                     Q_NODE_SEMANTIC_TYPE,
                     AUGMENTED_COLUMN_SEMANTIC_TYPE
@@ -325,7 +329,7 @@ class MetadataGenerator:
                 ),
             }
             return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS, i + 2), metadata=each_metadata)
-        self.d3m_metadata = return_metadata
+
         return return_metadata
 
     def _generate_metadata_shape_part(self, value, selector, supplied_data=None) -> dict:
@@ -486,12 +490,11 @@ class MetadataGenerator:
                                   index=[0])
 
         elif self.search_type == "vector":
-            title = "vector"
             # fetch the num of columns
             column_names = []
             # res_dict = DownloadManager.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
             # length = len(list(res_dict.values())[0].split(','))
-            length = self.d3m_metadata.query()
+            length = self.d3m_metadata.query((ALL_ELEMENTS, ))['dimension']['length']
             for i in range(length):
                 if i < 10:
                     s = '00' + str(i)
@@ -522,7 +525,7 @@ class MetadataGenerator:
         elif type(return_result) is d3m_Dataset:
             return_format = "ds"
             augment_resource_ids = list(return_result.keys())
-            selector_base = tuple(augment_resource_ids[0])
+            selector_base = tuple([augment_resource_ids[0]])
             if len(augment_resource_ids) > 1:
                 self._logger.error("Generating metadata for multi resource dataset is not implemented yet! "
                                    "Will only generate metadata for first one.")
@@ -548,6 +551,132 @@ class MetadataGenerator:
             #                                                                          return_result.metadata,
             #                                                                          return_format,
             #                                                                          augment_resource_id=augment_resource_ids[0])
+
+        return return_result
+
+    def generate_metadata_for_augment_result(self, df_joined, return_format, supplied_data, augment_resource_id):
+        # put d3mIndex at first column and in the descend order in that column
+        self.set_supplied_data(supplied_data)
+        columns_all = list(df_joined.columns)
+        if 'd3mIndex' in df_joined.columns:
+            oldindex = columns_all.index('d3mIndex')
+            columns_all.insert(0, columns_all.pop(oldindex))
+        else:
+            self._logger.warning("No d3mIndex column found after datamart augment!!!")
+        df_joined = df_joined[columns_all]
+
+        metadata_dict_left = {}
+        metadata_dict_right = {}
+        # if self.search_type == "general":
+        #     # if the search type is general, we need to generate the metadata dict here
+        #     for i, each in enumerate(df_joined):
+        #         # description = each['description']
+        #         dtype = df_joined[each].dtype.name
+        #         if "float" in dtype:
+        #             semantic_types = (
+        #                 "http://schema.org/Float",
+        #                 "https://metadata.datadrivendiscovery.org/types/Attribute",
+        #                 AUGMENTED_COLUMN_SEMANTIC_TYPE
+        #             )
+        #         elif "int" in dtype:
+        #             semantic_types = (
+        #                 "http://schema.org/Integer",
+        #                 "https://metadata.datadrivendiscovery.org/types/Attribute",
+        #                 AUGMENTED_COLUMN_SEMANTIC_TYPE
+        #             )
+        #         else:
+        #             semantic_types = (
+        #                 "http://schema.org/Text",
+        #                 "https://metadata.datadrivendiscovery.org/types/Attribute",
+        #                 AUGMENTED_COLUMN_SEMANTIC_TYPE
+        #             )
+        #
+        #         each_meta = {
+        #             "name": each,
+        #             "structural_type": str,
+        #             "semantic_types": semantic_types,
+        #             # "description": description
+        #         }
+        #         metadata_dict_right[each] = frozendict.FrozenOrderedDict(each_meta)
+        # else:
+        #     # if from wikidata, we should have already generated it
+        # metadata_dict_right = self.d3m_metadata
+        i = 0
+        while len(self.d3m_metadata.query((ALL_ELEMENTS, i))) != 0:
+            each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, i))
+            metadata_dict_right[each_column_meta["name"]] = each_column_meta
+            i += 1
+
+        if return_format == "df":
+            try:
+                left_df_column_length = supplied_data.metadata.query((ALL_ELEMENTS,))['dimension'][
+                    'length']
+            except Exception:
+                traceback.print_exc()
+                raise ValueError("Getting left metadata information failed!")
+        elif return_format == "ds":
+            left_df_column_length = supplied_data.metadata.query((self.res_id, ALL_ELEMENTS,))['dimension'][
+                'length']
+        else:
+            raise ValueError("Unknown return format as "+ str(return_format))
+
+        # add the original metadata
+        for i in range(left_df_column_length):
+            if return_format == "df":
+                each_selector = (ALL_ELEMENTS, i)
+            elif return_format == "ds":
+                each_selector = (self.res_id, ALL_ELEMENTS, i)
+            each_column_meta = supplied_data.metadata.query(each_selector)
+            metadata_dict_left[each_column_meta['name']] = each_column_meta
+
+        metadata_new = DataMetadata()
+        new_column_names_list = list(df_joined.columns)
+
+        # update each column's metadata
+        for i, current_column_name in enumerate(new_column_names_list):
+            if return_format == "df":
+                each_selector = (ALL_ELEMENTS, i)
+            elif return_format == "ds":
+                each_selector = (augment_resource_id, ALL_ELEMENTS, i)
+
+            if current_column_name in metadata_dict_left:
+                new_metadata_i = metadata_dict_left[current_column_name]
+            elif current_column_name in metadata_dict_right:
+                new_metadata_i = metadata_dict_right[current_column_name]
+            else:
+                new_metadata_i = {
+                    "name": current_column_name,
+                    "structural_type": str,
+                    "semantic_types": ("http://schema.org/Text",
+                                       "https://metadata.datadrivendiscovery.org/types/Attribute",),
+                }
+                self._logger.error("Please check!")
+                self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
+
+            metadata_new = metadata_new.update(each_selector, new_metadata_i)
+        return_result = None
+
+        # start adding shape metadata for dataset
+        if return_format == "ds":
+            return_df = d3m_DataFrame(df_joined, generate_metadata=False)
+            resources = {augment_resource_id: return_df}
+            return_result = d3m_Dataset(resources=resources, generate_metadata=False)
+            return_result.metadata = metadata_new
+            metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
+                                                                          selector=(),
+                                                                          supplied_data=supplied_data)
+            for each_selector, each_metadata in metadata_shape_part_dict.items():
+                return_result.metadata = return_result.metadata.update(selector=each_selector,
+                                                                       metadata=each_metadata)
+        elif return_format == "df":
+            return_result = d3m_DataFrame(df_joined, generate_metadata=False)
+            return_result.metadata = metadata_new
+            metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
+                                                                          selector=(),
+                                                                          supplied_data=supplied_data)
+            for each_selector, each_metadata in metadata_shape_part_dict.items():
+                return_result.metadata = return_result.metadata.update(selector=each_selector,
+                                                                       metadata=each_metadata)
 
         return return_result
 

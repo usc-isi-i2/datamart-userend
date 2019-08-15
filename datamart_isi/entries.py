@@ -3,13 +3,12 @@ import pandas as pd
 import copy
 import os
 import random
-import frozendict
 import collections
 import typing
 import traceback
 import logging
 import datetime
-import d3m.metadata.base as metadata_base
+import datamart
 import json
 import string
 import time
@@ -22,6 +21,7 @@ from d3m.container import Dataset as d3m_Dataset
 from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
 
+from datamart import TabularVariable, ColumnRelationship, AugmentSpec
 from datamart_isi.augment import Augment
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
@@ -39,9 +39,8 @@ from datamart_isi.utilities.download_manager import DownloadManager
 
 
 __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchResult', 'AugmentSpec',
-           'TabularJoinSpec', 'UnionSpec', 'TemporalGranularity', 'GeospatialGranularity', 'ColumnRelationship',
-           'DatamartQuery',
-           'VariableConstraint', 'NamedEntityVariable', 'TemporalVariable', 'GeospatialVariable', 'TabularVariable')
+           'TabularJoinSpec', 'TemporalGranularity', 'ColumnRelationship', 'DatamartQuery',
+           'VariableConstraint',  'TabularVariable', 'VariableConstraint')
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
@@ -53,8 +52,6 @@ WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
 MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
-
-
 
 
 class DatamartQueryCursor(object):
@@ -202,9 +199,9 @@ class DatamartQueryCursor(object):
         metadata_input = self.supplied_data.metadata
         for i in range(supplied_dataframe.shape[1]):
             if selector_base_type == "ds":
-                metadata_selector = (res_id, metadata_base.ALL_ELEMENTS, i)
+                metadata_selector = (res_id, ALL_ELEMENTS, i)
             else:
-                metadata_selector = (metadata_base.ALL_ELEMENTS, i)
+                metadata_selector = (ALL_ELEMENTS, i)
             if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
                 # if no required variables given, attach any Q nodes found
                 q_nodes_columns.append(i)
@@ -746,7 +743,7 @@ class DatamartSearchResult:
         return self.metadata_manager.get_simple_view()
 
     def download(self, supplied_data: typing.Union[d3m_Dataset, d3m_DataFrame] = None,
-                 connection_url: str = None, generate_metadata=True, return_format="ds") \
+                 connection_url: str = None, generate_metadata=True, return_format="ds", run_wikifier=True) \
             -> typing.Union[container.Dataset, container.DataFrame]:
         """
         Produces a D3M dataset (data plus metadata) corresponding to the search result.
@@ -770,6 +767,8 @@ class DatamartSearchResult:
         return_format: str
             A control parameter to set which type of output should get, the default value is "ds" as dataset
             Optional choice is to get dataframe type output. Only valid in isi datamart
+        run_wikifier： str
+            A control parameter to set whether to run wikifier on this search result
         """
         if connection_url:
             # if a new connection url given
@@ -793,7 +792,7 @@ class DatamartSearchResult:
 
         # get the results without metadata
         if self.search_type == "general":
-            res = self._download_general()
+            res = self._download_general(run_wikifier=run_wikifier)
         elif self.search_type == "wikidata":
             res = self._download_wikidata()
         elif self.search_type == "vector":
@@ -818,7 +817,7 @@ class DatamartSearchResult:
 
         return return_result
 
-    def _download_general(self) -> pd.DataFrame:
+    def _download_general(self, run_wikifier) -> pd.DataFrame:
         """
         Specified download function for general datamart Datasets
         :return: a dataset or a dataframe depending on the input
@@ -831,7 +830,7 @@ class DatamartSearchResult:
         # start finding pairs
         left_df = copy.deepcopy(self.supplied_dataframe)
         if self.right_df is None:
-            self.right_df = Utils.materialize(metadata=self.search_result)
+            self.right_df = Utils.materialize(metadata=self.search_result, run_wikifier=run_wikifier)
             right_df = self.right_df
         else:
             self._logger.info("Find downloaded data from previous time, will use that.")
@@ -966,13 +965,18 @@ class DatamartSearchResult:
                 each_result[p_name] = p_val["value"]
             return_df = return_df.append(each_result, ignore_index=True)
 
+        column_name_update = dict()
+        for i in range(return_df.shape[1]):
+            column_name_update[return_df.columns[i]] = self.d3m_metadata.query((ALL_ELEMENTS, i))['name']
+        return_df = return_df.rename(columns=column_name_update)
+
         # use rltk joiner to find the joining pairs
         joiner = RLTKJoinerWikidata()
         joiner.set_join_target_column_names((self.supplied_dataframe.columns[q_node_column_number], "q_node"))
         result, self.pairs = joiner.find_pair(left_df=self.supplied_dataframe, right_df=return_df)
 
         self._logger.debug("download_wikidata function finished.")
-        return return_df
+        return result
 
     def _download_vector(self) -> pd.DataFrame:
         """
@@ -992,8 +996,6 @@ class DatamartSearchResult:
         q_nodes_list.sort()
         return_df = d3m_DataFrame()
 
-        semantic_types_dict = {
-            "q_node": ("http://schema.org/Text", 'https://metadata.datadrivendiscovery.org/types/PrimaryKey')}
         vectors_dict = DownloadManager.fetch_fb_embeddings(q_nodes_list)
         for key, val in vectors_dict.items():
             each_result = dict()
@@ -1008,10 +1010,7 @@ class DatamartSearchResult:
                     s = str(i)
                 v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
                 each_result[v_name] = vectors[i]
-                semantic_types_dict[v_name] = (
-                    "http://schema.org/Float",
-                    "https://metadata.datadrivendiscovery.org/types/Attribute",
-                    AUGMENTED_COLUMN_SEMANTIC_TYPE)
+
             return_df = return_df.append(each_result, ignore_index=True)
 
         # use rltk joiner to find the joining pairs
@@ -1019,14 +1018,8 @@ class DatamartSearchResult:
         joiner.set_join_target_column_names((self.supplied_dataframe.columns[q_node_column_number], "q_node"))
         result, self.pairs = joiner.find_pair(left_df=self.supplied_dataframe, right_df=return_df)
 
-        # if this condition is true, it means "id" column was added which should not be here
-        if "id" in return_df.columns:
-            return_df = return_df.drop(columns=["id"])
-
         self._logger.debug("download_vector function finished.")
-        return return_df
-
-
+        return result
 
     def _run_wikifier(self, supplied_data) -> d3m_Dataset:
         """
@@ -1035,11 +1028,12 @@ class DatamartSearchResult:
         :return: a wikifiered d3m_Dataset if success
         """
         self._logger.debug("Start running wikifier.")
-        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data)
+        # here because this part's code if for augment, we already have cache for that
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=False)
         self._logger.debug("Running wikifier finished.")
         return results
 
-    def augment(self, supplied_data, augment_columns=None, connection_url: str=None, augment_resource_id=AUGMENT_RESOURCE_ID):
+    def augment(self, supplied_data, augment_columns=None, connection_url=None, augment_resource_id=AUGMENT_RESOURCE_ID):
         """
         Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
         The augment methods is a baseline implementation of download plus augment.
@@ -1116,7 +1110,6 @@ class DatamartSearchResult:
                                                                      )
         # save the augmented result's metadata if second augment is conducted
         MetadataCache.save_metadata_from_dataset(res)
-
         if not response:
             self._logger.warning("Push augment results to results failed!")
         else:
@@ -1127,7 +1120,7 @@ class DatamartSearchResult:
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
                  augment_resource_id=AUGMENT_RESOURCE_ID):
         """
-        Inner detail function
+        Inner detail function for augment part
         """
         self._logger.debug("Start running augment function.")
         if type(return_format) is not str or return_format != "ds" and return_format != "df":
@@ -1198,7 +1191,8 @@ class DatamartSearchResult:
         if columns_new is not None:
             df_joined = df_joined[columns_new]
         else:
-            self._logger.warning("Attention! It seems augment do not add any extra columns!")
+            self._logger.error("Attention! It seems augment do not add any extra columns!")
+
         # if search with wikidata, we can remove duplicate Q node column
         self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
         if 'q_node' in df_joined.columns:
@@ -1207,124 +1201,13 @@ class DatamartSearchResult:
         if 'id' in df_joined.columns:
             df_joined = df_joined.drop(columns=['id'])
 
-        if generate_metadata:
-            # put d3mIndex at first column
-            columns_all = list(df_joined.columns)
-            if 'd3mIndex' in df_joined.columns:
-                oldindex = columns_all.index('d3mIndex')
-                columns_all.insert(0, columns_all.pop(oldindex))
-            else:
-                self._logger.warning("No d3mIndex column found after data-mart augment!!!")
-            df_joined = df_joined[columns_all]
-
         # start adding column metadata for dataset
         if generate_metadata:
-            metadata_dict_left = {}
-            metadata_dict_right = {}
-            if self.search_type == "general":
-                # if the search type is general, we need to generate the metadata dict here
-                for i, each in enumerate(df_joined):
-                    # description = each['description']
-                    dtype = df_joined[each].dtype.name
-                    if "float" in dtype:
-                        semantic_types = (
-                            "http://schema.org/Float",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute",
-                            AUGMENTED_COLUMN_SEMANTIC_TYPE
-                        )
-                    elif "int" in dtype:
-                        semantic_types = (
-                            "http://schema.org/Integer",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute",
-                            AUGMENTED_COLUMN_SEMANTIC_TYPE
-                        )
-                    else:
-                        semantic_types = (
-                            "http://schema.org/Text",
-                            "https://metadata.datadrivendiscovery.org/types/Attribute",
-                            AUGMENTED_COLUMN_SEMANTIC_TYPE
-                        )
-
-                    each_meta = {
-                        "name": each,
-                        "structural_type": str,
-                        "semantic_types": semantic_types,
-                        # "description": description
-                    }
-                    metadata_dict_right[each] = frozendict.FrozenOrderedDict(each_meta)
-            else:
-                # if from wikidata, we should have already generated it
-                metadata_dict_right = self.metadata
-
-            if return_format == "df":
-                try:
-                    left_df_column_length = supplied_data.metadata.query((metadata_base.ALL_ELEMENTS,))['dimension'][
-                        'length']
-                except Exception:
-                    traceback.print_exc()
-                    raise ValueError("Getting left metadata information failed!")
-            elif return_format == "ds":
-                left_df_column_length = supplied_data.metadata.query((self._res_id, metadata_base.ALL_ELEMENTS,))['dimension']['length']
-
-            # add the original metadata
-            for i in range(left_df_column_length):
-                if return_format == "df":
-                    each_selector = (ALL_ELEMENTS, i)
-                elif return_format == "ds":
-                    each_selector = (self._res_id, ALL_ELEMENTS, i)
-                each_column_meta = supplied_data.metadata.query(each_selector)
-                metadata_dict_left[each_column_meta['name']] = each_column_meta
-
-            metadata_new = metadata_base.DataMetadata()
-            new_column_names_list = list(df_joined.columns)
-
-            # update each column's metadata
-            for i, current_column_name in enumerate(new_column_names_list):
-                if return_format == "df":
-                    each_selector = (metadata_base.ALL_ELEMENTS, i)
-                elif return_format == "ds":
-                    each_selector = (augment_resource_id, ALL_ELEMENTS, i)
-
-                if current_column_name in metadata_dict_left:
-                    new_metadata_i = metadata_dict_left[current_column_name]
-                elif current_column_name in metadata_dict_right:
-                    new_metadata_i = metadata_dict_right[current_column_name]
-                else:
-                    new_metadata_i = {
-                        "name": current_column_name,
-                        "structural_type": str,
-                        "semantic_types": ("http://schema.org/Text",
-                                           "https://metadata.datadrivendiscovery.org/types/Attribute",),
-                    }
-                    self._logger.error("Please check!")
-                    self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
-
-                metadata_new = metadata_new.update(each_selector, new_metadata_i)
-            return_result = None
-
-            # start adding shape metadata for dataset
-            if return_format == "ds":
-                return_df = d3m_DataFrame(df_joined, generate_metadata=False)
-                resources = {augment_resource_id: return_df}
-                return_result = d3m_Dataset(resources=resources, generate_metadata=False)
-                if generate_metadata:
-                    return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
-                                                                                  selector=(),
-                                                                                  supplied_data=supplied_data)
-                    for each_selector, each_metadata in metadata_shape_part_dict.items():
-                        return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                               metadata=each_metadata)
-            elif return_format == "df":
-                return_result = d3m_DataFrame(df_joined, generate_metadata=False)
-                if generate_metadata:
-                    return_result.metadata = metadata_new
-                    metadata_shape_part_dict = self._generate_metadata_shape_part(value=return_result,
-                                                                                  selector=(),
-                                                                                  supplied_data=supplied_data)
-                    for each_selector, each_metadata in metadata_shape_part_dict.items():
-                        return_result.metadata = return_result.metadata.update(selector=each_selector,
-                                                                               metadata=each_metadata)
+            return_result = self.metadata_manager.generate_metadata_for_augment_result(df_joined=df_joined,
+                                                                                       return_format=return_format,
+                                                                                       supplied_data=supplied_data,
+                                                                                       augment_resource_id=augment_resource_id
+                                                                                       )
             self._logger.debug("Augment finished")
             return return_result
 
@@ -1462,13 +1345,6 @@ class DatamartSearchResult:
     #                          search_type=state['search_type'])
 
 
-class AugmentSpec:
-    """
-    Abstract class for D3M augmentation specifications
-    """
-    pass
-
-
 class TabularJoinSpec(AugmentSpec):
     """
     A join spec specifies a possible way to join a left dataset with a right dataset. The spec assumes that it may
@@ -1521,14 +1397,14 @@ class TabularJoinSpec(AugmentSpec):
         return all_pairs
 
 
-class UnionSpec(AugmentSpec):
+class VariableConstraint(object):
     """
-    A union spec specifies how to combine rows of a dataframe in the left dataset with a dataframe in the right dataset.
-    The dataframe after union should have the same columns as the left dataframe.
+    Abstract class for all variable constraints.
+    """
 
-    Implementation: TBD
-    """
-    pass
+    def __init__(self, key: str, values: str):
+        self.key = key
+        self.values = values
 
 
 class TemporalGranularity(utils.Enum):
@@ -1537,23 +1413,6 @@ class TemporalGranularity(utils.Enum):
     DAY = 3
     HOUR = 4
     SECOND = 5
-
-
-class GeospatialGranularity(utils.Enum):
-    COUNTRY = 1
-    STATE = 2
-    COUNTY = 3
-    CITY = 4
-    POSTAL_CODE = 5
-
-
-class ColumnRelationship(utils.Enum):
-    CONTAINS = 1
-    SIMILAR = 2
-    CORRELATED = 3
-    ANTI_CORRELATED = 4
-    MUTUALLY_INFORMATIVE = 5
-    MUTUALLY_UNINFORMATIVE = 6
 
 
 class DatamartQuery:
@@ -1584,124 +1443,3 @@ class DatamartQuery:
         self.keywords_search = keywords_search
         self.title_search = title_search
         self.variables_search = variables_search
-
-
-class VariableConstraint(object):
-    """
-    Abstract class for all variable constraints.
-    """
-
-    def __init__(self, key: str, values: str):
-        self.key = key
-        self.values = values
-
-
-class NamedEntityVariable(VariableConstraint):
-    """
-    Specifies that a matching dataset must contain a variable including the specified set of named entities.
-
-    For example, if the entities are city names, the expectation is that a matching dataset must contain a variable
-    (column) with the given city names. Due to spelling differences and incompleteness of datasets, the returned
-    results may not contain all the specified entities.
-
-    Parameters
-    ----------
-    entities : List[str]
-        List of strings that should be contained in the matched dataset column.
-    """
-
-    def __init__(self, entities: typing.List[str]) -> None:
-        self.entities = entities
-
-
-class TemporalVariable(VariableConstraint):
-    """
-    Specifies that a matching dataset should contain a variable with temporal information (e.g., dates) satisfying
-    the given constraint.
-
-    The goal is to return a dataset that covers the requested temporal interval and includes
-    data at a requested level of granularity.
-
-    Datamart will return best effort results, including datasets that may not fully cover the specified temporal
-    interval or whose granularity is finer or coarser than the requested granularity.
-
-    Parameters
-    ----------
-    start : datetime
-        A matching dataset should contain a variable with temporal information that starts earlier than the given start.
-    end : datetime
-        A matching dataset should contain a variable with temporal information that ends after the given end.
-    granularity : TemporalGranularity
-        A matching dataset should provide temporal information at the requested level of granularity.
-    """
-
-    def __init__(self, start: datetime.datetime, end: datetime.datetime,
-                 granularity: TemporalGranularity = None) -> None:
-        self.start = start
-        self.end = end
-        self.granularity = granularity
-
-
-class GeospatialVariable(VariableConstraint):
-    """
-    Specifies that a matching dataset should contain a variable with geospatial information that covers the given
-    bounding box.
-
-    A matching dataset may contain variables with latitude and longitude information (in one or two columns) that
-    cover the given bounding box.
-
-    Alternatively, a matching dataset may contain a variable with named entities of the given granularity that provide
-    some coverage of the given bounding box. For example, if the bounding box covers a 100 mile square in Southern
-    California, and the granularity is City, the result should contain Los Angeles, and other cities in Southern
-    California that intersect with the bounding box (e.g., Hawthorne, Torrance, Oxnard).
-
-    Parameters
-    ----------
-    latitude1 : float
-        The latitude of the first point
-    longitude1 : float
-        The longitude of the first point
-    latitude2 : float
-        The latitude of the second point
-    longitude2 : float
-        The longitude of the second point
-    granularity : GeospatialGranularity
-        Requested geospatial values are well matched with the requested granularity
-    """
-
-    def __init__(self, latitude1: float, longitude1: float, latitude2: float, longitude2: float,
-                 granularity: GeospatialGranularity = None) -> None:
-        self.latitude1 = latitude1
-        self.longitude1 = longitude1
-        self.latitude2 = latitude2
-        self.longitude2 = longitude2
-        self.granularity = granularity
-
-
-class TabularVariable(object):
-    """
-    Specifies that a matching dataset should contain variables related to given columns in the supplied_dataset.
-
-    The relation ColumnRelationship.CONTAINS specifies that string values in the columns overlap using the string
-    equality comparator. If supplied_dataset columns consists of temporal or spatial values, then
-    ColumnRelationship.CONTAINS specifies overlap in temporal range or geospatial bounding box, respectively.
-
-    The relation ColumnRelationship.SIMILAR specifies that string values in the columns overlap using fuzzy string matching.
-
-    The relations ColumnRelationship.CORRELATED and ColumnRelationship.ANTI_CORRELATED specify the columns are
-    correlated and anti-correlated, respectively.
-
-    The relations ColumnRelationship.MUTUALLY_INFORMATIVE and ColumnRelationship.MUTUALLY_UNINFORMATIVE specify the columns
-    are mutually and anti-correlated, respectively.
-
-    Parameters:
-    -----------
-    columns : typing.List[int]
-        Specify columns in the dataframes of the supplied_dataset
-    relationship : ColumnRelationship
-        Specifies how the the columns in the supplied_dataset are related to the variables in the matching dataset.
-    """
-
-    def __init__(self, columns: typing.List[DatasetColumn], relationship: ColumnRelationship) -> None:
-        self.columns = columns
-        self.relationship = relationship

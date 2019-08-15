@@ -13,6 +13,11 @@ import csv
 from .find_identity import FindIdentity
 from collections import Counter
 from datamart_isi import config
+from datamart_isi.utilities.general_search_cache import GeneralSearchCache
+
+
+DEFAULT_DATAMART_URL = config.default_datamart_url
+CACHE_MANAGER = GeneralSearchCache(connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
 try:
     from datamart_isi.config import default_temp_path
@@ -24,51 +29,80 @@ _logger = logging.getLogger(__name__)
 NEW_WIKIFIER_SERVER = config.new_wikifier_server
 
 
-
 def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas",
-            wikifier_choice: typing.List[str]=None, threshold: float=0.7):
+            wikifier_choice: typing.List[str]=None, threshold: float=0.7, use_cache=True):
     if input_type == "pandas":
+
+        # use general search cache system to cache the wikifier results
+        produce_config = {"target_columns": target_columns, "target_p_nodes": target_p_nodes,
+                          "input_type": input_type, "wikifier_choice": wikifier_choice, "threshold": threshold}
+
+        if use_cache:
+            cache_key = CACHE_MANAGER.get_hash_key(inputs, json.dumps(produce_config))
+            cache_result = CACHE_MANAGER.get_cache_results(cache_key)
+            if cache_result is not None:
+                _logger.info("Using caching results for wikifier")
+                return cache_result
+            # END cache part
+
         if wikifier_choice is None:
-            return produce_by_automatic(input_df=inputs, target_columns=target_columns,
-                                        target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
+            return_df = produce_by_automatic(input_df=inputs, target_columns=target_columns,
+                                                   target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
         elif target_columns is None:
             if wikifier_choice[0] == "identifier":
-                return produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
+                return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
             elif wikifier_choice[0] == "new_wikifier":
-                return produce_by_new_wikifier(inputs, target_columns, threshold)
+                return_df = produce_by_new_wikifier(inputs, target_columns, threshold)
             else:
-                return produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
+                return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         else:
             col_name = inputs.columns.tolist()
-            col_idt, col_new, col_at = [], [], []
+            col_identifier, col_new_wikifier, col_auto = [], [], []
             for i in range(len(wikifier_choice)):
                 if wikifier_choice[i] == "identifier":
-                    col_idt.append(target_columns[i])
+                    col_identifier.append(target_columns[i])
                 elif wikifier_choice[i] == "new_wikifier":
-                    col_new.append(target_columns[i])
+                    col_new_wikifier.append(target_columns[i])
                 else:
-                    col_at.append(target_columns[i])
-            col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new + col_idt + col_at)))
+                    col_auto.append(target_columns[i])
+            col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new_wikifier + col_identifier + col_auto)))
             return_df = copy.deepcopy(inputs.iloc[:, col_res])
 
-            if col_idt:
-                return_df_idt = produce_for_pandas(inputs.iloc[:, col_idt], [i for i in range(len(col_idt))], target_p_nodes, threshold)
+            if col_identifier:
+                return_df_identifier = produce_for_pandas(inputs.iloc[:, col_identifier], [i for i in range(len(col_identifier))], 
+                                                   target_p_nodes, threshold)
                 # change the column name index
-                col_tmp = return_df_idt.columns.tolist()
+                col_tmp = return_df_identifier.columns.tolist()
                 col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
-                return_df = pd.concat([return_df, return_df_idt], axis=1)
-            if col_new:
-                return_df_new = produce_by_new_wikifier(inputs.iloc[:, col_new], [i for i in range(len(col_new))], threshold)
+                return_df = pd.concat([return_df, return_df_identifier], axis=1)
+            if col_new_wikifier:
+                return_df_new = produce_by_new_wikifier(inputs.iloc[:, col_new_wikifier], [i for i in range(len(col_new_wikifier))], 
+                                                        threshold)
                 col_tmp = return_df_new.columns.tolist()
                 col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
                 return_df = pd.concat([return_df, return_df_new], axis=1)
-            if col_at:
-                return_df_at = produce_by_automatic(inputs.iloc[:, col_at], [i for i in range(len(col_at))], target_p_nodes, threshold)
-                col_tmp = return_df_at.columns.tolist()
+            if col_auto:
+                return_df_auto = produce_by_automatic(inputs.iloc[:, col_auto], [i for i in range(len(col_auto))], 
+                                                      target_p_nodes, threshold)
+                col_tmp = return_df_auto.columns.tolist()
                 col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
-                return_df = pd.concat([return_df, return_df_at], axis=1)
+                return_df = pd.concat([return_df, return_df_auto], axis=1)
 
-            return return_df[col_name]
+            return_df = return_df[col_name]
+
+        if use_cache:
+            # push to cache system
+            response = CACHE_MANAGER.add_to_memcache(supplied_dataframe=inputs,
+                                                     search_result_serialized=json.dumps(produce_config),
+                                                     augment_results=return_df,
+                                                     hash_key=cache_key
+                                                     )
+            if not response:
+                _logger.warning("Push wikifier results to results failed!")
+            else:
+                _logger.info("Push wikifier results to memcache success!")
+
+        return return_df
 
     # elif input_type == "d3m_ds":
     #     return produce_for_d3m_dataset(input_ds=inputs, target_columns=target_columns)
@@ -207,9 +241,9 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         data = response.content.decode("utf-8")
         data = list(csv.reader(data.splitlines(), delimiter=','))
         return_df = pd.DataFrame(data[1:], columns=data[0])
-        _logger.debug("Successfully getting data from the new wikifier")
+        _logger.debug("Get data from the new wikifier successfully.")
     else:
-        _logger.debug('Error: ' + response.text)
+        _logger.debug('Error with response code: ' + response.text)
 
     return return_df
 
@@ -219,33 +253,33 @@ def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
 
-    col_new, col_idt = [], []
+    col_new_wikifier, col_identifier = [], []
     for column in target_columns:
         current_column_name = input_df.columns[column]
         _logger.debug('Current column: ' + current_column_name)
         try:
             if input_df.iloc[:, column].astype(float).dtypes == "float64" or input_df.iloc[:, column].astype(int).dtypes == "int64":
                 _logger.debug(current_column_name + ' is numeric column, will choose identifier')
-                col_idt.append(column)
+                col_identifier.append(column)
         except:
             _logger.debug(current_column_name + ' is text column, will choose new wikifier')
-            col_new.append(column)
+            col_new_wikifier.append(column)
 
     col_name = input_df.columns.tolist()
-    return_df_idt = input_df.iloc[:, col_idt]
-    return_df_new = input_df.iloc[:, col_new]
-    col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new + col_idt)))
+    return_df_identifier = input_df.iloc[:, col_identifier]
+    return_df_new = input_df.iloc[:, col_new_wikifier]
+    col_res = list(set([i for i in range(len(col_name))]).difference(set(col_new_wikifier + col_identifier)))
     return_df = copy.deepcopy(input_df.iloc[:, col_res])
 
-    if col_idt:
-        return_df_idt = produce_for_pandas(return_df_idt, [i for i in range(len(col_idt))], target_p_nodes, threshold_for_converage)
-        col_tmp = return_df_idt.columns.tolist()
+    if col_identifier:
+        return_df_identifier = produce_for_pandas(return_df_identifier, [i for i in range(len(col_identifier))], target_p_nodes, threshold_for_converage)
+        col_tmp = return_df_identifier.columns.tolist()
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
-    if col_new:
-        return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new))], threshold_for_converage)
+    if col_new_wikifier:
+        return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new_wikifier))], threshold_for_converage)
         col_tmp = return_df_new.columns.tolist()
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
-    return_df = pd.concat([return_df, return_df_idt, return_df_new], axis=1)
+    return_df = pd.concat([return_df, return_df_identifier, return_df_new], axis=1)
 
     return return_df[col_name]
 
