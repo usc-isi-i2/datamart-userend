@@ -13,7 +13,7 @@ import csv
 from .find_identity import FindIdentity
 from collections import Counter
 from datamart_isi import config
-from datamart_isi.utilities.general_search_cache import GeneralSearchCache
+from datamart_isi.cache.general_search_cache import GeneralSearchCache
 
 
 DEFAULT_DATAMART_URL = config.default_datamart_url
@@ -32,7 +32,6 @@ NEW_WIKIFIER_SERVER = config.new_wikifier_server
 def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typing.List[str]=None, input_type: str="pandas",
             wikifier_choice: typing.List[str]=None, threshold: float=0.7, use_cache=True):
     if input_type == "pandas":
-
         # use general search cache system to cache the wikifier results
         produce_config = {"target_columns": target_columns, "target_p_nodes": target_p_nodes,
                           "input_type": input_type, "wikifier_choice": wikifier_choice, "threshold": threshold}

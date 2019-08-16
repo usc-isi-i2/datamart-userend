@@ -22,18 +22,18 @@ from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
 
 from datamart import TabularVariable, ColumnRelationship, AugmentSpec
+from datamart_isi import config
 from datamart_isi.augment import Augment
-from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
-from datamart_isi import config
+from datamart_isi.utilities.utils import Utils
 from datamart_isi.utilities.timeout import timeout_call
-from datamart_isi.utilities.wikidata_cache import QueryCache
-from datamart_isi.utilities.general_search_cache import GeneralSearchCache
 from datamart_isi.utilities import d3m_wikifier
-from datamart_isi.utilities.metadata_cache import MetadataCache
 from datamart_isi.utilities.d3m_metadata import MetadataGenerator
 from datamart_isi.utilities.download_manager import DownloadManager
+from datamart_isi.cache.wikidata_cache import QueryCache
+from datamart_isi.cache.general_search_cache import GeneralSearchCache
+from datamart_isi.cache.metadata_cache import MetadataCache
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
