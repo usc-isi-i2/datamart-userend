@@ -46,7 +46,7 @@ def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typin
 
         if wikifier_choice is None:
             return_df = produce_by_automatic(input_df=inputs, target_columns=target_columns,
-                                                   target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
+                                             target_p_nodes=target_p_nodes, threshold_for_coverage=threshold)
         elif target_columns is None:
             if wikifier_choice[0] == "identifier":
                 return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
@@ -135,13 +135,13 @@ def one_character_alphabet(inputs):
     return False
 
 
-def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_converage=0.7):
+def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_coverage=0.7):
     """
     function used to produce for input type is pandas.dataFrame
     :param input_df: input pd.dataFrame
     :param target_columns: target columns to find with wikidata
     :param target_p_nodes: user-speicified P node want to get, can be None if want automatic search
-    :param threshold_for_converage: minimum coverage ratio for a wikidata columns to be appended
+    :param threshold_for_coverage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
     _logger.info("Start to produce Q-nodes by identifier")
@@ -159,7 +159,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
             temp = set()
             for each in input_df.iloc[:, column].dropna().tolist():
                 temp.add(int(each))
-            if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_converage):
+            if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_coverage):
                 _logger.debug("Column with all numerical values and useless detected, skipped")
                 continue
         except:
@@ -182,9 +182,9 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
         else:
             # if not found, check if coverage reach the threshold
             target_p_node_to_send = None
-            if coverage(curData) < threshold_for_converage:
+            if coverage(curData) < threshold_for_coverage:
                 _logger.debug("Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(
-                    threshold_for_converage))
+                    threshold_for_coverage))
                 continue
 
         # get wikifiered result for this column
@@ -197,9 +197,9 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
                 if curData[i] in top1_dict:
                     new_col[i] = top1_dict[curData[i]]
             # same as previous, only check when no specific P nodes given
-            if not target_p_node_to_send and coverage(new_col) < threshold_for_converage:
+            if not target_p_node_to_send and coverage(new_col) < threshold_for_coverage:
                 _logger.debug("[WARNING] Coverage of Q nodes is " + str(coverage(new_col)) +
-                              " which is less than threshold " + str(threshold_for_converage))
+                              " which is less than threshold " + str(threshold_for_coverage))
                 continue
             column_to_p_node_dict[current_column_name] = res[0]
             col_name = current_column_name + '_wikidata'
@@ -210,29 +210,36 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
     return return_df
 
 
-def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, threshold_for_converage = 0.7):
-    _logger.debug("[INFO] Start to produce Q-nodes by new wikifier")
-    return_df = copy.deepcopy(input_df)
+def produce_by_new_wikifier(input_df, target_columns=None, threshold_for_coverage=0.7) -> pd.DataFrame:
+    """
+    The function used to call new wikifier service
+    :param input_df: a dataframe(both d3m or pandas are acceptable)
+    :param target_columns: typing.List[int] indicates the column numbers of the columns need to be wikified
+    :param threshold_for_coverage: the minimum coverage of Q nodes for the column,
+                                   if the appeared times are lower than threshold, we will not use it
+    :return: a dataframe with wikifiered columns
+    """
+    _logger.debug("Start running new wikifier")
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
 
     col_names = []
     for column in target_columns:
         current_column_name = input_df.columns[column]
-        _logger.debug('Current column: ' + current_column_name)
-        try:
-            temp = set()
-            for each in input_df.iloc[:, column].dropna():
-                temp.add(each)
-            if one_character_alphabet(temp):
-                _logger.debug("Column with only one letter in each line and useless detected, skipped")
-                continue
-            else:
-                col_names.append(current_column_name)
-        except:
-            pass
+        temp = set()
+        # for special case that if a column has only one character for each row, we should skip it
+        for each in input_df.iloc[:, column].dropna():
+            temp.add(each)
+        if one_character_alphabet(temp):
+            _logger.debug("Column with only one letter in each line and useless detected, skipped")
+            continue
+        else:
+            col_names.append(current_column_name)
 
-    # input_df.to_csv('wikifier.csv', index=False)
+    _logger.debug("Following {} columns will be send to new wikifier:".format(str(len(col_names))))
+    _logger.debug(str(col_names))
+
+    # transfer to bytes and send to new wikifier server
     data = io.BytesIO()
     data_bytes = input_df.to_csv(index=False).encode("utf-8")
     data.write(data_bytes)
@@ -242,7 +249,7 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         'file': ('wikifier.csv', data),
         'type': (None, 'text/csv'),
         'columns': (None, json.dumps({'names': col_names})),
-        'wikifyPercentage': (None, str(threshold_for_converage))
+        'wikifyPercentage': (None, str(threshold_for_coverage))
     }
 
     response = requests.post(NEW_WIKIFIER_SERVER, files=files)
@@ -257,15 +264,24 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
                 return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Get data from the new wikifier successfully.")
     else:
-        _logger.error('[Error] Something wrong in new wikifier server with response code: ' + response.text)
+        _logger.error('Something wrong in new wikifier server with response code: ' + response.text)
         _logger.debug("Wikifier_choice will change to identifier")
-        return_df = produce_for_pandas(input_df=input_df, target_columns=target_columns, threshold_for_converage = 0.7)
+        return_df = produce_for_pandas(input_df=input_df, target_columns=target_columns, threshold_for_coverage = 0.7)
 
     return return_df
 
 
-def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target_p_nodes: dict=None, threshold_for_converage = 0.7):
-    _logger.debug("[INFO] Start to produce Q-nodes by automatic")
+def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None, threshold_for_coverage=0.7) -> pd.DataFrame:
+    """
+    The function used to call new wikifier service
+    :param input_df: a dataframe(both d3m or pandas are acceptable)
+    :param target_columns: typing.List[int] indicates the column numbers of the columns need to be wikified
+    :param threshold_for_coverage: the minimum coverage of Q nodes for the column,
+                                   if the appeared times are lower than threshold, we will not use it
+    :param target_p_nodes: a dict which includes the specific p node for the given column
+    :return: a dataframe with wikifiered columns
+    """
+    _logger.debug("Start running automatic wikifier")
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
 
@@ -288,12 +304,13 @@ def produce_by_automatic(input_df, target_columns: typing.List[int]=None, target
     return_df = copy.deepcopy(input_df.iloc[:, col_res])
 
     if col_identifier:
-        return_df_identifier = produce_for_pandas(return_df_identifier, [i for i in range(len(col_identifier))], target_p_nodes, threshold_for_converage)
+        return_df_identifier = produce_for_pandas(return_df_identifier, [i for i in range(len(col_identifier))],
+                                                  target_p_nodes, threshold_for_coverage)
         col_tmp = return_df_identifier.columns.tolist()
         # change the column name index
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
     if col_new_wikifier:
-        return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new_wikifier))], threshold_for_converage)
+        return_df_new = produce_by_new_wikifier(return_df_new, [i for i in range(len(col_new_wikifier))], threshold_for_coverage)
         col_tmp = return_df_new.columns.tolist()
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
     return_df = pd.concat([return_df, return_df_identifier, return_df_new], axis=1)
