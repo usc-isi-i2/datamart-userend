@@ -46,8 +46,10 @@ def produce(inputs, target_columns: typing.List[int]=None, target_p_nodes: typin
             # END cache part
 
         if wikifier_choice is None:
-            return_df = produce_by_automatic(input_df=inputs, target_columns=target_columns,
-                                                   target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
+            # FIXME: Disable new wikifier temporarily
+            return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
+            # return_df = produce_by_automatic(input_df=inputs, target_columns=target_columns,
+            #                                         target_p_nodes=target_p_nodes, threshold_for_converage=threshold)
         elif target_columns is None:
             if wikifier_choice[0] == "identifier":
                 return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
@@ -213,7 +215,6 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
 
 def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, threshold_for_converage = 0.7):
     _logger.debug("[INFO] Start to produce Q-nodes by new wikifier")
-    return_df = copy.deepcopy(input_df)
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
 
