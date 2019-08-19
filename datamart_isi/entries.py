@@ -994,24 +994,9 @@ class DatamartSearchResult:
         q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
         q_nodes_list = list(q_nodes_list)
         q_nodes_list.sort()
-        return_df = d3m_DataFrame()
 
-        vectors_dict = DownloadManager.fetch_fb_embeddings(q_nodes_list)
-        for key, val in vectors_dict.items():
-            each_result = dict()
-            each_result["q_node"] = key
-            vectors = val.split(',')
-            for i in range(len(vectors)):
-                if i < 10:
-                    s = '00' + str(i)
-                elif i < 100:
-                    s = '0' + str(i)
-                else:
-                    s = str(i)
-                v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
-                each_result[v_name] = vectors[i]
-
-            return_df = return_df.append(each_result, ignore_index=True)
+        return_df = DownloadManager.fetch_fb_embeddings(q_nodes_list, target_q_node_column_name)
+        return_df = d3m_DataFrame(return_df)
 
         # use rltk joiner to find the joining pairs
         joiner = RLTKJoinerWikidata()

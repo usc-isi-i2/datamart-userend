@@ -1,5 +1,6 @@
 import requests
 from datamart_isi import config
+import pandas
 
 WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
 EM_ES_URL = config.em_es_url
@@ -10,7 +11,7 @@ EM_ES_TYPE = config.em_es_type
 class DownloadManager:
 
     @staticmethod
-    def fetch_fb_embeddings(q_nodes_list):
+    def fetch_fb_embeddings(q_nodes_list, target_q_node_column_name):
         # add vectors columns in wikifier_res
         qnodes = list(filter(None, q_nodes_list))
         qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
@@ -35,4 +36,22 @@ class DownloadManager:
                     source = hit['_source']
                     _qnode = source['key'].split('/')[-1][:-1]
                     res[_qnode] = ",".join(source['value'])
-        return res
+
+        # change to dataframe
+        return_df = pandas.DataFrame()
+        for key, val in res.items():
+            each_result = dict()
+            each_result["q_node"] = key
+            vectors = val.split(',')
+            for i in range(len(vectors)):
+                if i < 10:
+                    s = '00' + str(i)
+                elif i < 100:
+                    s = '0' + str(i)
+                else:
+                    s = str(i)
+                v_name = "vector_" + s + "_of_qnode_with_" + target_q_node_column_name
+                each_result[v_name] = float(vectors[i])
+            return_df = return_df.append(each_result, ignore_index=True)
+
+        return return_df

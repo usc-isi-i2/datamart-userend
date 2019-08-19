@@ -275,8 +275,9 @@ class MetadataGenerator:
                         }
         return_metadata = return_metadata.update(selector=selector_base + (), metadata=metadata_all)
         # fetch the num of columns
-        res_dict = DownloadManager.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]])
-        length = len(list(res_dict.values())[0].split(','))
+        return_df = DownloadManager.fetch_fb_embeddings([self.search_result['q_nodes_list'][0]],
+                                                       self.search_result["target_q_node_column_name"])
+        length = len(return_df) - 1
         metadata_all_elements = {
             "dimension": {
                 "name": "columns",
