@@ -9,7 +9,6 @@ EM_ES_TYPE = config.em_es_type
 
 
 class DownloadManager:
-
     @staticmethod
     def fetch_fb_embeddings(q_nodes_list, target_q_node_column_name):
         # add vectors columns in wikifier_res
