@@ -120,6 +120,7 @@ class RLTKJoinerGeneral(JoinerBase):
              left_metadata: dict,
              right_metadata: dict
              ) -> typing.Tuple[pd.DataFrame, typing.List[tuple]]:
+        # the left_metadata and right_metadata has a key named "variables" which stored the tokens of each column
 
         fp = FeaturePairs(left_df, right_df, left_columns, right_columns, left_metadata, right_metadata)
         block = fp.get_rltk_block()
@@ -173,9 +174,9 @@ class RLTKJoinerGeneral(JoinerBase):
             for f1, f2 in fp.pairs:
                 v1 = f1.value_merge_func(r1)
                 v2 = f2.value_merge_func(r2)
-                if self.exact_match:
-                    similarities.append(1 if v1 == v2 else 0)
-                    continue
+                # if self.exact_match:
+                #     similarities.append(1 if v1 == v2 else 0)
+                #     continue
                 # print(v1, v2, type(f1), type(f2))
                 for similarity_func in f1.similarity_functions():
                     similarity = similarity_func(v1, v2)
@@ -219,6 +220,12 @@ class RLTKJoinerGeneral(JoinerBase):
 
     @staticmethod
     def simple_best_match(sim: typing.List[typing.List[float]], threshold=0.5):
+        """
+        find the highest similarity candidate
+        :param sim:
+        :param threshold:
+        :return:
+        """
         res = []
         for idx, v in enumerate(sim):
             max_val = threshold
@@ -232,6 +239,12 @@ class RLTKJoinerGeneral(JoinerBase):
 
     @staticmethod
     def simple_best_matches(sim: typing.List[typing.List[float]], threshold=0.5):
+        """
+        find the first pair which has similarity larger than threshold
+        :param sim:
+        :param threshold:
+        :return:
+        """
         res = []
         for idx, v in enumerate(sim):
             cur = []

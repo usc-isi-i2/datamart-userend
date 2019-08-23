@@ -2,7 +2,7 @@ default_datamart_url = "dsbox02.isi.edu"
 
 wikidata_server = "http://kg2018a.isi.edu:8888/bigdata/namespace/wdq/sparql"
 # wikidata_server_test = "http://sitaware.isi.edu:8080/bigdata/namespace/datamart3/sparql"
-general_search_server = "http://dsbox02.isi.edu:9001/blazegraph/namespace/datamart3/sparql"
+general_search_server = "http://dsbox02.isi.edu:9002/blazegraph/namespace/datamart3/sparql"
 wikifier_server = "http://dsbox02.isi.edu/wikifier/get_identifiers"
 memcache_server = "dsbox02.isi.edu:11211"
 
@@ -10,7 +10,7 @@ cache_file_storage_base_loc = "/nfs1/dsbox-repo/datamart/datamart_new/memcache_s
 wikidata_server_suffix = "/wikidata"
 memcache_server_suffix = ":11211"
 wikifier_server_suffix = "/wikifier/get_identifiers"
-general_search_server_suffix = ":9001/blazegraph/namespace/datamart3/sparql"
+general_search_server_suffix = ":9002/blazegraph/namespace/datamart3/sparql"
 rest_api_suffix = ":9000"
 
 # current memcache server's max size is 100MB

@@ -54,3 +54,4 @@ class DownloadManager:
             return_df = return_df.append(each_result, ignore_index=True)
 
         return return_df
+

@@ -5,10 +5,7 @@ import os
 import random
 import collections
 import typing
-import traceback
 import logging
-import datetime
-import datamart
 import json
 import string
 import time
@@ -213,7 +210,7 @@ class DatamartQueryCursor(object):
         otherwise return original input
         :return: None
         """
-        self._logger.debug("Start running wikifier...")
+        self._logger.debug("Start running wikifier for supplied data in search...")
         results = d3m_wikifier.run_wikifier(supplied_data=input_data)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
@@ -853,6 +850,7 @@ class DatamartSearchResult:
             for each in self.query_json['keywords']:
                 if TIME_COLUMN_MARK in each:
                     is_time_query = True
+                    break
 
         if is_time_query:
             # if it is the dataset fond with time query, we should transform that time column to same format
@@ -1039,6 +1037,8 @@ class DatamartSearchResult:
         Callers who want to control over the augmentation process should use the download method and use their own
         augmentation algorithm.
 
+        This function actually do the concat steps that combine the joining pairs found from download and
+        return a dataset with more columns. The detail pairs finding algorithm is located in download part
         Parameters
         ---------
         supplied_data : container.Dataset
@@ -1191,8 +1191,9 @@ class DatamartSearchResult:
         else:
             self._logger.error("Attention! It seems augment do not add any extra columns!")
 
-        # if search with wikidata, we can remove duplicate Q node column
+        # if search with wikidata, we should remove duplicate Q node column
         self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+
         if 'q_node' in df_joined.columns:
             df_joined = df_joined.drop(columns=['q_node'])
 
@@ -1206,8 +1207,17 @@ class DatamartSearchResult:
                                                                                        supplied_data=supplied_data,
                                                                                        augment_resource_id=augment_resource_id
                                                                                        )
-            self._logger.debug("Augment finished")
-            return return_result
+        else:
+            if return_format == "ds":
+                self._logger.warning("It is useless to return a dataset without metadata!!!")
+                return_df = d3m_DataFrame(df_joined, generate_metadata=False)
+                resources = {augment_resource_id: return_df}
+                return_result = d3m_Dataset(resources=resources, generate_metadata=False)
+            else:
+                return_result = d3m_DataFrame(df_joined)
+
+        self._logger.debug("Augment finished")
+        return return_result
 
     def score(self) -> float:
         return self.metadata_manager.score
