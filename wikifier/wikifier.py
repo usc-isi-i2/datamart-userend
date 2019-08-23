@@ -168,6 +168,14 @@ def produce_for_pandas(input_df, target_columns: typing.List[int]=None, target_p
         except:
             pass
 
+        try:
+            temp = set(input_df.iloc[:, column].dropna())
+            if one_character_alphabet(temp):
+                _logger.debug("Column with only one letter in each line and useless detected, skipped")
+                continue
+        except:
+            pass
+
         curData = []
         for each in input_df.iloc[:, column]:
             if type(each) is str:
@@ -223,9 +231,7 @@ def produce_by_new_wikifier(input_df, target_columns: typing.List[int]=None, thr
         current_column_name = input_df.columns[column]
         _logger.debug('Current column: ' + current_column_name)
         try:
-            temp = set()
-            for each in input_df.iloc[:, column].dropna():
-                temp.add(each)
+            temp = set(input_df.iloc[:, column].dropna())
             if one_character_alphabet(temp):
                 _logger.debug("Column with only one letter in each line and useless detected, skipped")
                 continue
