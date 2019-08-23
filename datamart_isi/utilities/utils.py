@@ -2,7 +2,6 @@ import typing
 import pandas as pd
 import wikifier
 import traceback
-import hashlib
 import os
 import logging
 import json
@@ -10,10 +9,7 @@ from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from io import StringIO
 from ast import literal_eval
 from d3m.container import DataFrame as d3m_DataFrame
-from d3m.container.dataset import D3MDatasetLoader
-from d3m.container import Dataset as d3m_Dataset
-from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
-from d3m.base import utils as d3m_utils
+
 from datamart_isi.config import wikidata_server
 from datamart_isi.config import cache_file_storage_base_loc
 

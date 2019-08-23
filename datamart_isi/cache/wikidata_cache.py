@@ -95,7 +95,22 @@ class QueryCache(object):
         else:
             self._logger.info("No memcache server connected, skip cache searching.")
             return None
-            
+
+    def remove_from_memcache(self, hash_key):
+        """
+        Function used to remove corresponding query
+        :param hash_key:
+        :return:
+        """
+        fail_count = 0
+        for each_key in ["query_", "timestamp_", "results_"]:
+            memcache_key = each_key + hash_key
+            response = self.mc.delete(memcache_key)
+            if response == 0:
+                self._logger.warning("Delete key " + memcache_key + " from memcache server failed!")
+                fail_count += 1
+        self._logger.info("Delete key " + hash_key + " from memcache server finished! Totally " + str(fail_count) + " failed.")
+
     def add_to_memcache(self, query, hash_key, query_result) -> bool:
         """
         Function used to add the query results to memcache server
