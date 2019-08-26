@@ -49,5 +49,7 @@ em_es_index = "wiki_fb_embeddings_1"
 em_es_type = "vectors"
 
 # new wikifier server
-new_wikifier_server = "http://dsbox02.isi.edu:8396/wikify"
+# new_wikifier_server = "http://dsbox02.isi.edu:8396/wikify"
+new_wikifier_server = "http://minds03.isi.edu:8396/wikify"
+
 

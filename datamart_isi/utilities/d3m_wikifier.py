@@ -57,15 +57,18 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
 
             for each in target_columns:
                 each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
+                if supplied_dataframe.columns[each] == "d3mIndex":
+                    temp.remove(each)
                 # if the column type inside here found, this coumn should be wikified
-                if set(each_column_semantic_type).intersection(need_column_type):
+                elif set(each_column_semantic_type).intersection(need_column_type):
                     continue
                 # if the column type inside here found, this column should not be wikified
                 elif set(each_column_semantic_type).intersection(skip_column_type):
                     temp.remove(each)
-                elif supplied_dataframe.columns[each] == "d3mIndex":
-                    temp.remove(each)
             target_columns = temp
+
+        if target_columns is None:
+            return supplied_data
 
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         # here because this function is called from augment part, so this part
