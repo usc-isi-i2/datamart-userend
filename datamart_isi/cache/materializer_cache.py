@@ -5,15 +5,11 @@ import hashlib
 import pickle
 import datetime
 import typing
-import pandas as pd
 import os
 from datamart_isi import config
 from datamart_isi.utilities import connection
-from d3m.container import DataFrame as d3m_DataFrame
-from pandas.util import hash_pandas_object
 
-MEMCACHE_SERVER = config.memcache_server
-WIKIDATA_QUERY_SERVER = config.wikidata_server
+
 MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
@@ -21,7 +17,7 @@ class MaterializerCache(object):
     def __init__(self, connection_url: str, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)
         self.memcache_server = connection.get_memcache_server_url(connection_url)
-        self.general_search_server = connection.get_genearl_search_server_url(connection_url)
+        self.general_search_server = connection.get_general_search_server_url(connection_url)
         self._logger.debug("Current memcache server url is: " + self.memcache_server)
         self._logger.debug("Current general search server url is: " + self.general_search_server)
         try:
