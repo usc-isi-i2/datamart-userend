@@ -25,7 +25,7 @@ class Augment(object):
 
         """
 
-        self.qm = SPARQLWrapper(connection.get_genearl_search_server_url(endpoint))
+        self.qm = SPARQLWrapper(connection.get_general_search_server_url(endpoint))
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)

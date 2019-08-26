@@ -11,8 +11,6 @@ from datamart_isi.utilities import connection
 from d3m.container import DataFrame as d3m_DataFrame
 from pandas.util import hash_pandas_object
 
-MEMCACHE_SERVER = config.memcache_server
-WIKIDATA_QUERY_SERVER = config.wikidata_server
 MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
@@ -20,7 +18,7 @@ class GeneralSearchCache(object):
     def __init__(self, connection_url: str, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)
         self.memcache_server = connection.get_memcache_server_url(connection_url)
-        self.general_search_server = connection.get_genearl_search_server_url(connection_url)
+        self.general_search_server = connection.get_general_search_server_url(connection_url)
         self._logger.debug("Current memcache server url is: " + self.memcache_server)
         self._logger.debug("Current general search server url is: " + self.general_search_server)
         try:
@@ -94,7 +92,7 @@ class GeneralSearchCache(object):
             # add search result
             response_code4 = self.mc.set("search_result" + hash_key, search_result_serialized)
             if not response_code4:
-                self._logger.warning("Pushing seearch result failed! Maybe the size too big?")
+                self._logger.warning("Pushing search result failed! Maybe the size too big?")
 
             # only return True if all success
             if response_code1 and response_code2 and response_code3 and response_code4:

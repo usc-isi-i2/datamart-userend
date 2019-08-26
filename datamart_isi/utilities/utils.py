@@ -9,11 +9,11 @@ from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from io import StringIO
 from ast import literal_eval
 from d3m.container import DataFrame as d3m_DataFrame
-
-from datamart_isi.config import wikidata_server
 from datamart_isi.config import cache_file_storage_base_loc
+from datamart_isi.utilities import connection
 
-WIKIDATA_SERVER = wikidata_server
+WIKIDATA_SERVER = connection.get_wikidata_server_url()
+
 _logger = logging.getLogger(__name__)
 seed_dataset_store_location = os.path.join(cache_file_storage_base_loc, "datasets_cache")
 

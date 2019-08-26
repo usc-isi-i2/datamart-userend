@@ -7,8 +7,7 @@ import datetime
 import typing
 from datamart_isi import config
 from datamart_isi.utilities import connection
-MEMCACHE_SERVER = config.memcache_server
-WIKIDATA_QUERY_SERVER = config.wikidata_server
+
 MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 

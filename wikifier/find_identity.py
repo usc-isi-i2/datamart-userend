@@ -4,16 +4,12 @@ import requests
 from SPARQLWrapper import SPARQLWrapper, JSON
 import typing
 import logging
+from datamart_isi import config
+from datamart_isi.utilities import connection
 _logger = logging.getLogger(__name__)
 
-try:
-    from datamart_isi import config
-    wikidata_query_server = config.wikidata_server
-    wikifier_server = config.wikifier_server
-except:
-    wikidata_query_server = "http://sitaware.isi.edu:8080/bigdata/namespace/wdq/sparql"
-    wikifier_server = "http://dsbox02.isi.edu/wikifier/get_identifiers"
-    
+wikidata_query_server = connection.get_wikidata_server_url()
+wikifier_server = connection.get_wikifier_identifier_server_url()
 P_blacklist = ["P5736", "P3984"]
 
 

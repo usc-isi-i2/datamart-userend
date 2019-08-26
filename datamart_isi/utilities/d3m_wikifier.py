@@ -69,6 +69,8 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
 
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         # here because this function is called from augment part, so this part
+        import pdb
+        pdb.set_trace()
         wikifier_res = wikifier.produce(inputs=pd.DataFrame(supplied_dataframe), target_columns=target_columns,
                                         target_p_nodes=specific_p_nodes, use_cache=use_cache)
         output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)

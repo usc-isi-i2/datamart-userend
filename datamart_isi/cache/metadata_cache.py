@@ -8,10 +8,8 @@ from d3m.container.dataset import D3MDatasetLoader
 from d3m.container import Dataset as d3m_Dataset
 from d3m.metadata.base import ALL_ELEMENTS
 from d3m.base import utils as d3m_utils
-from datamart_isi.config import wikidata_server
 from datamart_isi.config import cache_file_storage_base_loc
 
-WIKIDATA_SERVER = wikidata_server
 _logger = logging.getLogger(__name__)
 seed_dataset_store_location = os.path.join(cache_file_storage_base_loc, "datasets_cache")
 
