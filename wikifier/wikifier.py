@@ -46,8 +46,8 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
 
         if wikifier_choice is None:
             # FIXME: Disable new wikifier temporarily
-            return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
-            # return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
+            # return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
+            return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         elif target_columns is None:
             if wikifier_choice[0] == "identifier":
                 return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
@@ -293,6 +293,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
                 return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Get data from the new wikifier successfully.")
         if column_to_p_node_dict:
+            _logger.debug("For each column, the best matching class is:" + str(column_to_p_node_dict))
             save_specific_p_nodes(input_df, column_to_p_node_dict)
     else:
         _logger.error('Something wrong in new wikifier server with response code: ' + response.text)
@@ -324,8 +325,10 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,
         if target_p_nodes is not None and current_column_name in target_p_nodes.keys():
             if "Q" in target_p_nodes[current_column_name]:
                 col_new_wikifier.append(column)
+                _logger.debug(current_column_name + ' is text column, will choose new wikifier')
             elif "P" in target_p_nodes[current_column_name]:
                 col_identifier.append(column)
+                _logger.debug(current_column_name + ' is numeric column, will choose identifier')
         else:
             try:
                 if input_df.iloc[:, column].astype(float).dtypes == "float64" or input_df.iloc[:, column].astype(

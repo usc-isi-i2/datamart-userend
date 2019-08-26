@@ -32,6 +32,7 @@ q_node_semantic_type = "http://wikidata.org/qnode"
 # this is used to add some speical part in query to constrain p nodes search results
 special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
+wikifier_column_mark = "%^$#@wikifier@%^$#"
 max_entities_length = 10000
 
 need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",

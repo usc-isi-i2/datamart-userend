@@ -57,13 +57,13 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
 
             for each in target_columns:
                 each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
-                if supplied_dataframe.columns[each] == "d3mIndex":
-                    temp.remove(each)
                 # if the column type inside here found, this coumn should be wikified
-                elif set(each_column_semantic_type).intersection(need_column_type):
+                if set(each_column_semantic_type).intersection(need_column_type):
                     continue
                 # if the column type inside here found, this column should not be wikified
                 elif set(each_column_semantic_type).intersection(skip_column_type):
+                    temp.remove(each)
+                elif supplied_dataframe.columns[each] == "d3mIndex":
                     temp.remove(each)
             target_columns = temp
 
@@ -104,7 +104,7 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
         return supplied_data
 
 
-def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
+def generate_specific_meta_path(supplied_dataframe):
     columns_list = supplied_dataframe.columns.tolist()
     columns_list.sort()
     hash_generator = hashlib.md5()
@@ -115,12 +115,23 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
     _logger.debug("Current dataset cache searching path is: " + temp_path)
     _logger.debug("Current columns are: " + str(columns_list))
     _logger.debug("Current dataset's hash key is: " + hash_key)
+    return specific_q_nodes_file
+
+
+def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
+    specific_q_nodes_file = generate_specific_meta_path(supplied_dataframe)
     if path.exists(specific_q_nodes_file):
         with open(specific_q_nodes_file, 'r') as f:
             res = json.load(f)
             return res
     else:
         return None
+
+
+def delete_specific_p_nodes_file(supplied_dataframe):
+    specific_q_nodes_file = generate_specific_meta_path(supplied_dataframe)
+    if path.exists(specific_q_nodes_file):
+        os.remove(specific_q_nodes_file)
 
 
 def check_and_correct_q_nodes_semantic_type(input):
