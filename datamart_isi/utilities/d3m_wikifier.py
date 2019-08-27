@@ -67,6 +67,9 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
                     temp.remove(each)
             target_columns = temp
 
+        if target_columns is None:
+            return supplied_data
+
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         # here because this function is called from augment part, so this part
         wikifier_res = wikifier.produce(inputs=pd.DataFrame(supplied_dataframe), target_columns=target_columns,
@@ -101,7 +104,7 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
         return supplied_data
 
 
-def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
+def generate_specific_meta_path(supplied_dataframe):
     columns_list = supplied_dataframe.columns.tolist()
     columns_list.sort()
     hash_generator = hashlib.md5()
@@ -112,12 +115,23 @@ def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
     _logger.debug("Current dataset cache searching path is: " + temp_path)
     _logger.debug("Current columns are: " + str(columns_list))
     _logger.debug("Current dataset's hash key is: " + hash_key)
+    return specific_q_nodes_file
+
+
+def get_specific_p_nodes(supplied_dataframe) -> typing.Optional[list]:
+    specific_q_nodes_file = generate_specific_meta_path(supplied_dataframe)
     if path.exists(specific_q_nodes_file):
         with open(specific_q_nodes_file, 'r') as f:
             res = json.load(f)
             return res
     else:
         return None
+
+
+def delete_specific_p_nodes_file(supplied_dataframe):
+    specific_q_nodes_file = generate_specific_meta_path(supplied_dataframe)
+    if path.exists(specific_q_nodes_file):
+        os.remove(specific_q_nodes_file)
 
 
 def check_and_correct_q_nodes_semantic_type(input):
