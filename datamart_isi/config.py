@@ -9,8 +9,6 @@ default_datamart_url = "dsbox02.isi.edu"
 # memcache_server = "dsbox02.isi.edu:11211"
 
 cache_file_storage_base_loc = os.path.join(home_dir, "memcache_storage")
-if not os.path.exists(cache_file_storage_base_loc):
-    os.mkdir(cache_file_storage_base_loc)
 
 wikidata_server_suffix = ":8888/bigdata/namespace/wdq/sparql"
 memcache_server_suffix = ":11211"
