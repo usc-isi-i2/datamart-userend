@@ -57,3 +57,7 @@ em_es_type = "vectors"
 new_wikifier_server = "http://minds03.isi.edu:8396/wikify"
 
 
+max_longitude_val = 180
+min_longitude_val = -180
+max_latitude_val = 90
+min_latitude_val = -90
