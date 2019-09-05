@@ -44,7 +44,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
             # END cache part
 
         if wikifier_choice is None:
-            # FIXME: for testing the TA2's sample_search, not disable the new wikifier temporarily
+            # FIXME: Currently the new wikifier maybe very slow for large datasets
             # return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
             return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         elif target_columns is None:
