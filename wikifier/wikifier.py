@@ -20,7 +20,6 @@ CACHE_MANAGER = GeneralSearchCache(connection_url= os.getenv('DATAMART_URL_NYU',
 
 try:
     from datamart_isi.config import default_temp_path
-
     DEFAULT_TEMP_PATH = default_temp_path
 except:
     DEFAULT_TEMP_PATH = "/tmp"
@@ -45,7 +44,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
             # END cache part
 
         if wikifier_choice is None:
-            # FIXME: Disable new wikifier temporarily
+            # FIXME: for testing the TA2's sample_search, not disable the new wikifier temporarily
             # return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
             return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         elif target_columns is None:
@@ -230,6 +229,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
     The function used to call new wikifier service
     :param input_df: a dataframe(both d3m or pandas are acceptable)
     :param target_columns: typing.List[int] indicates the column numbers of the columns need to be wikified
+    :param target_p_nodes: user-speicified Q node want to get, can be None if want automatic search
     :param threshold_for_coverage: the minimum coverage of Q nodes for the column,
                                    if the appeared times are lower than threshold, we will not use it
     :return: a dataframe with wikifiered columns
@@ -303,8 +303,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
     return return_df
 
 
-def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,
-                         threshold_for_coverage=0.7) -> pd.DataFrame:
+def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,threshold_for_coverage=0.7) -> pd.DataFrame:
     """
     The function used to call new wikifier service
     :param input_df: a dataframe(both d3m or pandas are acceptable)

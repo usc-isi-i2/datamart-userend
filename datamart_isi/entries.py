@@ -326,6 +326,7 @@ class DatamartQueryCursor(object):
         search_result = []
         variables_search = self.search_query[self.current_searching_query_index].variables_search
         keywords_search = self.search_query[self.current_searching_query_index].keywords_search
+        # COMMENT: title does not used, may delete later
         variables, title = dict(), dict()
         variables_temp = dict()  # this temp is specially used to store variable for time query
         for each_variable in self.search_query[self.current_searching_query_index].variables:
@@ -480,7 +481,7 @@ class Datamart(object):
         """
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None,
-                                   connection_url=self.connection_url)
+                                   connection_url=self.connection_url, need_run_wikifier = False)
 
     def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
             -> DatamartQueryCursor:
