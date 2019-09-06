@@ -3,6 +3,7 @@ import memcache
 import logging
 import hashlib
 import pickle
+import pandas as pd
 import datetime
 import typing
 import os
@@ -63,16 +64,16 @@ class GeneralSearchCache(object):
         try:
             self._logger.debug("Start pushing general augment result to " + self.memcache_server)
             # add query results
-            if type(supplied_dataframe) is d3m_DataFrame:
+            if type(supplied_dataframe) is d3m_DataFrame or type(supplied_dataframe) is pd.DataFrame:
                 hash_supplied_dataframe = hash_pandas_object(supplied_dataframe).sum()
             else:
-                raise ValueError("Unknown type of supplied_data results!")
+                raise ValueError("Unsupport type of supplied_data result as " + str(type(supplied_dataframe)) + "!")
 
-            path_to_agument_results = os.path.join(config.cache_file_storage_base_loc, hash_key + ".pkl")
-            with open(path_to_agument_results, "wb") as f:
+            path_to_augment_results = os.path.join(config.cache_file_storage_base_loc, hash_key + ".pkl")
+            with open(path_to_augment_results, "wb") as f:
                 pickle.dump(augment_results, f)
 
-            response_code1 = self.mc.set("augment_" + hash_key, path_to_agument_results)
+            response_code1 = self.mc.set("augment_" + hash_key, path_to_augment_results)
             if not response_code1:
                 self._logger.warning("Pushing wikidata search result failed! Maybe the size too big?")
 

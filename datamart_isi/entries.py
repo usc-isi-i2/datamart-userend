@@ -1074,12 +1074,16 @@ class DatamartSearchResult:
             connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
-        cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
-                                                                   search_result_serialized=self.serialize())
-        cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
-        if cache_result is not None:
-            self._logger.info("Using caching results")
-            return cache_result
+        try:
+            cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
+                                                                       search_result_serialized=self.serialize())
+            cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
+            if cache_result is not None:
+                self._logger.info("Using caching results")
+                return cache_result
+        except Exception as e:
+            self._logger.error("Some error happened when getting results from cache!")
+            self._logger.debug(e, exc_info=True)
 
         self._logger.info("Cache not hit, start running augment.")
 
