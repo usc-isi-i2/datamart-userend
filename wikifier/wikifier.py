@@ -234,7 +234,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
                                    if the appeared times are lower than threshold, we will not use it
     :return: a dataframe with wikifiered columns
     """
-    _logger.debug("Start running new wikifier")
+    _logger.info("Start running new wikifier")
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
 
