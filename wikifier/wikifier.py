@@ -44,7 +44,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
             # END cache part
 
         if wikifier_choice is None:
-            # FIXME: for testing the TA2's sample_search, not disable the new wikifier temporarily
+            # FIXME: Currently the new wikifier maybe very slow for large datasets
             # return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
             return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         elif target_columns is None:
@@ -293,7 +293,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
                 return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Get data from the new wikifier successfully.")
         if column_to_p_node_dict:
-            _logger.debug("For each column, the best matching class is:" + str(column_to_p_node_dict))
+            _logger.info("For each column, the best matching class is:" + str(column_to_p_node_dict))
             save_specific_p_nodes(input_df, column_to_p_node_dict)
     else:
         _logger.error('Something wrong in new wikifier server with response code: ' + response.text)
