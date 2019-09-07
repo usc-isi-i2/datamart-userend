@@ -82,8 +82,6 @@ class FindIdentity:
                 best = key
                 smallest_dist = val
 
-        import pdb
-        pdb.set_trace()
         # best_predicts =
         """
         if "P882" in P_predicts:

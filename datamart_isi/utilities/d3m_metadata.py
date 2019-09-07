@@ -4,6 +4,7 @@ import typing
 import collections
 import frozendict
 import traceback
+import re
 
 from ast import literal_eval
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
@@ -13,6 +14,7 @@ from d3m.container import Dataset as d3m_Dataset
 from datamart_isi import config
 from datamart_isi.utilities.download_manager import DownloadManager
 from datamart_isi.utilities.d3m_wikifier import check_and_correct_q_nodes_semantic_type
+from datamart_isi.config import q_node_semantic_type
 
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
@@ -639,7 +641,8 @@ class MetadataGenerator:
         new_column_names_list = list(df_joined.columns)
 
         # update each column's metadata
-        for i, current_column_name in enumerate(new_column_names_list):
+        for i in range(len(new_column_names_list)):
+            current_column_name = new_column_names_list[i]
             if return_format == "df":
                 each_selector = (ALL_ELEMENTS, i)
             elif return_format == "ds":
@@ -656,8 +659,16 @@ class MetadataGenerator:
                     "semantic_types": ("http://schema.org/Text",
                                        "https://metadata.datadrivendiscovery.org/types/Attribute",),
                 }
-                self._logger.error("Please check!")
-                self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
+                if current_column_name.endswith("_wikidata"):
+                    data = list(filter(None, df_joined.iloc[:, i].dropna().tolist()))
+                    if all(re.match(r'^Q\d+$', x) for x in data):
+                        new_metadata_i["semantic_types"] = ("http://schema.org/Text",
+                                                            "https://metadata.datadrivendiscovery.org/types/Attribute",
+                                                            q_node_semantic_type
+                                                            )
+                else:
+                    self._logger.error("Please check!")
+                    self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
 
             metadata_new = metadata_new.update(each_selector, new_metadata_i)
         return_result = None
@@ -686,7 +697,7 @@ class MetadataGenerator:
 
         return_result = check_and_correct_q_nodes_semantic_type(return_result)
 
-        return return_result
+        return return_result[1]
 
     # def generate_metadata_for_wikidata_download_result(self):
     #     metadata_new = DataMetadata()
