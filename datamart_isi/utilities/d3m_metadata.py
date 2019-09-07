@@ -12,6 +12,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from datamart_isi import config
 from datamart_isi.utilities.download_manager import DownloadManager
+from datamart_isi.utilities.d3m_wikifier import check_and_correct_q_nodes_semantic_type
 
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
@@ -90,6 +91,8 @@ class MetadataGenerator:
             self._logger.error("Unknown search type as " + str(self.search_type))
             metadata = DataMetadata()
         self._logger.debug("Getting d3m metadata finished.")
+
+
         self.d3m_metadata = metadata
 
         return metadata
@@ -561,8 +564,9 @@ class MetadataGenerator:
         self.set_supplied_data(supplied_data)
         columns_all = list(df_joined.columns)
         if 'd3mIndex' in df_joined.columns:
-            oldindex = columns_all.index('d3mIndex')
-            columns_all.insert(0, columns_all.pop(oldindex))
+            if df_joined.columns[0] != "d3mIndex":
+                old_index = columns_all.index('d3mIndex')
+                columns_all.insert(0, columns_all.pop(old_index))
         else:
             self._logger.warning("No d3mIndex column found after datamart augment!!!")
         df_joined = df_joined[columns_all]
@@ -604,6 +608,7 @@ class MetadataGenerator:
         #     # if from wikidata, we should have already generated it
         # metadata_dict_right = self.d3m_metadata
         i = 0
+
         while len(self.d3m_metadata.query((ALL_ELEMENTS, i))) != 0:
             each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, i))
             metadata_dict_right[each_column_meta["name"]] = each_column_meta
@@ -611,8 +616,7 @@ class MetadataGenerator:
 
         if return_format == "df":
             try:
-                left_df_column_length = supplied_data.metadata.query((ALL_ELEMENTS,))['dimension'][
-                    'length']
+                left_df_column_length = supplied_data.metadata.query((ALL_ELEMENTS,))['dimension']['length']
             except Exception:
                 traceback.print_exc()
                 raise ValueError("Getting left metadata information failed!")
@@ -620,7 +624,7 @@ class MetadataGenerator:
             left_df_column_length = supplied_data.metadata.query((self.res_id, ALL_ELEMENTS,))['dimension'][
                 'length']
         else:
-            raise ValueError("Unknown return format as "+ str(return_format))
+            raise ValueError("Unknown return format as " + str(return_format))
 
         # add the original metadata
         for i in range(left_df_column_length):
@@ -679,6 +683,8 @@ class MetadataGenerator:
             for each_selector, each_metadata in metadata_shape_part_dict.items():
                 return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                        metadata=each_metadata)
+
+        return_result = check_and_correct_q_nodes_semantic_type(return_result)
 
         return return_result
 
