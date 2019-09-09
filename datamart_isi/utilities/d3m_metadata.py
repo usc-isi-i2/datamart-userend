@@ -83,7 +83,7 @@ class MetadataGenerator:
         if self.search_type == "wikidata":
             metadata = self.generate_metadata_for_wikidata_search()
         elif self.search_type == "general":
-            metadata = self.generate_metadata_for_general_seaerch()
+            metadata = self.generate_metadata_for_general_search()
         elif self.search_type == "wikifier":
             self._logger.warning("No metadata can provide for wikifier augment")
             metadata = DataMetadata()
@@ -217,7 +217,7 @@ class MetadataGenerator:
         except:
             return False, None
         
-    def generate_metadata_for_general_seaerch(self, selector_base=tuple()) -> DataMetadata:
+    def generate_metadata_for_general_search(self, selector_base=tuple()) -> DataMetadata:
         """
         function used to generate the d3m format metadata - specified for general search result
         """
@@ -544,7 +544,7 @@ class MetadataGenerator:
         elif self.search_type == "vector":
             return_result.metadata = self.generate_metadata_for_vector_search(selector_base=selector_base)
         elif self.search_type == "general":
-            return_result.metadata = self.generate_metadata_for_general_seaerch(selector_base=selector_base)
+            return_result.metadata = self.generate_metadata_for_general_search(selector_base=selector_base)
         else:
             raise ValueError("Unknown search type as " + str(self.search_type))
         # update dataset level metadata here

@@ -57,7 +57,7 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
 
             for each in target_columns:
                 each_column_semantic_type = supplied_data.metadata.query((res_id, ALL_ELEMENTS, each))['semantic_types']
-                # if the column type inside here found, this coumn should be wikified
+                # if the column type inside here found, this column should be wikified
                 if set(each_column_semantic_type).intersection(need_column_type):
                     continue
                 # if the column type inside here found, this column should not be wikified
@@ -99,7 +99,7 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
         return output_ds
 
     except Exception as e:
-        _logger.error("Wikifier running failed.")
+        _logger.error("Wikifier running failed!!!")
         _logger.debug(e, exc_info=True)
         return supplied_data
 

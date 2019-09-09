@@ -1123,7 +1123,9 @@ class DatamartSearchResult:
         res[augment_resource_id].fillna('', inplace=True)
         res[augment_resource_id] = res[augment_resource_id].astype(str)
 
-        if cache_key:
+        # should not cache wikifier results here, as we already cached it in wikifier part
+        # and we don't know if the wikifier success or not here
+        if cache_key and self.search_type != "wikifier":
             response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                          search_result_serialized=self.serialize(),
                                                                          augment_results=res,
