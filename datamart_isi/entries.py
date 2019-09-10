@@ -487,7 +487,7 @@ class Datamart(object):
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
-
+X
         This method is a "smart" search, which leaves the Datamart to determine how to evaluate the relevance of search
         result with regard to the supplied data. For example, a Datamart may try to identify named entities and date
         ranges in the supplied data and search for companion datasets which overlap.
@@ -616,6 +616,7 @@ class Datamart(object):
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+        possible_longitude_or_latitude = list()
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
@@ -658,9 +659,25 @@ class Datamart(object):
                         self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
                                            + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
                         treat_as_a_text_column = True
+
+
+                # geospacial type data
+                elif "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
+                    try:
+                        column_data = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(float).dropna()
+                        if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
+                            possible_longitude_or_latitude.append(each_column_index)
+                        elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
+                            possible_longitude_or_latitude.append(each_column_index)
+
+                    except Exception as e:
+                        self._logger.debug(e, exc_info=True)
+                        self._logger.error("Can't parse location information for column No." + str(each_column_index)
+                                           + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
+                        treat_as_a_text_column = True
+
                 # for some special condition (DA_medical_malpractice), a column could have a DateTime tag but unable to be parsed
                 # in such condition, we should search and treat it as a Text column then
-
                 if 'http://schema.org/Text' in each_column_meta["semantic_types"] or treat_as_a_text_column:
                     column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
                     query_column_entities = list(set(column_values.tolist()))
@@ -1082,6 +1099,7 @@ class DatamartSearchResult:
                 self._logger.info("Using caching results")
                 return cache_result
         except Exception as e:
+            cache_key = None
             self._logger.error("Some error happened when getting results from cache!")
             self._logger.debug(e, exc_info=True)
 
@@ -1106,17 +1124,20 @@ class DatamartSearchResult:
         res[augment_resource_id].fillna('', inplace=True)
         res[augment_resource_id] = res[augment_resource_id].astype(str)
 
-        response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
-                                                                     search_result_serialized=self.serialize(),
-                                                                     augment_results=res,
-                                                                     hash_key=cache_key
-                                                                     )
-        # save the augmented result's metadata if second augment is conducted
-        MetadataCache.save_metadata_from_dataset(res)
-        if not response:
-            self._logger.warning("Push augment results to results failed!")
-        else:
-            self._logger.info("Push augment results to memcache success!")
+        # should not cache wikifier results here, as we already cached it in wikifier part
+        # and we don't know if the wikifier success or not here
+        if cache_key and self.search_type != "wikifier":
+            response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
+                                                                         search_result_serialized=self.serialize(),
+                                                                         augment_results=res,
+                                                                         hash_key=cache_key
+                                                                         )
+            # save the augmented result's metadata if second augment is conducted
+            MetadataCache.save_metadata_from_dataset(res)
+            if not response:
+                self._logger.warning("Push augment results to results failed!")
+            else:
+                self._logger.info("Push augment results to memcache success!")
 
         return res
 

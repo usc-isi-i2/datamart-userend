@@ -4,6 +4,7 @@ import typing
 import collections
 import frozendict
 import traceback
+import re
 
 from ast import literal_eval
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
@@ -12,6 +13,8 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from datamart_isi import config
 from datamart_isi.utilities.download_manager import DownloadManager
+from datamart_isi.utilities.d3m_wikifier import check_and_correct_q_nodes_semantic_type
+from datamart_isi.config import q_node_semantic_type
 
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
@@ -80,7 +83,7 @@ class MetadataGenerator:
         if self.search_type == "wikidata":
             metadata = self.generate_metadata_for_wikidata_search()
         elif self.search_type == "general":
-            metadata = self.generate_metadata_for_general_seaerch()
+            metadata = self.generate_metadata_for_general_search()
         elif self.search_type == "wikifier":
             self._logger.warning("No metadata can provide for wikifier augment")
             metadata = DataMetadata()
@@ -90,6 +93,8 @@ class MetadataGenerator:
             self._logger.error("Unknown search type as " + str(self.search_type))
             metadata = DataMetadata()
         self._logger.debug("Getting d3m metadata finished.")
+
+
         self.d3m_metadata = metadata
 
         return metadata
@@ -212,7 +217,7 @@ class MetadataGenerator:
         except:
             return False, None
         
-    def generate_metadata_for_general_seaerch(self, selector_base=tuple()) -> DataMetadata:
+    def generate_metadata_for_general_search(self, selector_base=tuple()) -> DataMetadata:
         """
         function used to generate the d3m format metadata - specified for general search result
         """
@@ -539,7 +544,7 @@ class MetadataGenerator:
         elif self.search_type == "vector":
             return_result.metadata = self.generate_metadata_for_vector_search(selector_base=selector_base)
         elif self.search_type == "general":
-            return_result.metadata = self.generate_metadata_for_general_seaerch(selector_base=selector_base)
+            return_result.metadata = self.generate_metadata_for_general_search(selector_base=selector_base)
         else:
             raise ValueError("Unknown search type as " + str(self.search_type))
         # update dataset level metadata here
@@ -561,8 +566,9 @@ class MetadataGenerator:
         self.set_supplied_data(supplied_data)
         columns_all = list(df_joined.columns)
         if 'd3mIndex' in df_joined.columns:
-            oldindex = columns_all.index('d3mIndex')
-            columns_all.insert(0, columns_all.pop(oldindex))
+            if df_joined.columns[0] != "d3mIndex":
+                old_index = columns_all.index('d3mIndex')
+                columns_all.insert(0, columns_all.pop(old_index))
         else:
             self._logger.warning("No d3mIndex column found after datamart augment!!!")
         df_joined = df_joined[columns_all]
@@ -604,6 +610,7 @@ class MetadataGenerator:
         #     # if from wikidata, we should have already generated it
         # metadata_dict_right = self.d3m_metadata
         i = 0
+
         while len(self.d3m_metadata.query((ALL_ELEMENTS, i))) != 0:
             each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, i))
             metadata_dict_right[each_column_meta["name"]] = each_column_meta
@@ -611,8 +618,7 @@ class MetadataGenerator:
 
         if return_format == "df":
             try:
-                left_df_column_length = supplied_data.metadata.query((ALL_ELEMENTS,))['dimension'][
-                    'length']
+                left_df_column_length = supplied_data.metadata.query((ALL_ELEMENTS,))['dimension']['length']
             except Exception:
                 traceback.print_exc()
                 raise ValueError("Getting left metadata information failed!")
@@ -620,7 +626,7 @@ class MetadataGenerator:
             left_df_column_length = supplied_data.metadata.query((self.res_id, ALL_ELEMENTS,))['dimension'][
                 'length']
         else:
-            raise ValueError("Unknown return format as "+ str(return_format))
+            raise ValueError("Unknown return format as " + str(return_format))
 
         # add the original metadata
         for i in range(left_df_column_length):
@@ -635,7 +641,8 @@ class MetadataGenerator:
         new_column_names_list = list(df_joined.columns)
 
         # update each column's metadata
-        for i, current_column_name in enumerate(new_column_names_list):
+        for i in range(len(new_column_names_list)):
+            current_column_name = new_column_names_list[i]
             if return_format == "df":
                 each_selector = (ALL_ELEMENTS, i)
             elif return_format == "ds":
@@ -652,8 +659,16 @@ class MetadataGenerator:
                     "semantic_types": ("http://schema.org/Text",
                                        "https://metadata.datadrivendiscovery.org/types/Attribute",),
                 }
-                self._logger.error("Please check!")
-                self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
+                if current_column_name.endswith("_wikidata"):
+                    data = list(filter(None, df_joined.iloc[:, i].dropna().tolist()))
+                    if all(re.match(r'^Q\d+$', x) for x in data):
+                        new_metadata_i["semantic_types"] = ("http://schema.org/Text",
+                                                            "https://metadata.datadrivendiscovery.org/types/Attribute",
+                                                            q_node_semantic_type
+                                                            )
+                else:
+                    self._logger.error("Please check!")
+                    self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
 
             metadata_new = metadata_new.update(each_selector, new_metadata_i)
         return_result = None
@@ -680,7 +695,9 @@ class MetadataGenerator:
                 return_result.metadata = return_result.metadata.update(selector=each_selector,
                                                                        metadata=each_metadata)
 
-        return return_result
+        return_result = check_and_correct_q_nodes_semantic_type(return_result)
+
+        return return_result[1]
 
     # def generate_metadata_for_wikidata_download_result(self):
     #     metadata_new = DataMetadata()
