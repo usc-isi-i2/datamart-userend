@@ -1,5 +1,11 @@
 import os
-home_dir = os.getenv("HOME")
+import socket
+host_name = socket.gethostname()
+
+if host_name == "dsbox02":
+    home_dir = "/data00/dsbox/datamart"
+else:
+    home_dir = os.getenv("HOME")
 
 default_datamart_url = "dsbox02.isi.edu"
 
