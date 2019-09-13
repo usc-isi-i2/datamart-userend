@@ -37,3 +37,12 @@ def get_wikifier_identifier_server_url(connection_url: str = config.default_data
         connection_url = connection_url[:-5]
     general_server_url = connection_url + config.wikifier_server_suffix
     return general_server_url
+
+
+def get_general_search_test_server_url(connection_url: str = config.default_datamart_url) -> str:
+    if not connection_url.startswith("http://"):
+        connection_url = "http://" + connection_url
+    if connection_url.endswith(config.rest_api_suffix):
+        connection_url = connection_url[:-5]
+    general_server_url = connection_url + config.general_search_test_server_suffix
+    return general_server_url

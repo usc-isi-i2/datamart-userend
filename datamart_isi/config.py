@@ -14,7 +14,10 @@ wikidata_server_suffix = ":8888/bigdata/namespace/wdq/sparql"
 memcache_server_suffix = ":11211"
 wikifier_server_suffix = ":4444/get_identifiers"
 general_search_server_suffix = ":9002/blazegraph/namespace/datamart3/sparql"
+general_search_test_server_suffix = ":9002/blazegraph/namespace/datamart4/sparql"
 rest_api_suffix = ":9000"
+redis_server_port = "6379"
+
 
 # current memcache server's max size is 100MB
 memcache_max_value_size = 1024*1024*100
