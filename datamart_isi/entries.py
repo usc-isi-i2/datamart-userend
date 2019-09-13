@@ -45,8 +45,6 @@ MAX_ENTITIES_LENGTH = config.max_entities_length
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
-WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
-MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
 
@@ -1469,7 +1467,7 @@ class DatamartQuery:
 
     def __init__(self, keywords: typing.List[str] = list(), variables: typing.List['VariableConstraint'] = list(),
                  search_type: str = "general", keywords_search: typing.List[str] = list(), title_search: str = "",
-                 variables_search: dict() = dict()) -> None:
+                 variables_search: dict = dict()) -> None:
         self.search_type = search_type
         self.keywords = keywords
         self.variables = variables
