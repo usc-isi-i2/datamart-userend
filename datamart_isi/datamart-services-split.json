@@ -1,6 +1,6 @@
 {
     "server" : {
-        "mode": "single_host",
+        "mode": "docker_compose",
         "host": "dsbox02.isi.edu"
     },
     "available_server_modes" : [
@@ -10,49 +10,49 @@
     "services": [
         {
             "name": "isi_datamart",
-            "host": "datamart",
+            "host": "dsbox01.isi.edu",
             "port": 9000,
             "path": ""
         },
         {
             "name": "wikidata",
-            "host": "blazegraph",
+            "host": "dsbox02.isi.edu",
             "port": 8888,
             "path": "bigdata/namespace/wdq/sparql"
         },
         {
             "name": "wikifier_identifier",
-            "host": "wikifier",
+            "host": "dsbox02.isi.edu",
             "port": 4444,
             "path": "get_identifiers"
         },
         {
             "name": "general_search",
-            "host": "blazegraph",
+            "host": "dsbox02.isi.edu",
             "port": 9002,
             "path": "blazegraph/namespace/datamart3/sparql"
         },
         {
             "name": "general_search_test",
-            "host": "blazegraph",
+            "host": "dsbox02.isi.edu",
             "port": 9002,
             "path": "blazegraph/namespace/datamart4/sparql"
         },
         {
             "name": "memcached",
-            "host": "memcached",
+            "host": "dsbox02.isi.edu",
             "port": 11211,
             "path": ""
         },
         {
             "name":"redis",
-            "host": "redis",
+            "host": "dsbox02.isi.edu",
             "port": 6379,
             "path": ""
         },
         {
             "name": "elasticsearch",
-            "host": "es01",
+            "host": "dsbox02.isi.edu",
             "port": 9200,
             "path": ""
         }
