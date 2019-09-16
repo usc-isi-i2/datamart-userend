@@ -1104,24 +1104,34 @@ class DatamartSearchResult:
 
         self._logger.info("Cache not hit, start running augment.")
 
-        if self.search_type == "wikifier":
-            res = self._run_wikifier(supplied_data)
+        try:
+            if self.search_type == "wikifier":
+                res = timeout_call(1800, self._run_wikifier, [supplied_data])
+                # res = self._run_wikifier(supplied_data)
 
-        else:
-            if type(supplied_data) is d3m_DataFrame:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="df", augment_resource_id=augment_resource_id)
-            elif type(supplied_data) is d3m_Dataset:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="ds", augment_resource_id=augment_resource_id)
             else:
-                raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
+                if type(supplied_data) is d3m_DataFrame:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "df", augment_resource_id])
 
-        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-            res[augment_resource_id].reset_index(drop=True)
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="df", augment_resource_id=augment_resource_id)
+                elif type(supplied_data) is d3m_Dataset:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "ds", augment_resource_id])
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="ds", augment_resource_id=augment_resource_id)
+                else:
+                    raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
 
-        res[augment_resource_id].fillna('', inplace=True)
-        res[augment_resource_id] = res[augment_resource_id].astype(str)
+            # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+                res[augment_resource_id].reset_index(drop=True)
+
+            res[augment_resource_id].fillna('', inplace=True)
+            res[augment_resource_id] = res[augment_resource_id].astype(str)
+
+        except Exception as e:
+            self._logger.error("Augment failed!")
+            self._logger.debug(e, exc_info=True)
+            res = None
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here

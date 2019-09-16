@@ -16,7 +16,7 @@ from datamart_isi import config
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 
 DEFAULT_DATAMART_URL = config.default_datamart_url
-CACHE_MANAGER = GeneralSearchCache(connection_url= os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
+CACHE_MANAGER = GeneralSearchCache(connection_url=os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
 try:
     from datamart_isi.config import default_temp_path
