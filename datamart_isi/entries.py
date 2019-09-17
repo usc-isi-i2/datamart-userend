@@ -486,7 +486,7 @@ class Datamart(object):
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
-X
+
         This method is a "smart" search, which leaves the Datamart to determine how to evaluate the relevance of search
         result with regard to the supplied data. For example, a Datamart may try to identify named entities and date
         ranges in the supplied data and search for companion datasets which overlap.
@@ -1094,9 +1094,12 @@ class DatamartSearchResult:
             cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
                                                                        search_result_serialized=self.serialize())
             cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
-            if cache_result is not None:
-                self._logger.info("Using caching results")
-                return cache_result
+            if cache_result is None:
+                self._logger.warning("This augment was failed last time!")
+
+            self._logger.info("Using caching results")
+            return cache_result
+
         except Exception as e:
             cache_key = None
             self._logger.error("Some error happened when getting results from cache!")
