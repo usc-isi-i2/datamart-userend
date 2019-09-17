@@ -1,6 +1,6 @@
 {
     "server" : {
-        "mode": "single_host",
+        "mode": "docker_compose",
         "host": "dsbox02.isi.edu"
     },
     "available_server_modes" : [

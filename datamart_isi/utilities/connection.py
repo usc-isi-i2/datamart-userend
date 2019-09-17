@@ -2,7 +2,7 @@ from datamart_isi import config_services
 
 
 def get_memcache_server_url() -> str:
-    return config_services.get_service_url('memcached')
+    return config_services.get_service_url('memcached', as_url=False)
 
 
 def get_wikidata_server_url() -> str:
@@ -15,3 +15,7 @@ def get_general_search_server_url() -> str:
 
 def get_wikifier_identifier_server_url() -> str:
     return config_services.get_service_url('wikifier_identifier')
+
+
+def get_wikifier_knowledge_graph_server_url() -> str:
+    return config_services.get_service_url('wikifier_knowledge_graph')

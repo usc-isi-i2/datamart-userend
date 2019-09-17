@@ -27,6 +27,12 @@
             "path": "get_identifiers"
         },
         {
+            "name": "wikifier_knowledge_graph",
+            "host": "minds03.isi.edu",
+            "port": 8396,
+            "path": "wikify"
+        },
+        {
             "name": "general_search",
             "host": "dsbox02.isi.edu",
             "port": 9002,
