@@ -1094,11 +1094,11 @@ class DatamartSearchResult:
             cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
                                                                        search_result_serialized=self.serialize())
             cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
-            if cache_result is None:
-                self._logger.warning("This augment was failed last time!")
-
-            self._logger.info("Using caching results")
-            return cache_result
+            if cache_result is not None:
+                if type(cache_result) is string and cache_result == "failed":
+                    self._logger.warning("This augment was failed last time!")
+                self._logger.info("Using caching results")
+                return cache_result
 
         except Exception as e:
             cache_key = None
@@ -1134,7 +1134,7 @@ class DatamartSearchResult:
         except Exception as e:
             self._logger.error("Augment failed!")
             self._logger.debug(e, exc_info=True)
-            res = None
+            res = "failed"
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here
