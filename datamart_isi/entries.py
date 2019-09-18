@@ -1042,7 +1042,7 @@ class DatamartSearchResult:
         """
         self._logger.debug("Start running wikifier.")
         # here because this part's code if for augment, we already have cache for that
-        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=False)
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=True)
         self._logger.debug("Running wikifier finished.")
         return results
 

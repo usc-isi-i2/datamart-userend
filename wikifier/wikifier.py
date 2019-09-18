@@ -38,11 +38,16 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
 
         if use_cache:
             cache_key = CACHE_MANAGER.get_hash_key(inputs, json.dumps(produce_config))
+            _logger.debug("Current wikification's key is " + cache_key)
             cache_result = CACHE_MANAGER.get_cache_results(cache_key)
             if cache_result is not None:
                 _logger.info("Using caching results for wikifier")
                 return cache_result
             # END cache part
+            else:
+                _logger.debug("Cache not hitted.")
+        else:
+            _logger.debug("Not use cache for this time's wikification.")
 
         if wikifier_choice is None:
             # FIXME: Currently the new wikifier maybe very slow for large datasets
