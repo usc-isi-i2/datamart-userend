@@ -1125,11 +1125,14 @@ class DatamartSearchResult:
                 else:
                     raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
 
-            # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+            if res is not None:
+                # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
                 res[augment_resource_id].reset_index(drop=True)
 
-            res[augment_resource_id].fillna('', inplace=True)
-            res[augment_resource_id] = res[augment_resource_id].astype(str)
+                res[augment_resource_id].fillna('', inplace=True)
+                res[augment_resource_id] = res[augment_resource_id].astype(str)
+            else:
+                res = "failed"
 
         except Exception as e:
             self._logger.error("Augment failed!")
@@ -1145,7 +1148,8 @@ class DatamartSearchResult:
                                                                          hash_key=cache_key
                                                                          )
             # save the augmented result's metadata if second augment is conducted
-            MetadataCache.save_metadata_from_dataset(res)
+            if type(res) is not string and res != "failed":
+                MetadataCache.save_metadata_from_dataset(res)
             if not response:
                 self._logger.warning("Push augment results to results failed!")
             else:
