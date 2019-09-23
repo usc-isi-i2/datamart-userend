@@ -10,6 +10,7 @@ import json
 import string
 import time
 from ast import literal_eval
+from itertools import combinations
 
 from d3m import container
 from d3m import utils
@@ -135,6 +136,8 @@ class DatamartQueryCursor(object):
                 search_res = timeout_call(timeout, self._search_datamart, [])
             elif self.search_query[self.current_searching_query_index].search_type == "vector":
                 search_res = timeout_call(timeout, self._search_vector, [])
+            elif self.search_query[self.current_searching_query_index].search_type == "geospatial":
+                search_res = timeout_call(timeout, self._search_geospatial_data, [])
             else:
                 raise ValueError("Unknown search query type for " +
                                  self.search_query[self.current_searching_query_index].search_type)
@@ -442,6 +445,119 @@ class DatamartQueryCursor(object):
         finally:
             return vector_results
 
+    def _search_geospatial_data(self) -> typing.List["DatamartSearchResult"]:
+        """
+        function used for searching geospatial data
+        :return: List[DatamartSearchResult]
+        """
+        self._logger.debug("Start searching geospatial data on wikidata and datamart...")
+        search_results = []
+
+        if type(self.supplied_data) is d3m_Dataset:
+            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
+        else:
+            supplied_dataframe = self.supplied_data
+
+        # try to find possible columns of latitude and longitude
+        possible_longitude_or_latitude = []
+        for each in range(len(supplied_dataframe.columns)):
+            if type(self.supplied_data) is d3m_Dataset:
+                selector = (res_id, ALL_ELEMENTS, each)
+            else:
+                selector = (ALL_ELEMENTS, each)
+            each_column_meta = self.supplied_data.metadata.query(selector)
+
+            if "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
+                try:
+                    column_data = supplied_dataframe.iloc[:, each].astype(float).dropna()
+                    if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
+                        possible_longitude_or_latitude.append(each)
+                    elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
+                        possible_longitude_or_latitude.append(each)
+                except:
+                    pass
+
+        if len(possible_longitude_or_latitude) < 2:
+            self._logger.debug("There is no geospatial data!")
+            return search_results
+        else:
+            self._logger.debug("Finding columns:" + str(possible_longitude_or_latitude) + " which might be geospatial data columns...")
+
+        possible_la_or_long_comb = list(combinations(possible_longitude_or_latitude, 2))
+        for column_index_comb in possible_la_or_long_comb:
+            # try to get the correct latitude and longitude pairs
+            latitude_index, longitude_index = -1 , -1
+            for each_column_index in column_index_comb:
+                try:
+                    column_data = supplied_dataframe.iloc[:, each_column_index].astype(float).dropna()
+                    column_name = supplied_dataframe.columns[each_column_index]
+
+                    # must be longitude when its min is in [-180, -90), or max is in (90, 180]
+                    if config.max_latitude_val < max(column_data) <= config.max_longitude_val \
+                            or (config.min_latitude_val > min(column_data) >= config.min_longitude_val):
+                        longitude_index = each_column_index
+                    else:
+                        # determine the type by header [latitude, longitude]
+                        if any([True for i in column_name if i in ['a', 'A']]):
+                            latitude_index = each_column_index
+                        elif any([True for i in column_name if i in ['o', 'O', 'g', 'G']]):
+                            longitude_index = each_column_index
+
+                except Exception as e:
+                    self._logger.debug(e, exc_info=True)
+                    self._logger.error("Can't parse location information for column No." + str(each_column_index)
+                                           + " with column name " + column_name)
+
+            if latitude_index != -1 and longitude_index != -1:
+                self._logger.info("Latitude column is: " + str(latitude_index) + " and longitude is: " + str(longitude_index) + "...")
+                # do wikidata query service to find 5 q-node columns
+                granularity = {'country', 'state', 'city', 'county', 'postal_code'}
+                radius = 100
+
+                for gran in granularity:
+                    search_variables = {'metadata': {
+                        'search_result': {
+                            'latitude_index': latitude_index,
+                            'longitude_index': longitude_index,
+                            'radius': radius,
+                            'granularity': gran
+                        },
+                        'search_type': 'geospatial'
+                    }}
+                    return_ds = DownloadManager.query_geospatial_wikidata(self.supplied_data, search_variables, self.connection_url)
+                    _, return_df = d3m_utils.get_tabular_resource(dataset=return_ds, resource_id=None)
+
+                    qnodes = return_df.iloc[:, -1]
+                    qnodes_set = list(set(qnodes))
+                    # compute similarity
+                    score = len(qnodes_set)/len(qnodes)
+
+                    # search on datamart
+                    qnodes_str = " ".join(qnodes_set)
+                    self.search_query[self.current_searching_query_index].variables = qnodes_str
+                    import pdb
+                    pdb.set_trace()
+                    search_res = self._search_datamart
+                    import pdb
+                    pdb.set_trace()
+                    # TODO:score
+                    search_results.append(search_res)
+
+                    # search on wikidata
+                    temp_df = supplied_dataframe
+                    temp_df["Geo_" + granularity + "_wikidata"] = qnodes
+                    temp_q_nodes_columns = self.q_nodes_columns
+                    self.q_nodes_columns = [-1]
+                    search_res = self._search_wikidata(supplied_data=temp_df)
+                    self.q_nodes_columns = temp_q_nodes_columns
+                    # TODO:score
+                    search_results.append(search_res)
+
+        if search_results:
+            search_results.sort(key=lambda x: x.score(), reverse=True)
+        self._logger.debug("Running search on geospatial data finished.")
+        return search_results
+
 
 class Datamart(object):
     """
@@ -518,7 +634,7 @@ X
             need_run_wikifier = False
         else:
             need_run_wikifier = None
-            search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector")]
+            search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector"), DatamartQuery(search_type="geospatial")]
 
         # try to update with more correct metadata if possible
         updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
@@ -616,7 +732,6 @@ X
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
-        possible_longitude_or_latitude = list()
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
@@ -657,22 +772,6 @@ X
                     except Exception as e:
                         self._logger.debug(e, exc_info=True)
                         self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
-                                           + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
-                        treat_as_a_text_column = True
-
-
-                # geospacial type data
-                elif "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
-                    try:
-                        column_data = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(float).dropna()
-                        if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
-                            possible_longitude_or_latitude.append(each_column_index)
-                        elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
-                            possible_longitude_or_latitude.append(each_column_index)
-
-                    except Exception as e:
-                        self._logger.debug(e, exc_info=True)
-                        self._logger.error("Can't parse location information for column No." + str(each_column_index)
                                            + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
                         treat_as_a_text_column = True
 
