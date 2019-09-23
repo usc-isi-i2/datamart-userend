@@ -7,6 +7,7 @@ import pandas as pd
 import datetime
 import typing
 import os
+import json
 from datamart_isi import config
 from datamart_isi.utilities import connection
 from d3m.container import DataFrame as d3m_DataFrame
@@ -34,6 +35,11 @@ class GeneralSearchCache(object):
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)
+        # ensure folders exists
+        for each_folder in ["", "wikifier_cache", "general_search_cache", "other_cache"]:
+            storage_loc = os.path.join(config.cache_file_storage_base_loc, each_folder)
+            if not os.path.exists(storage_loc):
+                os.mkdir(storage_loc)
 
     def get_cache_results(self, hash_key) -> typing.Optional[bytes]:
         """
@@ -83,7 +89,17 @@ class GeneralSearchCache(object):
                 self._logger.warning("Pushing timestamp failed! What happened???")
 
             # add supplied data for further updating if needed
-            path_to_supplied_dataframe = os.path.join(config.cache_file_storage_base_loc, str(hash_supplied_dataframe) + ".pkl")
+            if search_result_serialized:
+                try:
+                    search_result_json = json.loads(search_result_serialized)
+                    if "wikifier_choice" in search_result_json:
+                        storage_loc = os.path.join(config.cache_file_storage_base_loc, "wikifier_cache")
+                    else:
+                        storage_loc = os.path.join(config.cache_file_storage_base_loc, "general_search_cache")
+                except:
+                    storage_loc = os.path.join(config.cache_file_storage_base_loc, "other_cache")
+
+            path_to_supplied_dataframe = os.path.join(storage_loc, str(hash_supplied_dataframe) + ".pkl")
             with open(path_to_supplied_dataframe, "wb") as f:
                 pickle.dump(supplied_dataframe, f)
             response_code3 = self.mc.set("supplied_data" + hash_key, path_to_supplied_dataframe)
