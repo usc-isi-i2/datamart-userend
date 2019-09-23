@@ -6,6 +6,9 @@ if host_name == "dsbox02":
     home_dir = "/data00/dsbox/datamart"
 else:
     home_dir = os.getenv("HOME")
+    # in the case that no correct home dir found (e.g. in docker)
+    if home_dir == "/":
+        home_dir = "/tmp"
 
 default_datamart_url = "dsbox02.isi.edu"
 
