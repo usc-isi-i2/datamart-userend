@@ -603,7 +603,7 @@ class Datamart(object):
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
-X
+
         This method is a "smart" search, which leaves the Datamart to determine how to evaluate the relevance of search
         result with regard to the supplied data. For example, a Datamart may try to identify named entities and date
         ranges in the supplied data and search for companion datasets which overlap.
@@ -1142,7 +1142,7 @@ class DatamartSearchResult:
         """
         self._logger.debug("Start running wikifier.")
         # here because this part's code if for augment, we already have cache for that
-        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=False)
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=True)
         self._logger.debug("Running wikifier finished.")
         return results
 
@@ -1195,8 +1195,11 @@ class DatamartSearchResult:
                                                                        search_result_serialized=self.serialize())
             cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
             if cache_result is not None:
+                if type(cache_result) is string and cache_result == "failed":
+                    self._logger.warning("This augment was failed last time!")
                 self._logger.info("Using caching results")
                 return cache_result
+
         except Exception as e:
             cache_key = None
             self._logger.error("Some error happened when getting results from cache!")
@@ -1204,24 +1207,37 @@ class DatamartSearchResult:
 
         self._logger.info("Cache not hit, start running augment.")
 
-        if self.search_type == "wikifier":
-            res = self._run_wikifier(supplied_data)
+        try:
+            if self.search_type == "wikifier":
+                res = timeout_call(1800, self._run_wikifier, [supplied_data])
+                # res = self._run_wikifier(supplied_data)
 
-        else:
-            if type(supplied_data) is d3m_DataFrame:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="df", augment_resource_id=augment_resource_id)
-            elif type(supplied_data) is d3m_Dataset:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="ds", augment_resource_id=augment_resource_id)
             else:
-                raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
+                if type(supplied_data) is d3m_DataFrame:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "df", augment_resource_id])
 
-        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-            res[augment_resource_id].reset_index(drop=True)
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="df", augment_resource_id=augment_resource_id)
+                elif type(supplied_data) is d3m_Dataset:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "ds", augment_resource_id])
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="ds", augment_resource_id=augment_resource_id)
+                else:
+                    raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
 
-        res[augment_resource_id].fillna('', inplace=True)
-        res[augment_resource_id] = res[augment_resource_id].astype(str)
+            if res is not None:
+                # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+                res[augment_resource_id].reset_index(drop=True)
+
+                res[augment_resource_id].fillna('', inplace=True)
+                res[augment_resource_id] = res[augment_resource_id].astype(str)
+            else:
+                res = "failed"
+
+        except Exception as e:
+            self._logger.error("Augment failed!")
+            self._logger.debug(e, exc_info=True)
+            res = "failed"
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here
@@ -1232,7 +1248,8 @@ class DatamartSearchResult:
                                                                          hash_key=cache_key
                                                                          )
             # save the augmented result's metadata if second augment is conducted
-            MetadataCache.save_metadata_from_dataset(res)
+            if type(res) is not string and res != "failed":
+                MetadataCache.save_metadata_from_dataset(res)
             if not response:
                 self._logger.warning("Push augment results to results failed!")
             else:
