@@ -478,15 +478,15 @@ class DatamartQueryCursor(object):
                     pass
 
         if len(possible_longitude_or_latitude) < 2:
-            self._logger.debug("There is no geospatial data!")
+            self._logger.debug("Supplied dataset does not have geospatial data!")
             return search_results
         else:
             self._logger.debug("Finding columns:" + str(possible_longitude_or_latitude) + " which might be geospatial data columns...")
 
         possible_la_or_long_comb = list(combinations(possible_longitude_or_latitude, 2))
         for column_index_comb in possible_la_or_long_comb:
-            # try to get the correct latitude and longitude pairs
             latitude_index, longitude_index = -1 , -1
+            # try to get the correct latitude and longitude pairs
             for each_column_index in column_index_comb:
                 try:
                     column_data = supplied_dataframe.iloc[:, each_column_index].astype(float).dropna()
@@ -508,10 +508,10 @@ class DatamartQueryCursor(object):
                     self._logger.error("Can't parse location information for column No." + str(each_column_index)
                                            + " with column name " + column_name)
 
+            # search on datamart and wikidata by city qnodes
             if latitude_index != -1 and longitude_index != -1:
                 self._logger.info("Latitude column is: " + str(latitude_index) + " and longitude is: " + str(longitude_index) + "...")
-                # do wikidata query service to find 5 q-node columns
-                granularity = {'country', 'state', 'city', 'county', 'postal_code'}
+                granularity = {'city'}
                 radius = 100
 
                 for gran in granularity:
@@ -524,37 +524,41 @@ class DatamartQueryCursor(object):
                         },
                         'search_type': 'geospatial'
                     }}
+                    # do wikidata query service to find city q-node columns
                     return_ds = DownloadManager.query_geospatial_wikidata(self.supplied_data, search_variables, self.connection_url)
                     _, return_df = d3m_utils.get_tabular_resource(dataset=return_ds, resource_id=None)
 
-                    qnodes = return_df.iloc[:, -1]
-                    qnodes_set = list(set(qnodes))
-                    # compute similarity
-                    score = len(qnodes_set)/len(qnodes)
+                    if return_df.columns[-1].startswith('Geo_') and return_df.columns[-1].endswith('_wikidata'):
+                        qnodes = return_df.iloc[:, -1]
+                        qnodes_set = list(set(qnodes))
+                        coverage_score = len(qnodes_set)/len(qnodes)
 
-                    # search on datamart
-                    qnodes_str = " ".join(qnodes_set)
-                    self.search_query[self.current_searching_query_index].variables = qnodes_str
-                    import pdb
-                    pdb.set_trace()
-                    search_res = self._search_datamart
-                    import pdb
-                    pdb.set_trace()
-                    # TODO:score
-                    search_results.append(search_res)
+                        # search on datamart
+                        qnodes_str = " ".join(qnodes_set)
+                        variables = [VariableConstraint(key=return_df.columns[-1], values=qnodes_str)]
+                        self.search_query[self.current_searching_query_index].variables = variables
+                        search_res = timeout_call(1800, self._search_datamart, [])
+                        search_results.extend(search_res)
 
-                    # search on wikidata
-                    temp_df = supplied_dataframe
-                    temp_df["Geo_" + granularity + "_wikidata"] = qnodes
-                    temp_q_nodes_columns = self.q_nodes_columns
-                    self.q_nodes_columns = [-1]
-                    search_res = self._search_wikidata(supplied_data=temp_df)
-                    self.q_nodes_columns = temp_q_nodes_columns
-                    # TODO:score
-                    search_results.append(search_res)
+                        # search on wikidata
+                        temp_q_nodes_columns = self.q_nodes_columns
+                        self.q_nodes_columns = [-1]
+                        search_res = timeout_call(1800, self._search_wikidata, [None, return_df])
+                        search_results.extend(search_res)
+                        self.q_nodes_columns = temp_q_nodes_columns
 
         if search_results:
+            for each_result in search_results:
+                # change metadata's score
+                old_score = each_result.score()
+                new_score = old_score * coverage_score
+                each_result.metadata_manager.score = new_score
+                # change score in datamart_search_result
+                if "score" in each_result.search_result.keys():
+                    each_result.search_result["score"]["value"] = new_score
+
             search_results.sort(key=lambda x: x.score(), reverse=True)
+
         self._logger.debug("Running search on geospatial data finished.")
         return search_results
 
