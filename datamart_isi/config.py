@@ -39,9 +39,9 @@ default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
 wikidata_uri_template = '<http://www.wikidata.org/entity/{}>'
-em_es_url = "http://sitaware.isi.edu:9200"
-em_es_index = "wiki_fb_embeddings_1"
-em_es_type = "vectors"
+# em_es_url = "http://sitaware.isi.edu:9200"
+# em_es_index = "wiki_fb_embeddings_1"
+# em_es_type = "vectors"
 
 # new wikifier server
 # new_wikifier_server = "http://dsbox02.isi.edu:8396/wikify"
