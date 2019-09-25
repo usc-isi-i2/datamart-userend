@@ -60,7 +60,7 @@ default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
 wikidata_uri_template = '<http://www.wikidata.org/entity/{}>'
-em_es_url = "http://sitaware.isi.edu:9200"
+em_es_url = "http://kg2018a.isi.edu:9200"
 em_es_index = "wiki_fb_embeddings_1"
 em_es_type = "vectors"
 
@@ -73,3 +73,5 @@ max_longitude_val = 180
 min_longitude_val = -180
 max_latitude_val = 90
 min_latitude_val = -90
+
+maximum_accept_wikifier_size = 100000
