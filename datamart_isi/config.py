@@ -74,4 +74,4 @@ min_longitude_val = -180
 max_latitude_val = 90
 min_latitude_val = -90
 
-maximum_accept_wikifier_size = 100000
+maximum_accept_wikifier_size = 2000000

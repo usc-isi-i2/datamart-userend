@@ -12,6 +12,8 @@ from datamart_isi.config import cache_file_storage_base_loc
 
 _logger = logging.getLogger(__name__)
 seed_dataset_store_location = os.path.join(cache_file_storage_base_loc, "datasets_cache")
+if not os.path.exists(seed_dataset_store_location):
+    os.mkdir(seed_dataset_store_location)
 
 
 class MetadataCache:

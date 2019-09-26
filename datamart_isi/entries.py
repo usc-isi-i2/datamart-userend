@@ -1200,7 +1200,7 @@ class DatamartSearchResult:
         if n_to_m_condition:
             self._logger.error("Could not augment for n-m relationship.")
             df_joined = supplied_data_df
-            
+
         else:
             for r1, r2 in self.pairs:
                 i += 1

@@ -50,8 +50,6 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
             _logger.debug("Not use cache for this time's wikification.")
 
         if wikifier_choice is None:
-            # FIXME: Currently the new wikifier maybe very slow for large datasets
-            # return_df = produce_for_pandas(inputs, target_columns, target_p_nodes, threshold)
             return_df = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
         elif target_columns is None:
             if wikifier_choice[0] == "identifier":
@@ -166,8 +164,8 @@ def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target
         _logger.debug('Current column: ' + current_column_name)
         try:
             temp = set()
-            for each in input_df.iloc[:, column].dropna().tolist():
-                temp.add(int(each))
+            for each in input_df.iloc[:, column].dropna():
+                temp.add(float(each))
             if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_coverage):
                 _logger.debug("Column with all numerical values and useless detected, skipped")
                 continue
@@ -322,27 +320,33 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,
     _logger.debug("Start running automatic wikifier")
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
-
+    import pdb
+    pdb.set_trace()
     col_new_wikifier, col_identifier = [], []
     for column in target_columns:
         current_column_name = input_df.columns[column]
-        _logger.debug('Current column: ' + current_column_name)
+        # _logger.debug('Current column: ' + current_column_name)
         if target_p_nodes is not None and current_column_name in target_p_nodes.keys():
             if "Q" in target_p_nodes[current_column_name]:
                 col_new_wikifier.append(column)
-                _logger.debug(current_column_name + ' is text column, will choose new wikifier')
+                # _logger.debug(current_column_name + ' is text column, will choose new wikifier')
             elif "P" in target_p_nodes[current_column_name]:
                 col_identifier.append(column)
-                _logger.debug(current_column_name + ' is numeric column, will choose identifier')
+                # _logger.debug(current_column_name + ' is numeric column, will choose identifier')
         else:
             try:
                 if input_df.iloc[:, column].astype(float).dtypes == "float64" or input_df.iloc[:, column].astype(
                         int).dtypes == "int64":
-                    _logger.debug(current_column_name + ' is numeric column, will choose identifier')
+                    # _logger.debug(current_column_name + ' is numeric column, will choose identifier')
                     col_identifier.append(column)
             except:
-                _logger.debug(current_column_name + ' is text column, will choose new wikifier')
+                # _logger.debug(current_column_name + ' is text column, will choose new wikifier')
                 col_new_wikifier.append(column)
+
+    _logger.info("Following columns will be sent to identifier:")
+    _logger.info(str(col_identifier))
+    _logger.info("Following columns will be sent to new wikifier:")
+    _logger.info(str(col_new_wikifier))
 
     col_name = input_df.columns.tolist()
     return_df_identifier = input_df.iloc[:, col_identifier]
