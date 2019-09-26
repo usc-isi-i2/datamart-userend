@@ -17,6 +17,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
+from collections import defaultdict
 
 from datamart import TabularVariable, ColumnRelationship, AugmentSpec
 from datamart_isi import config
@@ -1186,61 +1187,76 @@ class DatamartSearchResult:
         df_dict = dict()
         start = time.time()
         columns_new = None
+        left_pairs = defaultdict(list)
+        right_pairs = defaultdict(list)
+        n_to_m_condition = False
         for r1, r2 in self.pairs:
-            i += 1
-            r1_int = int(r1)
-            if r1_int in r1_paired:
-                continue
-            r1_paired.add(r1_int)
-            left_res = supplied_data_df.loc[r1_int]
-            right_res = download_result.loc[int(r2)]
-            if column_names_to_join is None:
-                column_names_to_join = right_res.index.difference(left_res.index)
-                if self.search_type == "general":
-                    # only for general search condition, we should remove the target join columns
-                    right_join_column_name = self.search_result['variableName']['value']
-                    if right_join_column_name in column_names_to_join:
-                        column_names_to_join = column_names_to_join.drop(right_join_column_name)
-                # if specified augment columns given, only append these columns
-                if augment_columns:
-                    augment_columns_with_column_names = []
-                    max_length = self.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']
-                    for each in augment_columns:
-                        if each.column_index < max_length:
-                            each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
-                            augment_columns_with_column_names.append(each_column_meta["name"])
-                        else:
-                            self._logger.error("Index out of range, will ignore: " + str(each.column_index))
-                    column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
+            if len(left_pairs[int(r1)]) > 1 and len(right_pairs[int(r2)]) > 1:
+                n_to_m_condition = True
+                break
+            left_pairs[int(r1)].append(int(r2))
+            right_pairs[int(r2)].append(int(r1))
 
-                columns_new = left_res.index.tolist()
-                columns_new.extend(column_names_to_join.tolist())
-            dcit_right = right_res[column_names_to_join].to_dict()
-            dict_left = left_res.to_dict()
-            dcit_right.update(dict_left)
-            df_dict[i] = dcit_right
-
-        df_joined = pd.DataFrame.from_dict(df_dict, "index")
-        # add up the rows don't have pairs
-        unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
-        if len(unpaired_rows) > 0:
-            unpaired_rows_list = [i for i in unpaired_rows]
-            df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
-
-        # ensure that the original dataframe columns are at the first left part
-        if columns_new is not None:
-            df_joined = df_joined[columns_new]
+        if n_to_m_condition:
+            self._logger.error("Could not augment for n-m relationship.")
+            df_joined = supplied_data_df
+            
         else:
-            self._logger.error("Attention! It seems augment do not add any extra columns!")
+            for r1, r2 in self.pairs:
+                i += 1
+                r1_int = int(r1)
+                if r1_int in r1_paired:
+                    continue
+                r1_paired.add(r1_int)
+                left_res = supplied_data_df.loc[r1_int]
+                right_res = download_result.loc[int(r2)]
+                if column_names_to_join is None:
+                    column_names_to_join = right_res.index.difference(left_res.index)
+                    if self.search_type == "general":
+                        # only for general search condition, we should remove the target join columns
+                        right_join_column_name = self.search_result['variableName']['value']
+                        if right_join_column_name in column_names_to_join:
+                            column_names_to_join = column_names_to_join.drop(right_join_column_name)
+                    # if specified augment columns given, only append these columns
+                    if augment_columns:
+                        augment_columns_with_column_names = []
+                        max_length = self.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']
+                        for each in augment_columns:
+                            if each.column_index < max_length:
+                                each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
+                                augment_columns_with_column_names.append(each_column_meta["name"])
+                            else:
+                                self._logger.error("Index out of range, will ignore: " + str(each.column_index))
+                        column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
 
-        # if search with wikidata, we should remove duplicate Q node column
-        self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+                    columns_new = left_res.index.tolist()
+                    columns_new.extend(column_names_to_join.tolist())
+                dcit_right = right_res[column_names_to_join].to_dict()
+                dict_left = left_res.to_dict()
+                dcit_right.update(dict_left)
+                df_dict[i] = dcit_right
 
-        if 'q_node' in df_joined.columns:
-            df_joined = df_joined.drop(columns=['q_node'])
+            df_joined = pd.DataFrame.from_dict(df_dict, "index")
+            # add up the rows don't have pairs
+            unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
+            if len(unpaired_rows) > 0:
+                unpaired_rows_list = [i for i in unpaired_rows]
+                df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
 
-        if 'id' in df_joined.columns:
-            df_joined = df_joined.drop(columns=['id'])
+            # ensure that the original dataframe columns are at the first left part
+            if columns_new is not None:
+                df_joined = df_joined[columns_new]
+            else:
+                self._logger.error("Attention! It seems augment do not add any extra columns!")
+
+            # if search with wikidata, we should remove duplicate Q node column
+            self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+
+            if 'q_node' in df_joined.columns:
+                df_joined = df_joined.drop(columns=['q_node'])
+
+            if 'id' in df_joined.columns:
+                df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
         if generate_metadata:
