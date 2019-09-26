@@ -619,7 +619,7 @@ class Datamart(object):
         Datamart implementations should return a DatamartQueryCursor immediately.
 
         Parameters
-        ------_---
+        ----------
         query : DatamartQuery
             Query specification
         supplied_data : container.Dataset

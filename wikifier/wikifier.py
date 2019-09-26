@@ -319,8 +319,6 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,thre
     _logger.debug("Start running automatic wikifier")
     if target_columns is None:
         target_columns = list(range(input_df.shape[1]))
-    import pdb
-    pdb.set_trace()
     col_new_wikifier, col_identifier = [], []
     for column in target_columns:
         current_column_name = input_df.columns[column]
@@ -342,10 +340,14 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None,thre
                 # _logger.debug(current_column_name + ' is text column, will choose new wikifier')
                 col_new_wikifier.append(column)
 
-    _logger.info("Following columns will be sent to identifier:")
-    _logger.info(str(col_identifier))
-    _logger.info("Following columns will be sent to new wikifier:")
-    _logger.info(str(col_new_wikifier))
+    if col_identifier:
+        _logger.info("Following columns will be sent to identifier:")
+        _logger.info(str(col_identifier))
+    if col_new_wikifier:
+        _logger.info("Following columns will be sent to new wikifier:")
+        _logger.info(str(col_new_wikifier))
+    if not col_new_wikifier and not col_identifier:
+        _logger.info("No column will be wikified!")
 
     col_name = input_df.columns.tolist()
     return_df_identifier = input_df.iloc[:, col_identifier]
