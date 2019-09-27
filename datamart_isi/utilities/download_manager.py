@@ -1,4 +1,5 @@
-from datamart_isi import config, connection
+from datamart_isi import config
+from . import connection
 
 import requests
 import pandas

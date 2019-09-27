@@ -24,7 +24,7 @@
             "name": "wikifier_identifier",
             "host": "dsbox02.isi.edu",
             "host-test": "dsbox01.isi.edu",
-            "port": 4444,
+            "port": 9000,
             "path": "get_identifiers"
         },
         {
