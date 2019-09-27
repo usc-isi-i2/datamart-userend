@@ -1293,15 +1293,28 @@ class DatamartSearchResult:
         columns_new = None
         left_pairs = defaultdict(list)
         right_pairs = defaultdict(list)
-        n_to_m_condition = False
+
         for r1, r2 in self.pairs:
-            if len(left_pairs[int(r1)]) > 1 and len(right_pairs[int(r2)]) > 1:
-                n_to_m_condition = True
-                break
             left_pairs[int(r1)].append(int(r2))
             right_pairs[int(r2)].append(int(r1))
 
-        if n_to_m_condition:
+        max_v1 = 0
+        max_v2 = 0
+        for k, v in left_pairs.items():
+            if len(v) > max_v1:
+                max_v1 = len(v)
+
+        for k, v in right_pairs.items():
+            if len(v) > max_v2:
+                max_v2 = len(v)
+
+        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 10
+        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
+        self._logger.info("duplicate amount for left is: " + str(max_v1))
+        self._logger.info("duplicate amount for right is: " + str(max_v2))
+
+        if max_v1 >= maximum_accept_duplicate_amount or max_v2 >= maximum_accept_duplicate_amount:
+            # if n_to_m_condition
             self._logger.error("Could not augment for n-m relationship.")
             df_joined = supplied_data_df
 
