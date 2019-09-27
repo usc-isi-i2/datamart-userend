@@ -1,11 +1,14 @@
-import requests
 from datamart_isi import config
+from . import connection
+
+import requests
 import pandas
 
 WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
-EM_ES_URL = config.em_es_url
-EM_ES_INDEX = config.em_es_index
-EM_ES_TYPE = config.em_es_type
+EM_ES_URL = connection.get_es_fb_embedding_server_url()
+# EM_ES_URL = config.em_es_url
+# EM_ES_INDEX = config.em_es_index
+# EM_ES_TYPE = config.em_es_type
 
 
 class DownloadManager:
@@ -26,7 +29,7 @@ class DownloadManager:
                 },
                 "size": len(qnode_uris[1024*i:1024*i+1024])
             }
-            url = '{}/{}/{}/_search'.format(EM_ES_URL, EM_ES_INDEX, EM_ES_TYPE)
+            url = '{}/_search'.format(EM_ES_URL)
             resp = requests.get(url, json=query)
             if resp.status_code == 200:
                 result = resp.json()
@@ -54,4 +57,3 @@ class DownloadManager:
             return_df = return_df.append(each_result, ignore_index=True)
 
         return return_df
-

@@ -12,11 +12,13 @@ import io
 import csv
 from .find_identity import FindIdentity
 from collections import Counter
-from datamart_isi import config
+# from datamart_isi import config
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
+from datamart_isi.utilities import connection
 
-DEFAULT_DATAMART_URL = config.default_datamart_url
-CACHE_MANAGER = GeneralSearchCache(connection_url= os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
+# DEFAULT_DATAMART_URL = config.default_datamart_url
+# CACHE_MANAGER = GeneralSearchCache(connection_url= os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
+CACHE_MANAGER = GeneralSearchCache()
 
 try:
     from datamart_isi.config import default_temp_path
@@ -26,7 +28,8 @@ except:
     DEFAULT_TEMP_PATH = "/tmp"
 
 _logger = logging.getLogger(__name__)
-NEW_WIKIFIER_SERVER = config.new_wikifier_server
+# NEW_WIKIFIER_SERVER = config.new_wikifier_server
+NEW_WIKIFIER_SERVER = connection.get_wikifier_knowledge_graph_server_url()
 
 
 def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typing.List[str] = None, input_type: str = "pandas",
