@@ -6,9 +6,9 @@ import socket
 host_name = socket.gethostname()
 
 if host_name == "dsbox02":
-        home_dir = "/data00/dsbox/datamart"
+    home_dir = "/data00/dsbox/datamart"
 else:
-        home_dir = os.getenv("HOME")
+    home_dir = os.getenv("HOME")
 
 default_datamart_url = config_services.get_default_datamart_url()
 
