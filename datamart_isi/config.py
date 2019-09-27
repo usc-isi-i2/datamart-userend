@@ -10,6 +10,7 @@ if host_name == "dsbox02":
 else:
     home_dir = os.getenv("HOME")
 
+
 default_datamart_url = config_services.get_default_datamart_url()
 
 cache_file_storage_base_loc = os.path.join(home_dir, "memcache_storage")

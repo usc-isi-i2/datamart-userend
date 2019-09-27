@@ -36,7 +36,7 @@ class GeneralSearchCache(object):
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)
         # ensure folders exists
-        for each_folder in ["wikifier_cache", "general_search_cache", "other_cache"]:
+        for each_folder in ["", "wikifier_cache", "general_search_cache", "other_cache"]:
             storage_loc = os.path.join(config.cache_file_storage_base_loc, each_folder)
             if not os.path.exists(storage_loc):
                 os.mkdir(storage_loc)
