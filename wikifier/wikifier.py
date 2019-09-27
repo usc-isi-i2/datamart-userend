@@ -13,8 +13,7 @@ from .find_identity import FindIdentity
 from collections import Counter
 from datamart_isi import config
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
-from datamart_isi.utilities.d3m_wikifier import generate_specific_meta_path
-
+from datamart_isi.utilities.d3m_wikifier import generate_specific_meta_path, check_wikifier_choice
 DEFAULT_DATAMART_URL = config.default_datamart_url
 CACHE_MANAGER = GeneralSearchCache(connection_url=os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
@@ -31,6 +30,12 @@ NEW_WIKIFIER_SERVER = config.new_wikifier_server
 
 def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typing.List[str] = None, input_type: str = "pandas",
             wikifier_choice: typing.List[str] = None, threshold: float = 0.7, use_cache=True):
+    if target_columns is None and target_p_nodes is None and wikifier_choice is None and use_cache:
+        wikifier_choice = check_wikifier_choice(inputs)
+        if wikifier_choice is False:
+            _logger.info("Detect dataset which should not wikified!")
+            return inputs
+
     if input_type == "pandas":
         # use general search cache system to cache the wikifier results
         produce_config = {"target_columns": target_columns, "target_p_nodes": target_p_nodes,

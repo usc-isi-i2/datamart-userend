@@ -14,6 +14,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi import config
 from os import path
+from pandas.util import hash_pandas_object
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 DEFAULT_TEMP_PATH = config.default_temp_path
@@ -176,6 +177,77 @@ def check_and_correct_q_nodes_semantic_type(input):
                 find_q_node_columns = True
 
     return find_q_node_columns, input
+
+
+def save_wikifier_choice(input_dataframe: pd.DataFrame, choice: bool = None) -> bool:
+    """
+    Function used to check whether a given dataframe need to run wikifier or not, if check failed, default not to do wikifier
+    :param choice: a optional param, if given, use user's setting, otherwise by checking the size of the input dataframe
+    :param input_dataframe: the supplied dataframe that need to be wikified
+    :return: a bool, True means it need to be wikifiered, False means not need
+    """
+    try:
+        hash_input_data = str(hash_pandas_object(input_dataframe).sum())
+        # if folder / file, create it
+        storage_loc = os.path.join(config.cache_file_storage_base_loc, "other_cache")
+        if not os.path.exists(storage_loc):
+            os.mkdir(storage_loc)
+        file_loc = os.path.join(storage_loc, "wikifier_choice.json")
+        if os.path.exists(file_loc):
+            with open(file_loc, 'r') as f:
+                wikifier_choices = json.load(f)
+        else:
+            wikifier_choices = dict()
+
+        if choice is None:
+            input_size = input_dataframe.shape[0] * input_dataframe.shape[1]
+            if input_size >= config.maximum_accept_wikifier_size:
+                choice = False
+            else:
+                choice = True
+
+        if hash_input_data in wikifier_choices.keys() and wikifier_choices[hash_input_data] != choice:
+            _logger.warning("Exist wikifier choice and the old choice is different!")
+            _logger.warning("Now change wikifier choice for dataset with hash tag " + hash_input_data + " to " + str(choice))
+
+        wikifier_choices[hash_input_data] = choice
+
+        with open(file_loc, 'w') as f:
+            json.dump(wikifier_choices, f)
+        return choice
+
+    except Exception as e:
+        _logger.error("Saving wikifier choice failed!")
+        _logger.debug(e, exc_info=True)
+        return False
+
+
+def check_wikifier_choice(input_dataframe: pd.DataFrame) -> typing.Union[bool, None]:
+    """
+    Function used to find the recorded choice for a given dataset, if no record found, will return False
+    :param input_dataframe: the input supplied dataframe
+    :return: a bool, True means it need to be wikified, False means not need
+    """
+    try:
+        hash_input_data = str(hash_pandas_object(input_dataframe).sum())
+        file_loc = os.path.join(config.cache_file_storage_base_loc, "other_cache", "wikifier_choice.json")
+        with open(file_loc, 'r') as f:
+            wikifier_choices = json.load(f)
+
+        # if we find exist choice, use this
+        if hash_input_data in wikifier_choices.keys():
+            wikifier_choice = wikifier_choices[hash_input_data]
+            return wikifier_choice
+        else:
+            _logger.error("No choice record found for dataset " + hash_input_data)
+            return None
+
+    except Exception as e:
+        _logger.error("Check wikifier choice failed!")
+        _logger.debug(e, exc_info=True)
+        return None
+
+
 # def save_specific_p_nodes(original_dataframe, wikifiered_dataframe) -> bool:
 #     try:
 #         original_columns_list = set(original_dataframe.columns.tolist())
