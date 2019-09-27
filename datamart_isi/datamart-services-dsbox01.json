@@ -37,7 +37,7 @@
         },
         {
             "name": "general_search_test",
-            "host": "dsbox02.isi.edu",
+            "host": "blazegraph_satellite",
             "port": 8080,
             "path": "blazegraph/namespace/datamart4/sparql"
         },

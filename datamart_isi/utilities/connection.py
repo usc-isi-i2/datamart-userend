@@ -23,3 +23,7 @@ def get_wikifier_knowledge_graph_server_url() -> str:
 
 def get_es_fb_embedding_server_url() -> str:
     return config_services.get_service_url('elasticsearch_fb_embeddings', as_url=True)
+
+
+def get_general_search_test_server_url() -> str:
+    return config_services.get_service_url('general_search')

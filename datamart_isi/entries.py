@@ -1157,6 +1157,8 @@ class DatamartSearchResult:
         if supplied_data_df is None:
             raise ValueError("Can't find supplied data!")
 
+        import pdb
+        pdb.set_trace()
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
         download_result = download_result.drop(columns=['joining_pairs'])
 
@@ -1290,7 +1292,11 @@ class DatamartSearchResult:
             raise ValueError("Unsupport type to get join hints with type" + self.search_type)
         return [results]
 
-    def serialize(self):
+    def serialize(self) -> str:
+        """
+        Return a string format's json which contains all information needed for reproducing the augment
+        :return:
+        """
         result = dict()
         result['id'] = self.id()
         result['score'] = self.score()
