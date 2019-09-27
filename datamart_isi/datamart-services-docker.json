@@ -1,12 +1,7 @@
 {
     "server" : {
-        "mode": "docker_compose",
-        "host": "dsbox02.isi.edu"
-    },
-    "available_server_modes" : [
-        "single_host",
-        "docker_compose"
-    ],
+        "default_host": ""
+    }
     "services": [
         {
             "name": "isi_datamart",
@@ -61,6 +56,12 @@
             "host": "es01",
             "port": 9200,
             "path": ""
+        },
+        {
+            "name": "elasticsearch_fb_embeddings",
+            "host": "kg2018a.isi.edu",
+            "port": 9200,
+            "path": "wiki_fb_embeddings_1/vectors"
         }
     ]
 }

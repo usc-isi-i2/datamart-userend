@@ -1,7 +1,14 @@
+from pathlib import Path
+
 import os
 import json
 
-with open(os.path.join(os.path.dirname(__file__), 'datamart-services.json')) as input:
+config_file = Path(os.path.join(os.path.dirname(__file__), 'datamart-services.json'))
+
+if not config_file.exists():
+    raise FileNotFoundError(f'Must define service location: {config_file}\nFor example, see datamart-services-dsbox01.json')
+
+with open(config_file) as input:
     service_defs = json.load(input)
 
 
@@ -17,10 +24,12 @@ def get_service_url(service_name, as_url=True) -> str:
     if definition is None:
         print('get_service_url missing definition: ', service_name)
         raise ValueError(f'Service name not found: {service_name}')
-    if service_defs['server']['mode'] == 'single_host':
-        host = service_defs['server']['host']
-    else:
-        host = definition['host']
+
+    default_host = service_defs['server'].get('default_host', '')
+    host = service_defs['server'].get('host', default_host)
+    if host == '':
+        raise ValueError(f'Host for service {service_name} not defined')
+
     port = definition['port']
     path = definition.get('path', '')
     if as_url:

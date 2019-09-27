@@ -1,12 +1,7 @@
 {
     "server" : {
-        "mode": "docker_compose",
-        "host": "dsbox02.isi.edu"
+        "default_host": ""
     },
-    "available_server_modes" : [
-        "single_host",
-        "docker_compose"
-    ],
     "services": [
         {
             "name": "isi_datamart",
