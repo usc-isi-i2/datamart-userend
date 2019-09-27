@@ -1,7 +1,7 @@
-import os
 from . import config_services
 
-home_dir = os.getenv("HOME")
+import os
+import socket
 
 host_name = socket.gethostname()
 
