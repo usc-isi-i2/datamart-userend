@@ -31,8 +31,8 @@ NEW_WIKIFIER_SERVER = config.new_wikifier_server
 def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typing.List[str] = None, input_type: str = "pandas",
             wikifier_choice: typing.List[str] = None, threshold: float = 0.7, use_cache=True):
     if target_columns is None and target_p_nodes is None and wikifier_choice is None and use_cache:
-        wikifier_choice = check_wikifier_choice(inputs)
-        if wikifier_choice is False:
+        do_wikifier = check_wikifier_choice(inputs)
+        if do_wikifier is False:
             _logger.info("Detect dataset which should not wikified!")
             return inputs
 
