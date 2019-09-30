@@ -216,7 +216,7 @@ class Utils:
         for i in range(data.shape[1]):
             each_column_metadata = cleaned_df_metadata.query((ALL_ELEMENTS, i))
             column_name = data.columns[i]
-            if data.iloc[:, i].dtype.name.contains("datetime"):
+            if "datetime" in data.iloc[:, i].dtype.name:
                 semantic_type = ("http://schema.org/DateTime", 'https://metadata.datadrivendiscovery.org/types/Attribute')
             else:
                 semantic_type = each_column_metadata['semantic_types']
