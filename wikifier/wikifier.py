@@ -9,11 +9,12 @@ import requests
 import pandas as pd
 import io
 import csv
+import hashlib
 from .find_identity import FindIdentity
 from collections import Counter
 from datamart_isi import config
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
-from datamart_isi.utilities.d3m_wikifier import generate_specific_meta_path, check_wikifier_choice
+from .utils import check_wikifier_choice
 DEFAULT_DATAMART_URL = config.default_datamart_url
 CACHE_MANAGER = GeneralSearchCache(connection_url=os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
@@ -411,15 +412,15 @@ def coverage(column):
 
 def save_specific_p_nodes(original_dataframe, column_to_p_node_dict) -> bool:
     try:
-        # original_columns_list = original_dataframe.columns.tolist()
-        # original_columns_list.sort()
-        # hash_generator = hashlib.md5()
-        #
-        # hash_generator.update(str(original_columns_list).encode('utf-8'))
-        # hash_key = str(hash_generator.hexdigest())
-        # temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
-        # specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
-        specific_q_nodes_file = generate_specific_meta_path(original_dataframe)
+        original_columns_list = original_dataframe.columns.tolist()
+        original_columns_list.sort()
+        hash_generator = hashlib.md5()
+
+        hash_generator.update(str(original_columns_list).encode('utf-8'))
+        hash_key = str(hash_generator.hexdigest())
+        temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
+        specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
+        # specific_q_nodes_file = generate_specific_meta_path(original_dataframe)
         if os.path.exists(specific_q_nodes_file):
             _logger.warning("The specific p nodes file already exist! Will update the old one!")
             with open(specific_q_nodes_file, 'r') as f:
