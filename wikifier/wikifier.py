@@ -280,7 +280,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
             col_names.append(current_column_name)
 
     if not col_names:
-        return input_df
+        return input_df, column_to_p_node_dict
 
     _logger.debug("Following {} columns will be send to new wikifier:".format(str(len(col_names))))
     _logger.debug(str(col_names))
@@ -393,6 +393,7 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None, thr
         col_tmp = return_df_identifier.columns.tolist()
         # change the column name index
         col_name.extend(list(set(col_tmp).difference(set(col_name).intersection(set(col_tmp)))))
+
     if col_new_wikifier:
         return_df_new, column_to_p_node_dict_new_wikifier = produce_by_new_wikifier(return_df_new,
                                                                                     [i for i in range(len(col_new_wikifier))],
