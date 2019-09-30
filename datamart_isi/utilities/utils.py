@@ -216,8 +216,12 @@ class Utils:
         for i in range(data.shape[1]):
             each_column_metadata = cleaned_df_metadata.query((ALL_ELEMENTS, i))
             column_name = data.columns[i]
+            if data.iloc[:, i].dtype.name.contains("datetime"):
+                semantic_type = ("http://schema.org/DateTime", 'https://metadata.datadrivendiscovery.org/types/Attribute')
+            else:
+                semantic_type = each_column_metadata['semantic_types']
             variable_metadata = {'datamart_id': None,
-                                 'semantic_type': each_column_metadata['semantic_types'],
+                                 'semantic_type': semantic_type,
                                  'name': column_name,
                                  'description': 'column name: {}, dtype: {}'.format(column_name, cleaned_df.iloc[:, i].dtype.name)
                                  }
