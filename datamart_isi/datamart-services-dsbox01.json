@@ -48,13 +48,13 @@
             "path": ""
         },
         {
-            "name":"redis",
-            "host": "dsbox02.isi.edu",
+            "name": "redis",
+            "host": "redis",
             "port": 6379,
             "path": ""
         },
         {
-            "name": "elasticsearch",
+            "name": "elasticsearch_not_used",
             "host": "dsbox02.isi.edu",
             "port": 9200,
             "path": ""
