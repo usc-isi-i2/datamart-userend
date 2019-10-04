@@ -17,17 +17,14 @@ from datamart_isi.cache.wikidata_cache import QueryCache
 
 class Augment(object):
 
-    def __init__(self, endpoint: str) -> None:
+    def __init__(self) -> None:
         """Init method of QuerySystem, set up connection to elastic search.
-
-        Args:
-            endpoint: query endpoint address
 
         Returns:
 
         """
 
-        self.qm = SPARQLWrapper(connection.get_general_search_server_url(endpoint))
+        self.qm = SPARQLWrapper(connection.get_general_search_server_url())
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)
@@ -39,7 +36,7 @@ class Augment(object):
         """
         Args:
             query: a dictnary format query
-            dataset: 
+            dataset:
             **kwargs:
 
         Returns:
@@ -69,7 +66,7 @@ class Augment(object):
         # example of query variables: Chaves Los Angeles Sacramento
         PREFIX = '''
             prefix ps: <http://www.wikidata.org/prop/statement/>
-            prefix pq: <http://www.wikidata.org/prop/qualifier/> 
+            prefix pq: <http://www.wikidata.org/prop/qualifier/>
             prefix p: <http://www.wikidata.org/prop/>
         '''
         SELECTION = '''
@@ -124,10 +121,10 @@ class Augment(object):
                 end_date = pd.to_datetime(tv["end"]).isoformat()
                 granularity = temporal_granularity[tv["granularity"]]
                 spaqrl_query += '''
-                    ?variable pq:C2013 ?time_granularity . 
+                    ?variable pq:C2013 ?time_granularity .
                     ?variable pq:C2011 ?start_time .
-                    ?variable pq:C2012 ?end_time . 
-                    FILTER(?time_granularity >= ''' + str(granularity) + ''') 
+                    ?variable pq:C2012 ?end_time .
+                    FILTER(?time_granularity >= ''' + str(granularity) + ''')
                     FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
                     '''
 

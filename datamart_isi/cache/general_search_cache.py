@@ -17,10 +17,10 @@ MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
 class GeneralSearchCache(object):
-    def __init__(self, connection_url: str, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
+    def __init__(self, *,  memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)
-        self.memcache_server = connection.get_memcache_server_url(connection_url)
-        self.general_search_server = connection.get_general_search_server_url(connection_url)
+        self.memcache_server = connection.get_memcache_server_url()
+        self.general_search_server = connection.get_general_search_server_url()
         self._logger.debug("Current memcache server url is: " + self.memcache_server)
         self._logger.debug("Current general search server url is: " + self.general_search_server)
         try:
@@ -63,9 +63,9 @@ class GeneralSearchCache(object):
                 self._logger.info("Cache not hit.")
         else:
             self._logger.info("No memcache server connected, skip cache searching.")
-        
+
         return None
-            
+
     def add_to_memcache(self, supplied_dataframe, search_result_serialized, augment_results, hash_key) -> bool:
         try:
             self._logger.debug("Start pushing general augment result to " + self.memcache_server)

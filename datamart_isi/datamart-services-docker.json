@@ -1,0 +1,67 @@
+{
+    "server" : {
+        "default_host": ""
+    }
+    "services": [
+        {
+            "name": "isi_datamart",
+            "host": "datamart",
+            "port": 9000,
+            "path": ""
+        },
+        {
+            "name": "wikidata",
+            "host": "blazegraph",
+            "port": 8888,
+            "path": "bigdata/namespace/wdq/sparql"
+        },
+        {
+            "name": "wikifier_identifier",
+            "host": "wikifier",
+            "port": 4444,
+            "path": "get_identifiers"
+        },
+        {
+            "name": "wikifier_knowledge_graph",
+            "host": "wikifier_kg",
+            "port": 8396,
+            "path": "wikify"
+        },
+        {
+            "name": "general_search",
+            "host": "blazegraph",
+            "port": 9002,
+            "path": "blazegraph/namespace/datamart3/sparql"
+        },
+        {
+            "name": "general_search_test",
+            "host": "blazegraph",
+            "port": 9002,
+            "path": "blazegraph/namespace/datamart4/sparql"
+        },
+        {
+            "name": "memcached",
+            "host": "memcached",
+            "port": 11211,
+            "path": ""
+        },
+        {
+            "name":"redis",
+            "host": "redis",
+            "port": 6379,
+            "path": ""
+        },
+        {
+            "name": "elasticsearch",
+            "host": "es01",
+            "port": 9200,
+            "path": ""
+        },
+        {
+            "name": "elasticsearch_fb_embeddings",
+            "host": "kg2018a.isi.edu",
+            "port": 9200,
+            "path": "wiki_fb_embeddings_1/vectors"
+        }
+    ]
+}

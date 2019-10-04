@@ -47,8 +47,6 @@ MAX_ENTITIES_LENGTH = config.max_entities_length
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
-WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
-MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
 
@@ -82,7 +80,7 @@ class DatamartQueryCursor(object):
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
         self.remained_part = None
-        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
+        self.wikidata_cache_manager = QueryCache()
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
@@ -580,7 +578,7 @@ class Datamart(object):
             self.connection_url = connection_url
 
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
-        self.augmenter = Augment(endpoint=self.connection_url)
+        self.augmenter = Augment()
         self.supplied_dataframe = None
 
     def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
@@ -840,8 +838,8 @@ class DatamartSearchResult:
             connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
-        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
-        self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
+        self.wikidata_cache_manager = QueryCache()
+        self.general_search_cache_manager = GeneralSearchCache()
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
@@ -893,8 +891,8 @@ class DatamartSearchResult:
             # if a new connection url given
             if self.connection_url != connection_url:
                 self.connection_url = connection_url
-                self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
-                self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
+                self.wikidata_cache_manager = QueryCache()
+                self.general_search_cache_manager = GeneralSearchCache()
                 self.metadata_manager = MetadataGenerator(supplied_data=supplied_data, search_result=self.search_result,
                                                           search_type=self.search_type, connection_url=connection_url,
                                                           wikidata_cache_manager=self.wikidata_cache_manager)
@@ -1623,7 +1621,7 @@ class DatamartQuery:
 
     def __init__(self, keywords: typing.List[str] = list(), variables: typing.List['VariableConstraint'] = list(),
                  search_type: str = "general", keywords_search: typing.List[str] = list(), title_search: str = "",
-                 variables_search: dict() = dict()) -> None:
+                 variables_search: dict = dict()) -> None:
         self.search_type = search_type
         self.keywords = keywords
         self.variables = variables

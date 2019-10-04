@@ -114,3 +114,8 @@ scripts/generate_schema/wikitables/datasets
 
 # IDE settings
 .vscode/
+
+# emacs
+*~
+.\#*
+\#*\#
