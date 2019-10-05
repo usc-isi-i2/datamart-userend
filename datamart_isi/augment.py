@@ -30,7 +30,7 @@ class Augment(object):
         self.qm.setRequestMethod(URLENCODED)
         self.profiler = Profiler()
         self.logger = logging.getLogger(__name__)
-        self.wikidata_cache_manager = QueryCache(connection_url=endpoint)
+        self.wikidata_cache_manager = QueryCache()
 
     def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None) -> typing.Optional[typing.List[dict]]:
         """

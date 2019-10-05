@@ -2,6 +2,7 @@ from pathlib import Path
 
 import os
 import json
+import typing
 
 config_file = Path(os.path.join(os.path.dirname(__file__), 'datamart-services.json'))
 
@@ -19,19 +20,24 @@ def _get_service_def(service_name) -> dict:
     return None
 
 
-def get_service_url(service_name, as_url=True) -> str:
+def get_host_port_path(service_name) -> typing.Tuple[str, int, str]:
     definition = _get_service_def(service_name)
     if definition is None:
         print('get_service_url missing definition: ', service_name)
         raise ValueError(f'Service name not found: {service_name}')
 
     default_host = service_defs['server'].get('default_host', '')
-    host = service_defs['server'].get('host', default_host)
+    host = definition.get('host', default_host)
     if host == '':
         raise ValueError(f'Host for service {service_name} not defined')
 
-    port = definition['port']
+    port = int(definition['port'])
     path = definition.get('path', '')
+    return (host, port, path)
+
+
+def get_service_url(service_name, as_url=True) -> str:
+    host, port, path = get_host_port_path(service_name)
     if as_url:
         if path:
             url = f'http://{host}:{port}/{path}'
