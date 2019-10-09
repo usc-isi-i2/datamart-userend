@@ -17,7 +17,7 @@
         },
         {
             "name": "wikifier_identifier",
-            "host": "dsbox02.isi.edu",
+            "host": "dsbox01.isi.edu",
             "host-test": "dsbox01.isi.edu",
             "port": 9000,
             "path": "get_identifiers"
@@ -30,26 +30,27 @@
         },
         {
             "name": "general_search",
-            "host": "blazegraph_satellite",
-            "port": 8080,
+            "host": "dsbox01.isi.edu",
+            "port": 9002,
             "port_external": 9002,
             "path": "bigdata/namespace/datamart3/sparql"
         },
         {
             "name": "general_search_test",
-            "host": "blazegraph_satellite",
-            "port": 8080,
+            "host": "dsbox01.isi.edu",
+            "port": 9002,
+            "port_external": 9002,
             "path": "blazegraph/namespace/datamart4/sparql"
         },
         {
             "name": "memcached",
-            "host": "memcached",
+            "host": "dsbox01.isi.edu",
             "port": 11211,
             "path": ""
         },
         {
             "name": "redis",
-            "host": "redis",
+            "host": "dsbox01.isi.edu",
             "port": 6379,
             "path": ""
         },
