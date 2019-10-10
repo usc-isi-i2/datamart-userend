@@ -17,7 +17,7 @@
         },
         {
             "name": "wikifier_identifier",
-            "host": "dsbox02.isi.edu",
+            "host": "isi_datamart",
             "host-test": "dsbox01.isi.edu",
             "port": 9000,
             "path": "get_identifiers"
