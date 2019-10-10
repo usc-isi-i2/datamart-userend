@@ -1340,7 +1340,7 @@ class DatamartSearchResult:
             if len(v) > max_v2:
                 max_v2 = len(v)
 
-        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 10
+        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
         self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
         self._logger.info("duplicate amount for left is: " + str(max_v1))
         self._logger.info("duplicate amount for right is: " + str(max_v2))
@@ -1405,6 +1405,7 @@ class DatamartSearchResult:
                 df_joined = df_joined.drop(columns=['q_node'])
 
             if 'id' in df_joined.columns:
+                df_joined = df_joined.sort_values(by=['id'])
                 df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
