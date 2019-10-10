@@ -1022,6 +1022,35 @@ class DatamartSearchResult:
         self._logger.debug("download_general function finished.")
         return return_result
 
+    def _dummy_download_wikidata(self) -> pd.DataFrame:
+        """
+        This function only should be used when the wikidata column on the search result is not found on supplied data
+        This function will append same amount of blank columns to ensure the augmented data's column number and column names
+        are same as normal condition
+        :return: a DataFrame
+        """
+        # TODO: check if this can help to prevent fail on some corner case
+        self._logger.warning("Adding empty wikidata columns!")
+        p_nodes_needed = self.search_result["p_nodes_needed"]
+        target_q_node_column_name = self.search_result["target_q_node_column_name"]
+        specific_p_nodes_record = MetadataCache.get_specific_p_nodes(self.supplied_dataframe)
+        columns_need_to_add = []
+        # if specific_p_nodes_record is not None:
+        #     for each_column in self.supplied_dataframe.columns:
+        #         # if we find that this column should be wikified but not exist in supplied dataframe
+        #         if each_column in specific_p_nodes_record and each_column + "_wikidata" not in self.supplied_dataframe.columns:
+        #             columns_need_to_add.append(each_column + "_wikidata")
+        for each_p_node in p_nodes_needed:
+            each_p_node_name = Utils.get_node_name(each_p_node)
+            columns_need_to_add.append(target_q_node_column_name + "_" + each_p_node_name)
+        columns_need_to_add.append("joining_pairs")
+
+        dummy_result = copy.copy(self.supplied_dataframe)
+        for each_column in columns_need_to_add:
+            dummy_result[each_column] = ""
+
+        return dummy_result
+
     def _download_wikidata(self) -> pd.DataFrame:
         """
         :return: return_df: the materialized wikidata d3m_DataFrame,
@@ -1035,8 +1064,13 @@ class DatamartSearchResult:
         try:
             q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
         except ValueError:
-            raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
-                             ". Maybe use the wrong search results?")
+            q_node_column_number = None
+            self._logger.error("Could not find corresponding q node column for " + target_q_node_column_name +
+                               ". It is possible that using wrong supplied data or wikified wrong columns before")
+
+        if not q_node_column_number:
+            return self._dummy_download_wikidata()
+
         q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
         q_nodes_list = list(q_nodes_list)
         q_nodes_list.sort()
@@ -1306,7 +1340,7 @@ class DatamartSearchResult:
             if len(v) > max_v2:
                 max_v2 = len(v)
 
-        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 10
+        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
         self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
         self._logger.info("duplicate amount for left is: " + str(max_v1))
         self._logger.info("duplicate amount for right is: " + str(max_v2))
@@ -1371,6 +1405,7 @@ class DatamartSearchResult:
                 df_joined = df_joined.drop(columns=['q_node'])
 
             if 'id' in df_joined.columns:
+                df_joined = df_joined.sort_values(by=['id'])
                 df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
