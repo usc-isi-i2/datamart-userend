@@ -1345,7 +1345,7 @@ class DatamartSearchResult:
         self._logger.info("duplicate amount for left is: " + str(max_v1))
         self._logger.info("duplicate amount for right is: " + str(max_v2))
 
-        if max_v1 >= maximum_accept_duplicate_amount or max_v2 >= maximum_accept_duplicate_amount:
+        if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
             # if n_to_m_condition
             self._logger.error("Could not augment for n-m relationship.")
             df_joined = supplied_data_df
@@ -1400,13 +1400,14 @@ class DatamartSearchResult:
 
             # if search with wikidata, we should remove duplicate Q node column
             self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+        # END augment part
 
-            if 'q_node' in df_joined.columns:
-                df_joined = df_joined.drop(columns=['q_node'])
+        if 'q_node' in df_joined.columns:
+            df_joined = df_joined.drop(columns=['q_node'])
 
-            if 'id' in df_joined.columns:
-                df_joined = df_joined.sort_values(by=['id'])
-                df_joined = df_joined.drop(columns=['id'])
+        if 'id' in df_joined.columns:
+            df_joined = df_joined.sort_values(by=['id'])
+            df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
         if generate_metadata:
