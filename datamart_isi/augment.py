@@ -53,7 +53,7 @@ class Augment(object):
                 return []
             return results
         else:
-            print("\n\n[ERROR] No query given, query failed!\n\n")
+            self.logger.error("No query given, query failed!")
             return []
 
     def parse_sparql_query(self, json_query, dataset) -> str:
