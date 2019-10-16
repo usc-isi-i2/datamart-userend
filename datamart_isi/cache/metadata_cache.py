@@ -17,8 +17,8 @@ _logger = logging.getLogger(__name__)
 seed_dataset_store_location = os.path.join(cache_file_storage_base_loc, "datasets_cache")
 wikifier_target_cache_exist_mark = "wikifier_target_cache_exist_mark"
 if not os.path.exists(seed_dataset_store_location):
-    print('Creating directory: {seed_dataset_store_location}')
-    os.makedirs(seed_dataset_store_location)
+    print(f'Creating directory: {seed_dataset_store_location}')
+    os.makedirs(seed_dataset_store_location, exist_ok=True)
 
 
 class MetadataCache:
