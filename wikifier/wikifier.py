@@ -232,7 +232,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target
             column_to_p_node_dict[current_column_name] = res[0]
             col_name = current_column_name + '_wikidata_' + str(idx)
             return_df[col_name] = new_col
-            # break
+            break
 
     if column_to_p_node_dict:
         save_specific_p_nodes(input_df, column_to_p_node_dict)

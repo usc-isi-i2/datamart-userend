@@ -6,7 +6,6 @@ import typing
 import logging
 from datamart_isi import config
 from datamart_isi.utilities import connection
-from wikifier import config_wikifier_para as p_config
 _logger = logging.getLogger(__name__)
 
 wikidata_query_server = connection.get_wikidata_server_url()
@@ -61,7 +60,8 @@ class FindIdentity:
             P_predicts = [target_p_node]
             _logger.info("User-defined P node is " + P_predicts[0])
         else:
-            P_predicts = [x[0] for x in Counter(P_list).most_common(p_config.common_top_k + len(P_blacklist) + 1)]  # [('P932', 8), ('P1566', 6), ('P698', 2)]
+            P_predicts = [x[0] for x in Counter(P_list).most_common(5)]  # [('P932', 8), ('P1566', 6), ('P698', 2)]
+            # p_config.common_top_k + len(P_blacklist) + 1
 
             for each in P_blacklist:
                 try:
@@ -87,24 +87,24 @@ class FindIdentity:
         """
         best_predicts = []
         # for wikifier rest api service
-        if p_config.is_top_k:
-            if "P882" in P_predicts:
-                best_predicts.append("P882")
-            for i in range(0, len(P_predicts)):
-                if len(best_predicts) >= p_config.common_top_k:
-                    break
-                if P_predicts[i] != "P882":
-                    best_predicts.append(P_predicts[i])
+        # if p_config.is_top_k:
+        #     if "P882" in P_predicts:
+        #         best_predicts.append("P882")
+        #     for i in range(0, len(P_predicts)):
+        #         if len(best_predicts) >= p_config.common_top_k:
+        #             break
+        #         if P_predicts[i] != "P882":
+        #             best_predicts.append(P_predicts[i])
+        # else:
+        if "P882" in P_predicts:
+            best_predicts = ["P882"]
         else:
-            if "P882" in P_predicts:
-                best_predicts = ["P882"]
-            else:
-                best_predicts = [P_predicts[0]]
+            best_predicts = [P_predicts[0]]
 
         _logger.info("The best matching P node is " + best_predicts[0])
         # change to default value
-        p_config.common_top_k = 5
-        p_config.is_top_k = False
+        # p_config.common_top_k = 5
+        # p_config.is_top_k = False
 
         # print('Top 3 possible properties:')
         # print(P_predicts)
