@@ -14,6 +14,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi import config
 from os import path
+from wikifier import config_wikifier_para as p_config
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 DEFAULT_TEMP_PATH = config.default_temp_path
@@ -72,8 +73,11 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
 
         _logger.debug("The target columns need to be wikified are: " + str(target_columns))
         # here because this function is called from augment part, so this part
-        wikifier_res = wikifier.produce(inputs=pd.DataFrame(supplied_dataframe), target_columns=target_columns,
-                                        target_p_nodes=specific_p_nodes, use_cache=use_cache)
+        # config each parameter first
+        p_config.target_columns = target_columns
+        p_config.target_p_nodes = specific_p_nodes
+        p_config.use_cache = use_cache
+        wikifier_res = wikifier.produce(inputs=pd.DataFrame(supplied_dataframe))
         output_ds[res_id] = d3m_DataFrame(wikifier_res, generate_metadata=False)
         # update metadata on column length
         selector = (res_id, ALL_ELEMENTS)

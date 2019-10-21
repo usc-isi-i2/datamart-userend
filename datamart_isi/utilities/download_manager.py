@@ -11,6 +11,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.base import utils as d3m_utils
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.cache.metadata_cache import MetadataCache
+from datamart_isi.cache.wikidata_cache import QueryCache
 from datamart_isi import config
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
@@ -207,3 +208,60 @@ class DownloadManager:
             else:
                 logger.info("Push augment results to memcache success!")
         return output_ds
+
+    @staticmethod
+    def fetch_qnode_info(input_df, endpoint):
+        """
+
+        :param input_df: wikifier result
+        :return: output_df: for wikidata columns, add labels and descriptions
+        """
+        wikidata_cache_manager = QueryCache(connection_url=endpoint)
+        col_name = input_df.columns.tolist()
+        new_col_name = []
+
+        for name in col_name:
+            new_col_name.append(name)
+            if "_wikidata_" in name:
+                qnodes = input_df[name].tolist()
+                unique_qnodes = list(set(qnodes))
+                q_node_query_part = ""
+
+                for each in unique_qnodes:
+                    if len(each) > 0:
+                        q_node_query_part += "(wd:" + each + ")"
+                sparql_query = "select distinct ?item ?itemLabel ?itemDescription where \n{\n  VALUES (?item) {" + q_node_query_part \
+                               + "  }\n   SERVICE wikibase:label { bd:serviceParam wikibase:language \"[AUTO_LANGUAGE],en\". } \n}"
+
+                results = wikidata_cache_manager.get_result(sparql_query)
+
+                if results is None:
+                    # if response none, it means get wikidata query results failed
+                    logger.error("Can't get wikidata search results for column " + name)
+                    continue
+
+                # save label and description in input_df
+                qnodes_info = {}
+                for each in results:
+                    key = each['item']['value'].split('/')[-1]
+                    qnodes_info[key] = {}
+                    qnodes_info[key]['qnode_description'] = each['itemDescription']['value'] if "itemDescription" in each else ""
+                    qnodes_info[key]['qnode_label'] = each['itemLabel']['value'] if "itemLabel" in each else ""
+
+                col_label, col_des = [], []
+                for qnode in qnodes:
+                    if len(qnode) > 0 and qnode in qnodes_info:
+                        col_label.append(qnodes_info[qnode]["qnode_label"])
+                        col_des.append(qnodes_info[qnode]["qnode_description"])
+                    else:
+                        col_label.append("")
+                        col_des.append("")
+                input_df[name + "_label"] = col_label
+                input_df[name + "_description"] = col_des
+                new_col_name.append(name + "_label")
+                new_col_name.append(name + "_description")
+
+        return input_df[new_col_name]
+
+
+
