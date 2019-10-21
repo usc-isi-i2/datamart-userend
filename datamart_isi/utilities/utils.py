@@ -5,6 +5,7 @@ import traceback
 import os
 import logging
 import json
+import hashlib
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from d3m.metadata.base import ALL_ELEMENTS
 from io import StringIO
@@ -34,22 +35,39 @@ class Utils:
         # general type materializer
         if 'url' in metadata:
             dataset_url = metadata['url']['value']
-            from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
-            from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
-            file_type = metadata.get("file_type") or ""
-            if file_type == "":
-                # no file type get, try to guess
-                file_type = dataset_url.split(".")[-1]
+            # updated v2019.10.14: add local storage cache file
+            hash_generator = hashlib.md5()
+            hash_generator.update(dataset_url.encode('utf-8'))
+            hash_url_key = hash_generator.hexdigest()
+            dataset_cache_loc = os.path.join(cache_file_storage_base_loc, "datasets_cache", hash_url_key + ".h5")
+            _logger.debug("Try to check whether cache file exist or not at " + dataset_cache_loc)
+            if os.path.exists(dataset_cache_loc):
+                _logger.info("Found exist cached dataset file")
+                loaded_data = pd.read_hdf(dataset_cache_loc)
             else:
-                file_type = file_type['value']
+                _logger.info("Cached dataset file does not find, will run materializer.")
+                file_type = metadata.get("file_type") or ""
+                if file_type == "":
+                    # no file type get, try to guess
+                    file_type = dataset_url.split(".")[-1]
+                else:
+                    file_type = file_type['value']
 
-            if file_type == "wikitable":
-                extra_information = literal_eval(metadata['extra_information']['value'])
-                loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
-            else:
-                loaded_data = Utils.materialize_for_general(dataset_url, file_type)
-
+                if file_type == "wikitable":
+                    extra_information = literal_eval(metadata['extra_information']['value'])
+                    loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
+                else:
+                    loaded_data = Utils.materialize_for_general(dataset_url, file_type)
+                    try:
+                        # save the loaded data
+                        loaded_data.to_hdf(dataset_cache_loc, key='df', mode='w', format='fixed')
+                        _logger.debug("Saving dataset cache success!")
+                    except Exception as e:
+                        _logger.warning("Saving dataset cache failed!")
+                        _logger.debug(e, exc_info=True)
             # run dsbox's profiler and cleaner
+            # from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
+            # from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
             # hyper1 = ProfilerHyperparams.defaults()
             # profiler = Profiler(hyperparams=hyper1)
             # profiled_df = profiler.produce(inputs=loaded_data).value

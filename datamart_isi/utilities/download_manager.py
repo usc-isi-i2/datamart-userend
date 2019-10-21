@@ -6,6 +6,7 @@ import json
 import copy
 import frozendict
 from multiprocessing import Pool
+
 from d3m.container import Dataset as d3m_Dataset
 from d3m.container import DataFrame as d3m_DataFrame
 from d3m.base import utils as d3m_utils
@@ -18,13 +19,13 @@ from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from d3m.metadata.base import ALL_ELEMENTS
 
 WIKIDATA_URI_TEMPLATE = config.wikidata_uri_template
-EM_ES_URL = config.em_es_url
-EM_ES_INDEX = config.em_es_index
-EM_ES_TYPE = config.em_es_type
-DEFAULT_DATAMART_URL = config.default_datamart_url
-AUGMENT_RESOURCE_ID = config.augmented_resource_id
+EM_ES_URL = connection.get_es_fb_embedding_server_url()
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 logger = logging.getLogger(__name__)
+
+# EM_ES_URL = config.em_es_url
+# EM_ES_INDEX = config.em_es_index
+# EM_ES_TYPE = config.em_es_type
 
 
 class DownloadManager:
@@ -45,7 +46,7 @@ class DownloadManager:
                 },
                 "size": len(qnode_uris[1024*i:1024*i+1024])
             }
-            url = '{}/{}/{}/_search'.format(EM_ES_URL, EM_ES_INDEX, EM_ES_TYPE)
+            url = '{}/_search'.format(EM_ES_URL)
             resp = requests.get(url, json=query)
             if resp.status_code == 200:
                 result = resp.json()
@@ -84,7 +85,7 @@ class DownloadManager:
         geo_gra_dict = {'country': 'Q6256', 'state': 'Q7275', 'city': 'Q515', 'county': 'Q28575',
                         'postal_code': 'Q37447'}
 
-        wikidata_server = connection.get_wikidata_server_url(DEFAULT_DATAMART_URL)
+        wikidata_server = connection.get_wikidata_server_url()
         qm_wikidata = SPARQLWrapper(wikidata_server)
         qm_wikidata.setReturnFormat(JSON)
         qm_wikidata.setMethod(POST)

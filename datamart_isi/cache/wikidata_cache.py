@@ -12,10 +12,10 @@ MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
 class QueryCache(object):
-    def __init__(self, connection_url: str, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
+    def __init__(self, *, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)
-        self.memcache_server = connection.get_memcache_server_url(connection_url)
-        self.wikidata_server = connection.get_wikidata_server_url(connection_url)
+        self.memcache_server = connection.get_memcache_server_url()
+        self.wikidata_server = connection.get_wikidata_server_url()
         self._logger.debug("Current memcache server url is: " + self.memcache_server)
         self._logger.debug("Current wikidata server url is: " + self.wikidata_server)
         try:

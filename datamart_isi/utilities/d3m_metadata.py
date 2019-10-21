@@ -659,16 +659,23 @@ class MetadataGenerator:
                     "semantic_types": ("http://schema.org/Text",
                                        "https://metadata.datadrivendiscovery.org/types/Attribute",),
                 }
+
                 if current_column_name.endswith("_wikidata"):
-                    data = list(filter(None, df_joined.iloc[:, i].dropna().tolist()))
-                    if all(re.match(r'^Q\d+$', x) for x in data):
-                        new_metadata_i["semantic_types"] = ("http://schema.org/Text",
+                    # add vector semantic type here
+                    if current_column_name.startswith("vector_"):
+                        new_metadata_i["semantic_types"] = ("http://schema.org/Float",
                                                             "https://metadata.datadrivendiscovery.org/types/Attribute",
-                                                            q_node_semantic_type
                                                             )
+                    else:
+                        data = list(filter(None, df_joined.iloc[:, i].astype(str).dropna()))
+                        if all(re.match(r'^Q\d+$', x) for x in data):
+                            new_metadata_i["semantic_types"] = ("http://schema.org/Text",
+                                                                "https://metadata.datadrivendiscovery.org/types/Attribute",
+                                                                q_node_semantic_type
+                                                                )
                 else:
-                    self._logger.error("Please check!")
-                    self._logger.error("No metadata found for column No." + str(i) + "with name " + current_column_name)
+                    self._logger.warning("Please check!")
+                    self._logger.warning("No metadata found for column No." + str(i) + "with name " + current_column_name)
 
             metadata_new = metadata_new.update(each_selector, new_metadata_i)
         return_result = None

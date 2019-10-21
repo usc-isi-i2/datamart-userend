@@ -1,4 +1,3 @@
-import os
 import typing
 import numpy as np
 import copy
@@ -9,23 +8,16 @@ import requests
 import pandas as pd
 import io
 import csv
-import hashlib
 from .find_identity import FindIdentity
 from collections import Counter
-from datamart_isi import config
+from datamart_isi.cache.metadata_cache import MetadataCache
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
+from datamart_isi.utilities import connection
 from .utils import check_wikifier_choice
-DEFAULT_DATAMART_URL = config.default_datamart_url
-CACHE_MANAGER = GeneralSearchCache(connection_url=os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
-try:
-    from datamart_isi.config import default_temp_path
-    DEFAULT_TEMP_PATH = default_temp_path
-except:
-    DEFAULT_TEMP_PATH = "/tmp"
-
+CACHE_MANAGER = GeneralSearchCache()
 _logger = logging.getLogger(__name__)
-NEW_WIKIFIER_SERVER = config.new_wikifier_server
+NEW_WIKIFIER_SERVER = connection.get_wikifier_knowledge_graph_server_url()
 
 
 def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typing.List[str] = None, input_type: str = "pandas",
@@ -45,6 +37,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
             cache_key = CACHE_MANAGER.get_hash_key(inputs, json.dumps(produce_config))
             _logger.debug("Current wikification's key is " + cache_key)
             cache_result = CACHE_MANAGER.get_cache_results(cache_key)
+            # get the cache for wikified results directly
             if cache_result is not None:
                 _logger.info("Using caching results for wikifier")
                 return cache_result
@@ -105,7 +98,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
 
         # push the full dataset specific relationship here
         if column_to_p_node_dict:
-            save_specific_p_nodes(inputs, column_to_p_node_dict)
+            MetadataCache.save_specific_wikifier_targets(inputs, column_to_p_node_dict)
 
         if use_cache:
             # push to cache system
@@ -235,7 +228,7 @@ def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target
             break
 
     if column_to_p_node_dict:
-        save_specific_p_nodes(input_df, column_to_p_node_dict)
+        MetadataCache.save_specific_wikifier_targets(input_df, column_to_p_node_dict)
 
     return return_df, column_to_p_node_dict
 
@@ -308,7 +301,7 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
         _logger.debug("Get data from the new wikifier successfully.")
         if column_to_p_node_dict:
             _logger.info("For each column, the best matching class is:" + str(column_to_p_node_dict))
-            save_specific_p_nodes(input_df, column_to_p_node_dict)
+            MetadataCache.save_specific_wikifier_targets(input_df, column_to_p_node_dict)
     else:
         _logger.error('Something wrong in new wikifier server with response code: ' + response.text)
         _logger.debug("Wikifier_choice will change to identifier")
@@ -386,32 +379,3 @@ def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None, thr
 def coverage(column):
     count_stats = Counter(column)
     return (len(column) - count_stats['']) / len(column)
-
-
-def save_specific_p_nodes(original_dataframe, column_to_p_node_dict) -> bool:
-    try:
-        original_columns_list = original_dataframe.columns.tolist()
-        original_columns_list.sort()
-        hash_generator = hashlib.md5()
-
-        hash_generator.update(str(original_columns_list).encode('utf-8'))
-        hash_key = str(hash_generator.hexdigest())
-        temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
-        specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
-        # specific_q_nodes_file = generate_specific_meta_path(original_dataframe)
-        if os.path.exists(specific_q_nodes_file):
-            _logger.warning("The specific p nodes file already exist! Will update the old one!")
-            with open(specific_q_nodes_file, 'r') as f:
-                column_to_p_node_dict_old = json.load(f)
-            column_to_p_node_dict_old.update(column_to_p_node_dict)
-            column_to_p_node_dict = column_to_p_node_dict_old
-
-        # save it
-        with open(specific_q_nodes_file, 'w') as f:
-            json.dump(column_to_p_node_dict, f)
-
-        return True
-
-    except Exception as e:
-        _logger.debug(e, exc_info=True)
-        return False

@@ -1,48 +1,36 @@
-from datamart_isi import config
+import typing
+
+from datamart_isi import config_services
 
 
-def get_memcache_server_url(connection_url: str = config.default_datamart_url) -> str:
-    if connection_url.startswith("http://"):
-        connection_url = connection_url[7:]
-    elif connection_url.startswith("https://"):
-        connection_url = connection_url[8:]
-    if connection_url.endswith(config.rest_api_suffix):
-        connection_url = connection_url[:-5]
-    memcache_url = connection_url + config.memcache_server_suffix
-    return memcache_url
+def get_memcache_server_url() -> str:
+    return config_services.get_service_url('memcached', as_url=False)
 
 
-def get_wikidata_server_url(connection_url: str = config.default_datamart_url) -> str:
-    if not connection_url.startswith("http://"):
-        connection_url = "http://" + connection_url
-    if connection_url.endswith(config.rest_api_suffix):
-        connection_url = connection_url[:-5]
-    wikidata_url = connection_url + config.wikidata_server_suffix
-    return wikidata_url
+def get_wikidata_server_url() -> str:
+    return config_services.get_service_url('wikidata')
 
 
-def get_general_search_server_url(connection_url: str = config.default_datamart_url) -> str:
-    if not connection_url.startswith("http://"):
-        connection_url = "http://" + connection_url
-    if connection_url.endswith(config.rest_api_suffix):
-        connection_url = connection_url[:-5]
-    general_server_url = connection_url + config.general_search_server_suffix
-    return general_server_url
+def get_general_search_server_url() -> str:
+    return config_services.get_service_url('general_search')
 
 
-def get_wikifier_identifier_server_url(connection_url: str = config.default_datamart_url) -> str:
-    if not connection_url.startswith("http://"):
-        connection_url = "http://" + connection_url
-    if connection_url.endswith(config.rest_api_suffix):
-        connection_url = connection_url[:-5]
-    general_server_url = connection_url + config.wikifier_server_suffix
-    return general_server_url
+def get_wikifier_identifier_server_url() -> str:
+    return config_services.get_service_url('wikifier_identifier')
 
 
-def get_general_search_test_server_url(connection_url: str = config.default_datamart_url) -> str:
-    if not connection_url.startswith("http://"):
-        connection_url = "http://" + connection_url
-    if connection_url.endswith(config.rest_api_suffix):
-        connection_url = connection_url[:-5]
-    general_server_url = connection_url + config.general_search_test_server_suffix
-    return general_server_url
+def get_wikifier_knowledge_graph_server_url() -> str:
+    return config_services.get_service_url('wikifier_knowledge_graph')
+
+
+def get_es_fb_embedding_server_url() -> str:
+    return config_services.get_service_url('elasticsearch_fb_embeddings', as_url=True)
+
+
+def get_general_search_test_server_url() -> str:
+    return config_services.get_service_url('general_search')
+
+
+def get_redis_host_port() -> typing.Tuple[str, int]:
+    host, port, _ = config_services.get_host_port_path('redis')
+    return (host, port)

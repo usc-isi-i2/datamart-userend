@@ -47,8 +47,6 @@ MAX_ENTITIES_LENGTH = config.max_entities_length
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
-WIKIDATA_QUERY_SERVER_SUFFIX = config.wikidata_server_suffix
-MEMCACHE_SERVER_SUFFIX = config.memcache_server_suffix
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
 
@@ -82,7 +80,7 @@ class DatamartQueryCursor(object):
         self.supplied_data = supplied_data
         self.current_searching_query_index = 0
         self.remained_part = None
-        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
+        self.wikidata_cache_manager = QueryCache()
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
@@ -580,7 +578,7 @@ class Datamart(object):
             self.connection_url = connection_url
 
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
-        self.augmenter = Augment(endpoint=self.connection_url)
+        self.augmenter = Augment()
         self.supplied_dataframe = None
 
     def search(self, query: 'DatamartQuery') -> DatamartQueryCursor:
@@ -840,8 +838,8 @@ class DatamartSearchResult:
             connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
-        self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
-        self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
+        self.wikidata_cache_manager = QueryCache()
+        self.general_search_cache_manager = GeneralSearchCache()
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
@@ -893,8 +891,8 @@ class DatamartSearchResult:
             # if a new connection url given
             if self.connection_url != connection_url:
                 self.connection_url = connection_url
-                self.wikidata_cache_manager = QueryCache(connection_url=self.connection_url)
-                self.general_search_cache_manager = GeneralSearchCache(connection_url=self.connection_url)
+                self.wikidata_cache_manager = QueryCache()
+                self.general_search_cache_manager = GeneralSearchCache()
                 self.metadata_manager = MetadataGenerator(supplied_data=supplied_data, search_result=self.search_result,
                                                           search_type=self.search_type, connection_url=connection_url,
                                                           wikidata_cache_manager=self.wikidata_cache_manager)
@@ -1024,6 +1022,35 @@ class DatamartSearchResult:
         self._logger.debug("download_general function finished.")
         return return_result
 
+    def _dummy_download_wikidata(self) -> pd.DataFrame:
+        """
+        This function only should be used when the wikidata column on the search result is not found on supplied data
+        This function will append same amount of blank columns to ensure the augmented data's column number and column names
+        are same as normal condition
+        :return: a DataFrame
+        """
+        # TODO: check if this can help to prevent fail on some corner case
+        self._logger.warning("Adding empty wikidata columns!")
+        p_nodes_needed = self.search_result["p_nodes_needed"]
+        target_q_node_column_name = self.search_result["target_q_node_column_name"]
+        specific_p_nodes_record = MetadataCache.get_specific_p_nodes(self.supplied_dataframe)
+        columns_need_to_add = []
+        # if specific_p_nodes_record is not None:
+        #     for each_column in self.supplied_dataframe.columns:
+        #         # if we find that this column should be wikified but not exist in supplied dataframe
+        #         if each_column in specific_p_nodes_record and each_column + "_wikidata" not in self.supplied_dataframe.columns:
+        #             columns_need_to_add.append(each_column + "_wikidata")
+        for each_p_node in p_nodes_needed:
+            each_p_node_name = Utils.get_node_name(each_p_node)
+            columns_need_to_add.append(target_q_node_column_name + "_" + each_p_node_name)
+        columns_need_to_add.append("joining_pairs")
+
+        dummy_result = copy.copy(self.supplied_dataframe)
+        for each_column in columns_need_to_add:
+            dummy_result[each_column] = ""
+
+        return dummy_result
+
     def _download_wikidata(self) -> pd.DataFrame:
         """
         :return: return_df: the materialized wikidata d3m_DataFrame,
@@ -1037,8 +1064,13 @@ class DatamartSearchResult:
         try:
             q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
         except ValueError:
-            raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
-                             ". Maybe use the wrong search results?")
+            q_node_column_number = None
+            self._logger.error("Could not find corresponding q node column for " + target_q_node_column_name +
+                               ". It is possible that using wrong supplied data or wikified wrong columns before")
+
+        if not q_node_column_number:
+            return self._dummy_download_wikidata()
+
         q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
         q_nodes_list = list(q_nodes_list)
         q_nodes_list.sort()
@@ -1308,12 +1340,12 @@ class DatamartSearchResult:
             if len(v) > max_v2:
                 max_v2 = len(v)
 
-        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 10
+        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
         self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
         self._logger.info("duplicate amount for left is: " + str(max_v1))
         self._logger.info("duplicate amount for right is: " + str(max_v2))
 
-        if max_v1 >= maximum_accept_duplicate_amount or max_v2 >= maximum_accept_duplicate_amount:
+        if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
             # if n_to_m_condition
             self._logger.error("Could not augment for n-m relationship.")
             df_joined = supplied_data_df
@@ -1368,12 +1400,14 @@ class DatamartSearchResult:
 
             # if search with wikidata, we should remove duplicate Q node column
             self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+        # END augment part
 
-            if 'q_node' in df_joined.columns:
-                df_joined = df_joined.drop(columns=['q_node'])
+        if 'q_node' in df_joined.columns:
+            df_joined = df_joined.drop(columns=['q_node'])
 
-            if 'id' in df_joined.columns:
-                df_joined = df_joined.drop(columns=['id'])
+        if 'id' in df_joined.columns:
+            df_joined = df_joined.sort_values(by=['id'])
+            df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
         if generate_metadata:
@@ -1623,7 +1657,7 @@ class DatamartQuery:
 
     def __init__(self, keywords: typing.List[str] = list(), variables: typing.List['VariableConstraint'] = list(),
                  search_type: str = "general", keywords_search: typing.List[str] = list(), title_search: str = "",
-                 variables_search: dict() = dict()) -> None:
+                 variables_search: dict = dict()) -> None:
         self.search_type = search_type
         self.keywords = keywords
         self.variables = variables
