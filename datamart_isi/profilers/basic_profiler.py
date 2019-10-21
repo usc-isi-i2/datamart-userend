@@ -53,15 +53,39 @@ class BasicProfiler(object):
         # TODO: we need to check str is text or categorical here
         # when to use "https://metadata.datadrivendiscovery.org/types/CategoricalData"
         semantic_types = ["https://metadata.datadrivendiscovery.org/types/Attribute"]
-        if column.dtype.name == "object":
-            semantic_types.append("http://schema.org/Text")
-        elif "float" in column.dtype.name:
-            semantic_types.append("http://schema.org/Float")
-        elif "int" in column.dtype.name:
+        if BasicProfiler.is_int_type(column):
             semantic_types.append("http://schema.org/Integer")
-        elif "datetime" in column.dtype.name:
+        elif BasicProfiler.is_float_type(column):
+            semantic_types.append("http://schema.org/Float")
+        elif BasicProfiler.is_datetime_type(column):
             semantic_types.append("http://schema.org/DateTime")
+        else:
+            semantic_types.append("http://schema.org/Text")
         return semantic_types
+
+    @staticmethod
+    def is_int_type(column):
+        try:
+            column.astype(int)
+            return True
+        except Exception as e:
+            return False
+
+    @staticmethod
+    def is_float_type(column):
+        try:
+            column.astype(float)
+            return True
+        except Exception as e:
+            return False
+
+    @staticmethod
+    def is_datetime_type(column):
+        try:
+            pd.to_datetime(column)
+            return True
+        except Exception as e:
+            return False
 
     @staticmethod
     def profile_temporal_coverage(column: pd.Series, coverage: dict = None) -> typing.Union[dict, bool]:

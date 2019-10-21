@@ -3,19 +3,18 @@ import typing
 import numpy as np
 import copy
 import math
-import hashlib
 import json
 import logging
 import requests
 import pandas as pd
 import io
 import csv
-from wikifier import config_wikifier_para as p_config
+import hashlib
 from .find_identity import FindIdentity
 from collections import Counter
 from datamart_isi import config
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
-
+from .utils import check_wikifier_choice
 DEFAULT_DATAMART_URL = config.default_datamart_url
 CACHE_MANAGER = GeneralSearchCache(connection_url=os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL))
 
@@ -29,14 +28,20 @@ _logger = logging.getLogger(__name__)
 NEW_WIKIFIER_SERVER = config.new_wikifier_server
 
 
-def produce(inputs):
-    if p_config.input_type == "pandas":
-        # use general search cache system to cache the wikifier results
-        produce_config = {"target_columns": p_config.target_columns, "target_p_nodes": p_config.target_p_nodes,
-                          "input_type": p_config.input_type, "wikifier_choice": p_config.wikifier_choice, "threshold": p_config.threshold}
+def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typing.List[str] = None, input_type: str = "pandas",
+            wikifier_choice: typing.List[str] = None, threshold: float = 0.7, use_cache=True):
+    if target_columns is None and target_p_nodes is None and wikifier_choice is None and use_cache:
+        do_wikifier = check_wikifier_choice(inputs)
+        if do_wikifier is False:
+            _logger.info("Detect dataset which should not wikified!")
+            return inputs
 
-        # FIXME: change not
-        if not p_config.use_cache:
+    if input_type == "pandas":
+        # use general search cache system to cache the wikifier results
+        produce_config = {"target_columns": target_columns, "target_p_nodes": target_p_nodes,
+                          "input_type": input_type, "wikifier_choice": wikifier_choice, "threshold": threshold}
+
+        if use_cache:
             cache_key = CACHE_MANAGER.get_hash_key(inputs, json.dumps(produce_config))
             _logger.debug("Current wikification's key is " + cache_key)
             cache_result = CACHE_MANAGER.get_cache_results(cache_key)
@@ -49,51 +54,60 @@ def produce(inputs):
         else:
             _logger.debug("Not use cache for this time's wikification.")
 
-        if p_config.wikifier_choice is None:
-            # FIXME: Currently the new wikifier maybe very slow for large datasets
-            # return_df = produce_for_pandas(inputs)
-            return_df = produce_by_automatic(inputs)
-        elif p_config.target_columns is None:
-            if p_config.wikifier_choice[0] == "identifier":
-                return_df = produce_for_pandas(inputs)
-            elif p_config.wikifier_choice[0] == "new_wikifier":
-                return_df = produce_by_new_wikifier(inputs)
+        column_to_p_node_dict = dict()
+
+        if wikifier_choice is None:
+            return_df, column_to_p_node_dict_all = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
+            column_to_p_node_dict.update(column_to_p_node_dict_all)
+        elif target_columns is None:
+            if wikifier_choice[0] == "identifier":
+                return_df, column_to_p_node_dict_identifier = produce_for_pandas(inputs, target_columns, target_p_nodes,
+                                                                                 threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_identifier)
+            elif wikifier_choice[0] == "new_wikifier":
+                return_df, column_to_p_node_dict_new_wikifier = produce_by_new_wikifier(inputs, target_columns, target_p_nodes,
+                                                                                        threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_new_wikifier)
             else:
-                return_df = produce_by_automatic(inputs)
+                return_df, column_to_p_node_dict_all = produce_by_automatic(inputs, target_columns, target_p_nodes, threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_all)
         else:
             col_identifier, col_new_wikifier, col_auto = [], [], []
-            for i in range(len(p_config.wikifier_choice)):
-                if p_config.wikifier_choice[i] == "identifier":
-                    col_identifier.append(p_config.target_columns[i])
-                elif p_config.wikifier_choice[i] == "new_wikifier":
-                    col_new_wikifier.append(p_config.target_columns[i])
+            for i in range(len(wikifier_choice)):
+                if wikifier_choice[i] == "identifier":
+                    col_identifier.append(target_columns[i])
+                elif wikifier_choice[i] == "new_wikifier":
+                    col_new_wikifier.append(target_columns[i])
                 else:
-                    col_auto.append(p_config.target_columns[i])
+                    col_auto.append(target_columns[i])
             return_df = copy.deepcopy(inputs)
 
             if col_identifier:
-                p_config.target_columns = [i for i in range(len(col_identifier))]
-                return_df_identifier = produce_for_pandas(inputs.iloc[:, col_identifier])
+                return_df_identifier, column_to_p_node_dict_identifier = produce_for_pandas(inputs.iloc[:, col_identifier],
+                                                                                            [i for i in
+                                                                                             range(len(col_identifier))],
+                                                                                            target_p_nodes, threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_identifier)
                 return_df = pd.concat([return_df, return_df_identifier.iloc[:, len(col_identifier):]], axis=1)
             if col_new_wikifier:
-                p_config.target_columns = [i for i in range(len(col_new_wikifier))]
-                return_df_new = produce_by_new_wikifier(inputs.iloc[:, col_new_wikifier])
+                return_df_new, column_to_p_node_dict_new_wikifier = produce_by_new_wikifier(inputs.iloc[:, col_new_wikifier],
+                                                                                            [i for i in
+                                                                                             range(len(col_new_wikifier))],
+                                                                                            target_p_nodes, threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_new_wikifier)
                 return_df = pd.concat([return_df, return_df_new.iloc[:, len(col_new_wikifier):]], axis=1)
             if col_auto:
-                p_config.target_columns = [i for i in range(len(col_auto))]
-                return_df_auto = produce_by_automatic(inputs.iloc[:, col_auto])
+                return_df_auto, column_to_p_node_dict_all = produce_by_automatic(inputs.iloc[:, col_auto],
+                                                                                 [i for i in range(len(col_auto))],
+                                                                                 target_p_nodes, threshold)
+                column_to_p_node_dict.update(column_to_p_node_dict_all)
                 return_df = pd.concat([return_df, return_df_auto.iloc[:, len(col_auto):]], axis=1)
 
-        # change values of wikifier parameter to default
-        p_config.use_cache = True
-        p_config.target_columns = None
-        p_config.target_p_nodes = None
-        p_config.wikifier_choice = None
-        p_config.threshold = 0.7
-        p_config.top_k = 1
-        p_config.blacklist = []
-        # FIXME: change not
-        if not p_config.use_cache:
+        # push the full dataset specific relationship here
+        if column_to_p_node_dict:
+            save_specific_p_nodes(inputs, column_to_p_node_dict)
+
+        if use_cache:
             # push to cache system
             response = CACHE_MANAGER.add_to_memcache(supplied_dataframe=inputs,
                                                      search_result_serialized=json.dumps(produce_config),
@@ -118,16 +132,16 @@ def produce(inputs):
 def all_in_range_0_to_100(inputs):
     min_val = min(inputs)
     max_val = max(inputs)
-    if min_val <= 100 and min_val >= 0 and max_val >= 0 and max_val <= 100:
+    if 100 >= min_val >= 0 and 0 <= max_val <= 100:
         return True
     else:
         return False
 
 
-def are_almost_continues_numbers(inputs):
+def are_almost_continues_numbers(inputs, threshold):
     min_val = min(inputs)
     max_val = max(inputs)
-    if (max_val - min_val) * p_config.threshold <= len(inputs):
+    if (max_val - min_val) * threshold <= len(inputs):
         return True
     else:
         return False
@@ -139,28 +153,32 @@ def one_character_alphabet(inputs):
     return False
 
 
-def produce_for_pandas(input_df):
+def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target_p_nodes: dict = None,
+                       threshold_for_coverage=0.7) -> typing.Tuple[pd.DataFrame, dict]:
     """
     function used to produce for input type is pandas.dataFrame
     :param input_df: input pd.dataFrame
+    :param target_columns: target columns to find with wikidata
+    :param target_p_nodes: user-specified P node want to get, can be None if want automatic search
+    :param threshold_for_coverage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
     _logger.info("Start to produce Q-nodes by identifier")
     # if no target columns given, just try every str columns
-    if p_config.target_columns is None:
-        p_config.target_columns = list(range(input_df.shape[1]))
+    if target_columns is None:
+        target_columns = list(range(input_df.shape[1]))
 
     return_df = copy.deepcopy(input_df)
     column_to_p_node_dict = dict()
-    for column in p_config.target_columns:
+    for column in target_columns:
         current_column_name = input_df.columns[column]
         # curData = [str(x) for x in list(input_df[column])]
         _logger.debug('Current column: ' + current_column_name)
         try:
             temp = set()
-            for each in input_df.iloc[:, column].dropna().tolist():
-                temp.add(int(each))
-            if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp):
+            for each in input_df.iloc[:, column].dropna():
+                temp.add(float(each))
+            if all_in_range_0_to_100(temp) or are_almost_continues_numbers(temp, threshold_for_coverage):
                 _logger.debug("Column with all numerical values and useless detected, skipped")
                 continue
         except:
@@ -185,16 +203,16 @@ def produce_for_pandas(input_df):
                 curData.append(str(each))
 
         # for each column, try to find corresponding specific P nodes required
-        if p_config.target_p_nodes is not None and current_column_name in p_config.target_p_nodes:
+        if target_p_nodes is not None and current_column_name in target_p_nodes:
             # if found, we should always create the extra column, even the coverage is less than threshold
-            target_p_node_to_send = p_config.target_p_nodes[current_column_name]
+            target_p_node_to_send = target_p_nodes[current_column_name]
             _logger.info("Specific P node given, will wikifier this column anyway.")
         else:
             # if not found, check if coverage reach the threshold
             target_p_node_to_send = None
-            if coverage(curData) < p_config.threshold:
+            if coverage(curData) < threshold_for_coverage:
                 _logger.debug("Coverage of data is " + str(coverage(curData)) + " which is less than threshold " + str(
-                    p_config.threshold))
+                    threshold_for_coverage))
                 continue
 
         # get wikifiered result for this column
@@ -207,9 +225,9 @@ def produce_for_pandas(input_df):
                 if curData[i] in top1_dict:
                     new_col[i] = top1_dict[curData[i]]
             # same as previous, only check when no specific P nodes given
-            if not target_p_node_to_send and coverage(new_col) < p_config.threshold:
+            if not target_p_node_to_send and coverage(new_col) < threshold_for_coverage:
                 _logger.debug("[WARNING] Coverage of Q nodes is " + str(coverage(new_col)) +
-                              " which is less than threshold " + str(p_config.threshold))
+                              " which is less than threshold " + str(threshold_for_coverage))
                 continue
             column_to_p_node_dict[current_column_name] = res[0]
             col_name = current_column_name + '_wikidata_' + str(idx)
@@ -218,21 +236,24 @@ def produce_for_pandas(input_df):
 
     if column_to_p_node_dict:
         save_specific_p_nodes(input_df, column_to_p_node_dict)
-    return return_df
+
+    return return_df, column_to_p_node_dict
 
 
-def produce_by_new_wikifier(input_df) -> pd.DataFrame:
+def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict = None,
+                            threshold_for_coverage=0.7) -> typing.Tuple[pd.DataFrame, dict]:
     """
     The function used to call new wikifier service
     :param input_df: a dataframe(both d3m or pandas are acceptable)
     :return: a dataframe with wikifiered columns
     """
     _logger.info("Start running new wikifier")
-    if p_config.target_columns is None:
-        p_config.target_columns = list(range(input_df.shape[1]))
-
+    if target_columns is None:
+        target_columns = list(range(input_df.shape[1]))
     col_names = []
-    for column in p_config.target_columns:
+    column_to_p_node_dict = dict()
+
+    for column in target_columns:
         current_column_name = input_df.columns[column]
         # for special case that if a column has only one character for each row, we should skip it
         temp = set(input_df.iloc[:, column].dropna())
@@ -243,7 +264,7 @@ def produce_by_new_wikifier(input_df) -> pd.DataFrame:
             col_names.append(current_column_name)
 
     if not col_names:
-        return input_df
+        return input_df, column_to_p_node_dict
 
     _logger.debug("Following {} columns will be send to new wikifier:".format(str(len(col_names))))
     _logger.debug(str(col_names))
@@ -258,23 +279,19 @@ def produce_by_new_wikifier(input_df) -> pd.DataFrame:
         'file': ('wikifier.csv', data),
         'type': (None, 'text/csv'),
         'columns': (None, json.dumps({'names': col_names})),
-        'wikifyPercentage': (None, str(p_config.threshold)),
-        'K': (None, str(p_config.top_k)),
-        'blackList': (None, json.dumps({'QNodes': p_config.blacklist}))
+        'wikifyPercentage': (None, str(threshold_for_coverage))
     }
 
-    if p_config.target_p_nodes is not None:
+    if target_p_nodes is not None:
         target_q_nodes_list = []
         for name in col_names:
-            if name in p_config.target_p_nodes.keys():
+            if name in target_p_nodes.keys():
                 _logger.info("Specific Q node(class) given, will wikifier this column by this class.")
-                target_q_nodes_list.append(p_config.target_p_nodes[name])
+                target_q_nodes_list.append(target_p_nodes[name])
             else:
                 target_q_nodes_list.append("")
         files['phase'] = (None, 'test')
         files['columnClass'] = (None, json.dumps({'names': target_q_nodes_list}))
-    import pdb
-    pdb.set_trace()
 
     response = requests.post(NEW_WIKIFIER_SERVER, files=files)
     if response.status_code == 200:
@@ -283,8 +300,6 @@ def produce_by_new_wikifier(input_df) -> pd.DataFrame:
         data, column_to_p_node_dict = content['data'], content['class']
         data = list(csv.reader(data.splitlines(), delimiter=','))
         return_df = pd.DataFrame(data[1:], columns=data[0])
-        import pdb
-        pdb.set_trace()
         col_name = return_df.columns.tolist()
         for cn in col_name:
             if "_QNodes" in cn:
@@ -297,12 +312,14 @@ def produce_by_new_wikifier(input_df) -> pd.DataFrame:
     else:
         _logger.error('Something wrong in new wikifier server with response code: ' + response.text)
         _logger.debug("Wikifier_choice will change to identifier")
-        return_df = produce_for_pandas(input_df=input_df)
+        return_df, column_to_p_node_dict_identifier = produce_for_pandas(input_df=input_df, target_columns=target_columns,
+                                                                         threshold_for_coverage=0.7)
+        column_to_p_node_dict.update(column_to_p_node_dict_identifier)
+    return return_df, column_to_p_node_dict
 
-    return return_df
 
-
-def produce_by_automatic(input_df) -> pd.DataFrame:
+def produce_by_automatic(input_df, target_columns=None, target_p_nodes=None, threshold_for_coverage=0.7) \
+        -> typing.Tuple[pd.DataFrame, dict]:
     """
     The function used to call new wikifier service
     :param input_df: a dataframe(both d3m or pandas are acceptable)
@@ -313,43 +330,57 @@ def produce_by_automatic(input_df) -> pd.DataFrame:
     :return: a dataframe with wikifiered columns
     """
     _logger.debug("Start running automatic wikifier")
-    if p_config.target_columns is None:
-        p_config.target_columns = list(range(input_df.shape[1]))
-
+    column_to_p_node_dict = dict()
+    if target_columns is None:
+        target_columns = list(range(input_df.shape[1]))
     col_new_wikifier, col_identifier = [], []
-    for column in p_config.target_columns:
+    for column in target_columns:
         current_column_name = input_df.columns[column]
-        _logger.debug('Current column: ' + current_column_name)
-        if p_config.target_p_nodes is not None and current_column_name in p_config.target_p_nodes.keys():
-            if "Q" in p_config.target_p_nodes[current_column_name]:
+        # _logger.debug('Current column: ' + current_column_name)
+        if target_p_nodes is not None and current_column_name in target_p_nodes.keys():
+            if "Q" in target_p_nodes[current_column_name]:
                 col_new_wikifier.append(column)
-                _logger.debug(current_column_name + ' is text column, will choose new wikifier')
-            elif "P" in p_config.target_p_nodes[current_column_name]:
+                # _logger.debug(current_column_name + ' is text column, will choose new wikifier')
+            elif "P" in target_p_nodes[current_column_name]:
                 col_identifier.append(column)
-                _logger.debug(current_column_name + ' is numeric column, will choose identifier')
+                # _logger.debug(current_column_name + ' is numeric column, will choose identifier')
         else:
             try:
                 if input_df.iloc[:, column].astype(float).dtypes == "float64" or input_df.iloc[:, column].astype(
                         int).dtypes == "int64":
-                    _logger.debug(current_column_name + ' is numeric column, will choose identifier')
+                    # _logger.debug(current_column_name + ' is numeric column, will choose identifier')
                     col_identifier.append(column)
             except:
-                _logger.debug(current_column_name + ' is text column, will choose new wikifier')
+                # _logger.debug(current_column_name + ' is text column, will choose new wikifier')
                 col_new_wikifier.append(column)
 
-    return_df = copy.deepcopy(input_df)
     if col_identifier:
-        p_config.target_columns = [i for i in range(len(col_identifier))]
-        identifier_df = produce_for_pandas(input_df.iloc[:, col_identifier])
-        identifier_df = identifier_df.iloc[:, len(col_identifier):]
+        _logger.info("Following columns will be sent to identifier:")
+        _logger.info(str(col_identifier))
     if col_new_wikifier:
-        p_config.target_columns = [i for i in range(len(col_new_wikifier))]
-        new_df = produce_by_new_wikifier(input_df.iloc[:, col_new_wikifier])
-        new_df = new_df.iloc[:, len(col_new_wikifier):]
+        _logger.info("Following columns will be sent to new wikifier:")
+        _logger.info(str(col_new_wikifier))
+    if not col_new_wikifier and not col_identifier:
+        _logger.info("No column will be wikified!")
 
-    return_df = pd.concat([return_df, identifier_df, new_df], axis=1)
+    return_df_identifier = input_df.iloc[:, col_identifier]
+    return_df_new = input_df.iloc[:, col_new_wikifier]
+    return_df = copy.deepcopy(input_df)
 
-    return return_df
+    if col_identifier:
+        return_df_identifier, column_to_p_node_dict_identifier = produce_for_pandas(return_df_identifier,
+                                                                                    [i for i in range(len(col_identifier))],
+                                                                                    target_p_nodes, threshold_for_coverage)
+        column_to_p_node_dict.update(column_to_p_node_dict_identifier)
+
+    if col_new_wikifier:
+        return_df_new, column_to_p_node_dict_new_wikifier = produce_by_new_wikifier(return_df_new,
+                                                                                    [i for i in range(len(col_new_wikifier))],
+                                                                                    target_p_nodes, threshold_for_coverage)
+        column_to_p_node_dict.update(column_to_p_node_dict_new_wikifier)
+    return_df = pd.concat([return_df, return_df_identifier.iloc[:, len(col_identifier):], return_df_new.iloc[:, len(col_new_wikifier):]], axis=1)
+
+    return return_df, column_to_p_node_dict
 
 
 def coverage(column):
@@ -367,9 +398,15 @@ def save_specific_p_nodes(original_dataframe, column_to_p_node_dict) -> bool:
         hash_key = str(hash_generator.hexdigest())
         temp_path = os.getenv('D3MLOCALDIR', DEFAULT_TEMP_PATH)
         specific_q_nodes_file = os.path.join(temp_path, hash_key + "_column_to_P_nodes")
+        # specific_q_nodes_file = generate_specific_meta_path(original_dataframe)
         if os.path.exists(specific_q_nodes_file):
-            _logger.warning("The specific p nodes file already exist! Will replace the old one!")
+            _logger.warning("The specific p nodes file already exist! Will update the old one!")
+            with open(specific_q_nodes_file, 'r') as f:
+                column_to_p_node_dict_old = json.load(f)
+            column_to_p_node_dict_old.update(column_to_p_node_dict)
+            column_to_p_node_dict = column_to_p_node_dict_old
 
+        # save it
         with open(specific_q_nodes_file, 'w') as f:
             json.dump(column_to_p_node_dict, f)
 

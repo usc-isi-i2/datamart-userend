@@ -34,7 +34,7 @@ class DownloadManager:
         qnodes = list(filter(None, q_nodes_list))
         qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
         # do elastic search
-        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris)%1024 != 0 else int(len(qnode_uris)/1024)
+        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris) % 1024 != 0 else int(len(qnode_uris)/1024)
         res = dict()
         for i in range(num_of_try):
             query = {
