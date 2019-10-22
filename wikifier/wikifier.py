@@ -310,8 +310,8 @@ def produce_by_new_wikifier(input_df, target_columns=None, target_p_nodes: dict 
         return_df = pd.DataFrame(data[1:], columns=data[0])
         col_name = return_df.columns.tolist()
         for cn in col_name:
-            if "_WK" in cn:
-                new_name = cn.split('_')[0] + "_wikidata"
+            if "_WK" in cn and cn not in input_df.columns:
+                new_name = cn[:-2] + "wikidata"
                 return_df.rename(columns={cn: new_name}, inplace=True)
         _logger.debug("Get data from the new wikifier successfully.")
         if column_to_p_node_dict:
