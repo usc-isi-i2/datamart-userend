@@ -32,15 +32,15 @@
             "name": "general_search",
             "host": "dsbox02.isi.edu",
             "host_internal": "blazegraph_satellite",
-            "port": 8080,
+            "port": 9002,
             "port_external": 9002,
-            "path": "bigdata/namespace/datamart3/sparql"
+            "path": "blazegraph/namespace/datamart3/sparql"
         },
         {
             "name": "general_search_test",
             "host": "dsbox02.isi.edu",
             "host_internal": "blazegraph_satellite",
-            "port": 8080,
+            "port": 9002,
             "port_external": 9002,
             "path": "blazegraph/namespace/datamart4/sparql"
         },
