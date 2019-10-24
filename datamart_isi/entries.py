@@ -851,6 +851,36 @@ class DatamartSearchResult:
                                                   wikidata_cache_manager=self.wikidata_cache_manager)
         self.d3m_metadata = self.metadata_manager.generate_d3m_metadata_for_search_result()
 
+    def _get_first_ten_rows(self) -> pd.DataFrame:
+        """
+        Inner function used to get first 10 rows of the search results
+        :return:
+        """
+        try:
+            if self.search_type == "general":
+                return_res = json.loads(self.search_result['extra_information']['value'])['first_10_rows']
+
+            elif self.search_type == "wikidata":
+                materialize_info = self.search_result
+                return_df = Utils.materialize(materialize_info, run_wikifier=False)
+                return_df = return_df[:10]
+                return_res = return_df.to_csv()
+
+            elif self.search_type == "vector":
+                sample_q_nodes = self.search_result["q_nodes_list"][:10]
+                return_df = DownloadManager.fetch_fb_embeddings(sample_q_nodes, self.search_result["target_q_node_column_name"])
+                return_res = return_df.to_csv()
+
+            else:
+                self._logger.error("unknown format of search result as {}!".format(str(self.search_type)))
+
+        except Exception as e:
+            return_res = ""
+            self._logger.error("failed on getting first ten rows of search results")
+            self._logger.debug(e, exc_info=True)
+
+        return return_res
+
     def display(self) -> pd.DataFrame:
         """
         function used to see what found inside this search result class in a human vision
@@ -1517,7 +1547,7 @@ class DatamartSearchResult:
             left_col_number = self.supplied_dataframe.columns.tolist().index(
                 self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
-            right_col_number = len(self.search_result['number_of_vectors']) # num of rows, not columns
+            right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [right_col_number]
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'

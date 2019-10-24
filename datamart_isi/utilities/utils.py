@@ -31,7 +31,7 @@ class Utils:
     }
 
     @staticmethod
-    def materialize(metadata, run_wikifier) -> pd.DataFrame:
+    def materialize(metadata, run_wikifier=True) -> pd.DataFrame:
         # general type materializer
         if 'url' in metadata:
             dataset_url = metadata['url']['value']
