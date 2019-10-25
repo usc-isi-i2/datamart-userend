@@ -628,16 +628,25 @@ class Datamart(object):
         DatamartQueryCursor
             A cursor pointing to search results containing possible companion datasets for the supplied data.
         """
+        # update v2019.10.24, add keywords search in search queries
+        if query.keywords:
+            query_keywords = []
+            for each in query.keywords:
+                translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+                words_processed = str(each).lower().translate(translator).split()
+                query_keywords.extend(words_processed)
+        else:
+            query_keywords = None
 
-        # first take a search on wikidata
-        # add wikidata searching query at first position
-        res_id = None
+        # add some special search query in the first search queries
         if not need_wikidata:
-            search_queries = []
+            search_queries = [DatamartQuery(search_type="geospatial")]
             need_run_wikifier = False
         else:
             need_run_wikifier = None
-            search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector"), DatamartQuery(search_type="geospatial")]
+            search_queries = [DatamartQuery(search_type="wikidata"),
+                              DatamartQuery(search_type="vector"),
+                              DatamartQuery(search_type="geospatial")]
 
         # try to update with more correct metadata if possible
         updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
@@ -679,6 +688,9 @@ class Datamart(object):
             tabular_variable = TabularVariable(columns=[column_formated], relationship=ColumnRelationship.CONTAINS)
             each_search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
                                                                        data_constraints=[tabular_variable])
+            # if we get keywords from input search query, add it
+            if query_keywords:
+                each_search_query.keywords_search = query_keywords
             search_queries.append(each_search_query)
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
