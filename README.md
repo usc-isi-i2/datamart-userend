@@ -1,6 +1,8 @@
 # ISI Datamart
 This project provides an implementation of the [D3M's Datamart API](https://gitlab.com/datadrivendiscovery/datamart-api).
 
+For REST service access to the ISI Datamart, use this [ISI Datmart Link Panel](http://dsbox02.isi.edu:9000/apidocs/).
+
 ## Using ISI Datamart
 
 [Here](https://github.com/usc-isi-i2/datamart-userend/blob/d3m/examples/search_primitive_example.ipynb) is a Jupyter notebook that shows how to search the datamart.
