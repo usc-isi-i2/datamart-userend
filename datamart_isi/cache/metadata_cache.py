@@ -83,8 +83,7 @@ class MetadataCache:
         input_columns = input_dataframe.columns.tolist()
         input_columns.sort()
         hash_key = MetadataCache.get_hash_key(input_dataframe)
-        _logger.debug("Current columns are: " + str(input_columns))
-        _logger.debug("Current dataset's hash key is: " + hash_key)
+
         try:
             file_loc = os.path.join(cache_folder, hash_key + "_metadata")
             if os.path.exists(file_loc):

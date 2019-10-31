@@ -9,6 +9,8 @@ import logging
 import json
 import string
 import time
+import cgitb
+import sys
 from ast import literal_eval
 from itertools import combinations
 
@@ -1274,14 +1276,14 @@ class DatamartSearchResult:
                                                                        search_result_serialized=self.serialize())
             cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
             if cache_result is not None:
-                if type(cache_result) is string and cache_result == "failed":
+                if type(cache_result) is string:
                     self._logger.warning("This augment was failed last time!")
                 self._logger.info("Using caching results")
-                return cache_result
+                return "Augment appeared to be failed during last execution."
 
         except Exception as e:
             cache_key = None
-            self._logger.error("Some error happened when getting results from cache!")
+            self._logger.error("Some error happened when getting results from cache! Will ignore the cache")
             self._logger.debug(e, exc_info=True)
 
         self._logger.info("Cache not hit, start running augment.")
@@ -1307,33 +1309,37 @@ class DatamartSearchResult:
             if res is not None:
                 # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
                 res[augment_resource_id].reset_index(drop=True)
-
                 res[augment_resource_id].fillna('', inplace=True)
                 res[augment_resource_id] = res[augment_resource_id].astype(str)
             else:
-                res = "failed"
+                res = "failed because nothing returned, maybe because timeout?"
 
         except Exception as e:
             self._logger.error("Augment failed!")
             self._logger.debug(e, exc_info=True)
-            res = "failed"
+            info = sys.exc_info()
+            res = str(cgitb.text(info))
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here
         if cache_key and self.search_type != "wikifier":
+            # FIXME: should we cache failed results here?
             response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                          search_result_serialized=self.serialize(),
                                                                          augment_results=res,
                                                                          hash_key=cache_key
                                                                          )
             # save the augmented result's metadata if second augment is conducted
-            if type(res) is not string and res != "failed":
+            if type(res) is not string:
                 MetadataCache.save_metadata_from_dataset(res)
             if not response:
                 self._logger.warning("Push augment results to results failed!")
             else:
                 self._logger.info("Push augment results to memcache success!")
 
+        # updated v2019.10.30, now raise the error instead of return the error
+        if res is string:
+            raise ValueError(res)
         return res
 
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
@@ -1389,8 +1395,8 @@ class DatamartSearchResult:
 
         if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
             # if n_to_m_condition
-            self._logger.error("Could not augment for n-m relationship.")
-            df_joined = supplied_data_df
+            raise ValueError("Should not augment for n-m relationship.")
+            # df_joined = supplied_data_df
 
         else:
             for r1, r2 in self.pairs:
@@ -1550,14 +1556,12 @@ class DatamartSearchResult:
                     left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
             augmentation['left_columns'] = left_col_number
         elif self.search_type == "wikidata":
-            left_col_number = self.supplied_dataframe.columns.tolist().index(
-                self.search_result['target_q_node_column_name'])
+            left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
             augmentation['right_columns'] = [right_col_number]
         elif self.search_type == "vector":
-            left_col_number = self.supplied_dataframe.columns.tolist().index(
-                self.search_result['target_q_node_column_name'])
+            left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [right_col_number]
