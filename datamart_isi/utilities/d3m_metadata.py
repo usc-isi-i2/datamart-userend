@@ -485,7 +485,7 @@ class MetadataGenerator:
                 temp_meta = self.d3m_metadata.query(selector=temp_selector)
 
             column_names = ", ".join(column_names)
-            join_columns = self.search_result['variableName']['value']
+            join_columns = self.search_result['variableName']['value'] if "variableName" in self.search_result else ""
 
             result = pd.DataFrame(
                 {"title": title, "columns": column_names, "join columns": join_columns, "score": self.score},

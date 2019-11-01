@@ -1541,20 +1541,27 @@ class DatamartSearchResult:
         augmentation = dict()
         augmentation['properties'] = "join"
         if self.search_type == "general":
-            left_col_number = []
-            right_col_number = None
-            for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
-                if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
-                    right_col_number = int(each_key.split("_")[-1])
-                    break
-            augmentation['right_columns'] = [right_col_number]
-            if self.supplied_dataframe is None:
-                self._logger.error(
-                    "Can't get supplied dataframe information, failed to find the left join column number")
-            else:
-                for each in self.query_json['variables'].keys():
-                    left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
-            augmentation['left_columns'] = left_col_number
+            try:
+                left_col_number = []
+                right_col_number = None
+                for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
+                    if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
+                        right_col_number = int(each_key.split("_")[-1])
+                        break
+                augmentation['right_columns'] = [right_col_number]
+                if self.supplied_dataframe is None:
+                    self._logger.error(
+                        "Can't get supplied dataframe information, failed to find the left join column number")
+                else:
+                    for each in self.query_json['variables'].keys():
+                        left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
+                augmentation['left_columns'] = left_col_number
+            except KeyError:
+                self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+            except Exception as e:
+                self._logger.error("Can't find join columns! Unknown error!")
+                self._logger.debug(e, exc_info=True)
+
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]

@@ -63,6 +63,14 @@ class Augment(object):
         :param dataset:
         :return: a string indicate the sparql query
         """
+        def qgram_tokenizer(x, _q):
+            if len(x) < _q:
+                return [x]
+            return [x[i:i + _q] + "*" for i in range(len(x) - _q + 1)]
+
+        def trigram_tokenizer(x):
+            return qgram_tokenizer(x, 3)
+
         # example of query variables: Chaves Los Angeles Sacramento
         PREFIX = '''
             prefix ps: <http://www.wikidata.org/prop/statement/>
@@ -102,15 +110,40 @@ class Augment(object):
             bind = "?score_var" if bind == "" else bind + "+ ?score_var"
 
         if "keywords_search" in json_query.keys() and json_query["keywords_search"] != []:
+            # updated v2019.11.1, for search_without_data, we should remove duplicates
+            if "variables" not in json_query.keys() or json_query['variables'] == {}:
+                SELECTION = '''
+                            SELECT DISTINCT ?dataset ?datasetLabel ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
+                            '''
+                spaqrl_query = PREFIX + SELECTION + STRUCTURE
+                LIMIT = "LIMIT 10"
+
+            # updated v2019.11.1, now use fuzzy search
             query_keywords = json_query["keywords_search"]
-            query_part = " ".join(query_keywords)
+            trigram_keywords = []
+            for each_keyword in query_keywords:
+                trigram_keywords.extend(trigram_tokenizer(each_keyword))
+
+            query_part = " ".join(trigram_keywords)
             spaqrl_query += '''
+                optional {
                 ?keywords_url ps:C2004 [
                                 bds:search """''' + query_part + '''""" ;
-                                bds:relevance ?score_key ;
+                                bds:relevance ?score_key1 ;
                               ].
+                }
+                
+                optional {
+                ?title_url ps:P1476 [
+                                bds:search """''' + query_part + '''""" ;
+                                bds:relevance ?score_key2 ;
+                              ].
+                }
                 '''
-            bind = "?score_key" if bind == "" else bind + "+ ?score_key"
+            if bind == "":
+                bind = "IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)"
+            else:
+                bind += "+ IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)"
 
         if "variables_search" in json_query.keys() and json_query["variables_search"] != {}:
             if "temporal_variable" in json_query["variables_search"].keys():
@@ -153,7 +186,7 @@ class Augment(object):
         #     '''
         #     bind = "?score_title" if bind == "" else bind + "+ ?score_title"
         if bind:
-            spaqrl_query += "\n BIND((" + bind + ") AS ?score)"
+            spaqrl_query += "\n BIND((" + bind + ") AS ?score) \n filter (?score != 0)"
 
         spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
 
