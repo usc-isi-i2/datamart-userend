@@ -1,1 +1,70 @@
-datamart-services-dsbox01.json
+{
+  "server": {
+    "default_host": ""
+  },
+  "services": [
+    {
+      "name": "isi_datamart",
+      "host": "dsbox02.isi.edu",
+      "port": 9000,
+      "path": ""
+    },
+    {
+      "name": "wikidata",
+      "host": "dsbox02.isi.edu",
+      "port": 8888,
+      "path": "bigdata/namespace/wdq/sparql"
+    },
+    {
+      "name": "wikifier_identifier",
+      "host": "dsbox02.isi.edu",
+      "host-test": "dsbox02.isi.edu",
+      "port": 9000,
+      "path": "get_identifiers"
+    },
+    {
+      "name": "wikifier_knowledge_graph",
+      "host": "minds03.isi.edu",
+      "port": 8396,
+      "path": "wikify"
+    },
+    {
+      "name": "general_search",
+      "host": "dsbox02.isi.edu",
+      "port": 9002,
+      "port_external": 9002,
+      "path": "blazegraph/namespace/datamart3/sparql"
+    },
+    {
+      "name": "general_search_test",
+      "host": "dsbox02.isi.edu",
+      "port": 9002,
+      "port_external": 9002,
+      "path": "blazegraph/namespace/datamart4/sparql"
+    },
+    {
+      "name": "memcached",
+      "host": "dsbox02.isi.edu",
+      "port": 11211,
+      "path": ""
+    },
+    {
+      "name": "redis",
+      "host": "dsbox02.isi.edu",
+      "port": 6379,
+      "path": ""
+    },
+    {
+      "name": "elasticsearch_not_used",
+      "host": "dsbox02.isi.edu",
+      "port": 9200,
+      "path": ""
+    },
+    {
+      "name": "elasticsearch_fb_embeddings",
+      "host": "kg2018a.isi.edu",
+      "port": 9200,
+      "path": "wiki_fb_embeddings_1/vectors"
+    }
+  ]
+}

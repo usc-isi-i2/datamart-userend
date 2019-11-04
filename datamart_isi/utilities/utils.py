@@ -5,12 +5,16 @@ import traceback
 import os
 import logging
 import json
+import hashlib
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
+from d3m.metadata.base import ALL_ELEMENTS
 from io import StringIO
 from ast import literal_eval
 from d3m.container import DataFrame as d3m_DataFrame
 from datamart_isi.config import cache_file_storage_base_loc
 from datamart_isi.utilities import connection
+from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
+from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
 
 WIKIDATA_SERVER = connection.get_wikidata_server_url()
 
@@ -27,26 +31,43 @@ class Utils:
     }
 
     @staticmethod
-    def materialize(metadata, run_wikifier) -> pd.DataFrame:
+    def materialize(metadata, run_wikifier=True) -> pd.DataFrame:
         # general type materializer
         if 'url' in metadata:
             dataset_url = metadata['url']['value']
-            from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
-            from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
-            file_type = metadata.get("file_type") or ""
-            if file_type == "":
-                # no file type get, try to guess
-                file_type = dataset_url.split(".")[-1]
+            # updated v2019.10.14: add local storage cache file
+            hash_generator = hashlib.md5()
+            hash_generator.update(dataset_url.encode('utf-8'))
+            hash_url_key = hash_generator.hexdigest()
+            dataset_cache_loc = os.path.join(cache_file_storage_base_loc, "datasets_cache", hash_url_key + ".h5")
+            _logger.debug("Try to check whether cache file exist or not at " + dataset_cache_loc)
+            if os.path.exists(dataset_cache_loc):
+                _logger.info("Found exist cached dataset file")
+                loaded_data = pd.read_hdf(dataset_cache_loc)
             else:
-                file_type = file_type['value']
+                _logger.info("Cached dataset file does not find, will run materializer.")
+                file_type = metadata.get("file_type") or ""
+                if file_type == "":
+                    # no file type get, try to guess
+                    file_type = dataset_url.split(".")[-1]
+                else:
+                    file_type = file_type['value']
 
-            if file_type == "wikitable":
-                extra_information = literal_eval(metadata['extra_information']['value'])
-                loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
-            else:
-                loaded_data = Utils.materialize_for_general(dataset_url, file_type)
-
+                if file_type == "wikitable":
+                    extra_information = literal_eval(metadata['extra_information']['value'])
+                    loaded_data = Utils.materialize_for_wikitable(dataset_url, file_type, extra_information)
+                else:
+                    loaded_data = Utils.materialize_for_general(dataset_url, file_type)
+                    try:
+                        # save the loaded data
+                        loaded_data.to_hdf(dataset_cache_loc, key='df', mode='w', format='fixed')
+                        _logger.debug("Saving dataset cache success!")
+                    except Exception as e:
+                        _logger.warning("Saving dataset cache failed!")
+                        _logger.debug(e, exc_info=True)
             # run dsbox's profiler and cleaner
+            # from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
+            # from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
             # hyper1 = ProfilerHyperparams.defaults()
             # profiler = Profiler(hyperparams=hyper1)
             # profiled_df = profiler.produce(inputs=loaded_data).value
@@ -190,15 +211,40 @@ class Utils:
         from datamart_isi.profilers.basic_profiler import BasicProfiler, VariableMetadata, GlobalMetadata
 
         global_metadata = GlobalMetadata.construct_global(description=cls.DEFAULT_DESCRIPTION)
-        for col_offset in range(data.shape[1]):
-            variable_metadata = BasicProfiler.basic_profiling_column(
-                description={},
-                variable_metadata=VariableMetadata.construct_variable(description={}),
-                column=data.iloc[:, col_offset]
-            )
-            global_metadata.add_variable_metadata(variable_metadata)
-        global_metadata = BasicProfiler.basic_profiling_entire(global_metadata=global_metadata,
-                                                               data=data)
+        global_metadata = BasicProfiler.basic_profiling_entire(global_metadata=global_metadata, data=data)
+        metadata_dict = global_metadata.value
+
+        # for col_offset in range(data.shape[1]):
+        #     variable_metadata = BasicProfiler.basic_profiling_column(
+        #         description={},
+        #         variable_metadata=VariableMetadata.construct_variable(description={}),
+        #         column=data.iloc[:, col_offset]
+        #     )
+        #     global_metadata.add_variable_metadata(variable_metadata)
+        hyper1 = ProfilerHyperparams.defaults()
+        hyper2 = CleaningFeaturizerHyperparameter.defaults()
+        clean_f = CleaningFeaturizer(hyperparams=hyper2)
+        profiler = Profiler(hyperparams=hyper1)
+        profiled_df = profiler.produce(inputs=data).value
+        clean_f.set_training_data(inputs=profiled_df)
+        clean_f.fit()
+        cleaned_df = clean_f.produce(inputs=profiled_df).value
+        cleaned_df_metadata = cleaned_df.metadata
+
+        for i in range(data.shape[1]):
+            each_column_metadata = cleaned_df_metadata.query((ALL_ELEMENTS, i))
+            column_name = data.columns[i]
+            if "datetime" in data.iloc[:, i].dtype.name:
+                semantic_type = ("http://schema.org/DateTime", 'https://metadata.datadrivendiscovery.org/types/Attribute')
+            else:
+                semantic_type = each_column_metadata['semantic_types']
+            variable_metadata = {'datamart_id': None,
+                                 'semantic_type': semantic_type,
+                                 'name': column_name,
+                                 'description': 'column name: {}, dtype: {}'.format(column_name, cleaned_df.iloc[:, i].dtype.name)
+                                 }
+            metadata_dict['variables'].append(variable_metadata)
+
         if original_meta:
-            global_metadata.value.update(original_meta)
-        return global_metadata.value
+            metadata_dict.update(original_meta)
+        return metadata_dict

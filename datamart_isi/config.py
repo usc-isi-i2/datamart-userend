@@ -1,14 +1,11 @@
 from . import config_services
 
 import os
-import socket
 
-host_name = socket.gethostname()
-
-if host_name == "dsbox02":
-    home_dir = "/data00/dsbox/datamart"
-else:
-    home_dir = os.getenv("HOME")
+home_dir = os.getenv("HOME")
+# in the case that no correct home dir found (e.g. in docker)
+if home_dir == "/":
+    home_dir = "/tmp"
 
 
 default_datamart_url = config_services.get_default_datamart_url()
@@ -47,6 +44,7 @@ default_temp_path = "/tmp"
 
 # elastic search to fetch FB embeddings
 wikidata_uri_template = '<http://www.wikidata.org/entity/{}>'
+# em_es_url = "http://kg2018a.isi.edu:9200"
 # em_es_url = "http://sitaware.isi.edu:9200"
 # em_es_index = "wiki_fb_embeddings_1"
 # em_es_type = "vectors"
@@ -60,3 +58,5 @@ max_longitude_val = 180
 min_longitude_val = -180
 max_latitude_val = 90
 min_latitude_val = -90
+
+maximum_accept_wikifier_size = 2000000

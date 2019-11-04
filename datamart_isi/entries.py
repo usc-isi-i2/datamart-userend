@@ -9,7 +9,10 @@ import logging
 import json
 import string
 import time
+import cgitb
+import sys
 from ast import literal_eval
+from itertools import combinations
 
 from d3m import container
 from d3m import utils
@@ -17,6 +20,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.container import Dataset as d3m_Dataset
 from d3m.base import utils as d3m_utils
 from d3m.metadata.base import DataMetadata, ALL_ELEMENTS
+from collections import defaultdict
 
 from datamart import TabularVariable, ColumnRelationship, AugmentSpec
 from datamart_isi import config
@@ -133,6 +137,8 @@ class DatamartQueryCursor(object):
                 search_res = timeout_call(timeout, self._search_datamart, [])
             elif self.search_query[self.current_searching_query_index].search_type == "vector":
                 search_res = timeout_call(timeout, self._search_vector, [])
+            elif self.search_query[self.current_searching_query_index].search_type == "geospatial":
+                search_res = timeout_call(timeout, self._search_geospatial_data, [])
             else:
                 raise ValueError("Unknown search query type for " +
                                  self.search_query[self.current_searching_query_index].search_type)
@@ -324,6 +330,7 @@ class DatamartQueryCursor(object):
         search_result = []
         variables_search = self.search_query[self.current_searching_query_index].variables_search
         keywords_search = self.search_query[self.current_searching_query_index].keywords_search
+        # COMMENT: title does not used, may delete later
         variables, title = dict(), dict()
         variables_temp = dict()  # this temp is specially used to store variable for time query
         for each_variable in self.search_query[self.current_searching_query_index].variables:
@@ -439,6 +446,123 @@ class DatamartQueryCursor(object):
         finally:
             return vector_results
 
+    def _search_geospatial_data(self) -> typing.List["DatamartSearchResult"]:
+        """
+        function used for searching geospatial data
+        :return: List[DatamartSearchResult]
+        """
+        self._logger.debug("Start searching geospatial data on wikidata and datamart...")
+        search_results = []
+
+        if type(self.supplied_data) is d3m_Dataset:
+            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
+        else:
+            supplied_dataframe = self.supplied_data
+
+        # try to find possible columns of latitude and longitude
+        possible_longitude_or_latitude = []
+        for each in range(len(supplied_dataframe.columns)):
+            if type(self.supplied_data) is d3m_Dataset:
+                selector = (res_id, ALL_ELEMENTS, each)
+            else:
+                selector = (ALL_ELEMENTS, each)
+            each_column_meta = self.supplied_data.metadata.query(selector)
+
+            if "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
+                try:
+                    column_data = supplied_dataframe.iloc[:, each].astype(float).dropna()
+                    if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
+                        possible_longitude_or_latitude.append(each)
+                    elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
+                        possible_longitude_or_latitude.append(each)
+                except:
+                    pass
+
+        if len(possible_longitude_or_latitude) < 2:
+            self._logger.debug("Supplied dataset does not have geospatial data!")
+            return search_results
+        else:
+            self._logger.debug("Finding columns:" + str(possible_longitude_or_latitude) + " which might be geospatial data columns...")
+
+        possible_la_or_long_comb = list(combinations(possible_longitude_or_latitude, 2))
+        for column_index_comb in possible_la_or_long_comb:
+            latitude_index, longitude_index = -1 , -1
+            # try to get the correct latitude and longitude pairs
+            for each_column_index in column_index_comb:
+                try:
+                    column_data = supplied_dataframe.iloc[:, each_column_index].astype(float).dropna()
+                    column_name = supplied_dataframe.columns[each_column_index]
+
+                    # must be longitude when its min is in [-180, -90), or max is in (90, 180]
+                    if config.max_latitude_val < max(column_data) <= config.max_longitude_val \
+                            or (config.min_latitude_val > min(column_data) >= config.min_longitude_val):
+                        longitude_index = each_column_index
+                    else:
+                        # determine the type by header [latitude, longitude]
+                        if any([True for i in column_name if i in ['a', 'A']]):
+                            latitude_index = each_column_index
+                        elif any([True for i in column_name if i in ['o', 'O', 'g', 'G']]):
+                            longitude_index = each_column_index
+
+                except Exception as e:
+                    self._logger.debug(e, exc_info=True)
+                    self._logger.error("Can't parse location information for column No." + str(each_column_index)
+                                           + " with column name " + column_name)
+
+            # search on datamart and wikidata by city qnodes
+            if latitude_index != -1 and longitude_index != -1:
+                self._logger.info("Latitude column is: " + str(latitude_index) + " and longitude is: " + str(longitude_index) + "...")
+                granularity = {'city'}
+                radius = 100
+
+                for gran in granularity:
+                    search_variables = {'metadata': {
+                        'search_result': {
+                            'latitude_index': latitude_index,
+                            'longitude_index': longitude_index,
+                            'radius': radius,
+                            'granularity': gran
+                        },
+                        'search_type': 'geospatial'
+                    }}
+                    # do wikidata query service to find city q-node columns
+                    return_ds = DownloadManager.query_geospatial_wikidata(self.supplied_data, search_variables, self.connection_url)
+                    _, return_df = d3m_utils.get_tabular_resource(dataset=return_ds, resource_id=None)
+
+                    if return_df.columns[-1].startswith('Geo_') and return_df.columns[-1].endswith('_wikidata'):
+                        qnodes = return_df.iloc[:, -1]
+                        qnodes_set = list(set(qnodes))
+                        coverage_score = len(qnodes_set)/len(qnodes)
+
+                        # search on datamart
+                        qnodes_str = " ".join(qnodes_set)
+                        variables = [VariableConstraint(key=return_df.columns[-1], values=qnodes_str)]
+                        self.search_query[self.current_searching_query_index].variables = variables
+                        search_res = timeout_call(1800, self._search_datamart, [])
+                        search_results.extend(search_res)
+
+                        # search on wikidata
+                        temp_q_nodes_columns = self.q_nodes_columns
+                        self.q_nodes_columns = [-1]
+                        search_res = timeout_call(1800, self._search_wikidata, [None, return_df])
+                        search_results.extend(search_res)
+                        self.q_nodes_columns = temp_q_nodes_columns
+
+        if search_results:
+            for each_result in search_results:
+                # change metadata's score
+                old_score = each_result.score()
+                new_score = old_score * coverage_score
+                each_result.metadata_manager.score = new_score
+                # change score in datamart_search_result
+                if "score" in each_result.search_result.keys():
+                    each_result.search_result["score"]["value"] = new_score
+
+            search_results.sort(key=lambda x: x.score(), reverse=True)
+
+        self._logger.debug("Running search on geospatial data finished.")
+        return search_results
+
 
 class Datamart(object):
     """
@@ -478,13 +602,13 @@ class Datamart(object):
         """
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None,
-                                   connection_url=self.connection_url)
+                                   connection_url=self.connection_url, need_run_wikifier = False)
 
     def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
-X
+
         This method is a "smart" search, which leaves the Datamart to determine how to evaluate the relevance of search
         result with regard to the supplied data. For example, a Datamart may try to identify named entities and date
         ranges in the supplied data and search for companion datasets which overlap.
@@ -495,7 +619,7 @@ X
         Datamart implementations should return a DatamartQueryCursor immediately.
 
         Parameters
-        ------_---
+        ----------
         query : DatamartQuery
             Query specification
         supplied_data : container.Dataset
@@ -506,16 +630,25 @@ X
         DatamartQueryCursor
             A cursor pointing to search results containing possible companion datasets for the supplied data.
         """
+        # update v2019.10.24, add keywords search in search queries
+        if query.keywords:
+            query_keywords = []
+            for each in query.keywords:
+                translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+                words_processed = str(each).lower().translate(translator).split()
+                query_keywords.extend(words_processed)
+        else:
+            query_keywords = None
 
-        # first take a search on wikidata
-        # add wikidata searching query at first position
-        res_id = None
+        # add some special search query in the first search queries
         if not need_wikidata:
-            search_queries = []
+            search_queries = [DatamartQuery(search_type="geospatial")]
             need_run_wikifier = False
         else:
             need_run_wikifier = None
-            search_queries = [DatamartQuery(search_type="wikidata"), DatamartQuery(search_type="vector")]
+            search_queries = [DatamartQuery(search_type="wikidata"),
+                              DatamartQuery(search_type="vector"),
+                              DatamartQuery(search_type="geospatial")]
 
         # try to update with more correct metadata if possible
         updated_result = MetadataCache.check_and_get_dataset_real_metadata(supplied_data)
@@ -557,6 +690,9 @@ X
             tabular_variable = TabularVariable(columns=[column_formated], relationship=ColumnRelationship.CONTAINS)
             each_search_query = self.generate_datamart_query_from_data(supplied_data=supplied_data,
                                                                        data_constraints=[tabular_variable])
+            # if we get keywords from input search query, add it
+            if query_keywords:
+                each_search_query.keywords_search = query_keywords
             search_queries.append(each_search_query)
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
@@ -613,7 +749,6 @@ X
         all_query_variables = []
         keywords = []
         translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
-        possible_longitude_or_latitude = list()
 
         for each_constraint in data_constraints:
             for each_column in each_constraint.columns:
@@ -654,22 +789,6 @@ X
                     except Exception as e:
                         self._logger.debug(e, exc_info=True)
                         self._logger.error("Can't parse current datetime for column No." + str(each_column_index)
-                                           + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
-                        treat_as_a_text_column = True
-
-
-                # geospacial type data
-                elif "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
-                    try:
-                        column_data = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(float).dropna()
-                        if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
-                            possible_longitude_or_latitude.append(each_column_index)
-                        elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
-                            possible_longitude_or_latitude.append(each_column_index)
-
-                    except Exception as e:
-                        self._logger.debug(e, exc_info=True)
-                        self._logger.error("Can't parse location information for column No." + str(each_column_index)
                                            + " with column name " + supplied_data[each_column_res_id].columns[each_column_index])
                         treat_as_a_text_column = True
 
@@ -745,6 +864,36 @@ class DatamartSearchResult:
                                                   search_type=self.search_type, connection_url=self.connection_url,
                                                   wikidata_cache_manager=self.wikidata_cache_manager)
         self.d3m_metadata = self.metadata_manager.generate_d3m_metadata_for_search_result()
+
+    def _get_first_ten_rows(self) -> pd.DataFrame:
+        """
+        Inner function used to get first 10 rows of the search results
+        :return:
+        """
+        try:
+            if self.search_type == "general":
+                return_res = json.loads(self.search_result['extra_information']['value'])['first_10_rows']
+
+            elif self.search_type == "wikidata":
+                materialize_info = self.search_result
+                return_df = Utils.materialize(materialize_info, run_wikifier=False)
+                return_df = return_df[:10]
+                return_res = return_df.to_csv()
+
+            elif self.search_type == "vector":
+                sample_q_nodes = self.search_result["q_nodes_list"][:10]
+                return_df = DownloadManager.fetch_fb_embeddings(sample_q_nodes, self.search_result["target_q_node_column_name"])
+                return_res = return_df.to_csv()
+
+            else:
+                self._logger.error("unknown format of search result as {}!".format(str(self.search_type)))
+
+        except Exception as e:
+            return_res = ""
+            self._logger.error("failed on getting first ten rows of search results")
+            self._logger.debug(e, exc_info=True)
+
+        return return_res
 
     def display(self) -> pd.DataFrame:
         """
@@ -917,6 +1066,35 @@ class DatamartSearchResult:
         self._logger.debug("download_general function finished.")
         return return_result
 
+    def _dummy_download_wikidata(self) -> pd.DataFrame:
+        """
+        This function only should be used when the wikidata column on the search result is not found on supplied data
+        This function will append same amount of blank columns to ensure the augmented data's column number and column names
+        are same as normal condition
+        :return: a DataFrame
+        """
+        # TODO: check if this can help to prevent fail on some corner case
+        self._logger.warning("Adding empty wikidata columns!")
+        p_nodes_needed = self.search_result["p_nodes_needed"]
+        target_q_node_column_name = self.search_result["target_q_node_column_name"]
+        specific_p_nodes_record = MetadataCache.get_specific_p_nodes(self.supplied_dataframe)
+        columns_need_to_add = []
+        # if specific_p_nodes_record is not None:
+        #     for each_column in self.supplied_dataframe.columns:
+        #         # if we find that this column should be wikified but not exist in supplied dataframe
+        #         if each_column in specific_p_nodes_record and each_column + "_wikidata" not in self.supplied_dataframe.columns:
+        #             columns_need_to_add.append(each_column + "_wikidata")
+        for each_p_node in p_nodes_needed:
+            each_p_node_name = Utils.get_node_name(each_p_node)
+            columns_need_to_add.append(target_q_node_column_name + "_" + each_p_node_name)
+        columns_need_to_add.append("joining_pairs")
+
+        dummy_result = copy.copy(self.supplied_dataframe)
+        for each_column in columns_need_to_add:
+            dummy_result[each_column] = ""
+
+        return dummy_result
+
     def _download_wikidata(self) -> pd.DataFrame:
         """
         :return: return_df: the materialized wikidata d3m_DataFrame,
@@ -930,8 +1108,13 @@ class DatamartSearchResult:
         try:
             q_node_column_number = self.supplied_dataframe.columns.tolist().index(target_q_node_column_name)
         except ValueError:
-            raise ValueError("Could not find corresponding q node column for " + target_q_node_column_name +
-                             ". Maybe use the wrong search results?")
+            q_node_column_number = None
+            self._logger.error("Could not find corresponding q node column for " + target_q_node_column_name +
+                               ". It is possible that using wrong supplied data or wikified wrong columns before")
+
+        if not q_node_column_number:
+            return self._dummy_download_wikidata()
+
         q_nodes_list = set(self.supplied_dataframe.iloc[:, q_node_column_number].tolist())
         q_nodes_list = list(q_nodes_list)
         q_nodes_list.sort()
@@ -1040,7 +1223,7 @@ class DatamartSearchResult:
         """
         self._logger.debug("Start running wikifier.")
         # here because this part's code if for augment, we already have cache for that
-        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=False)
+        results = d3m_wikifier.run_wikifier(supplied_data=supplied_data, use_cache=True)
         self._logger.debug("Running wikifier finished.")
         return results
 
@@ -1093,49 +1276,70 @@ class DatamartSearchResult:
                                                                        search_result_serialized=self.serialize())
             cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
             if cache_result is not None:
+                if type(cache_result) is string:
+                    self._logger.warning("This augment was failed last time!")
+                    raise ValueError("Augment appeared to be failed during last execution with messsage \n" + cache_result)
                 self._logger.info("Using caching results")
-                return cache_result
+
         except Exception as e:
             cache_key = None
-            self._logger.error("Some error happened when getting results from cache!")
+            self._logger.error("Some error happened when getting results from cache! Will ignore the cache")
             self._logger.debug(e, exc_info=True)
 
         self._logger.info("Cache not hit, start running augment.")
 
-        if self.search_type == "wikifier":
-            res = self._run_wikifier(supplied_data)
+        try:
+            if self.search_type == "wikifier":
+                res = timeout_call(1800, self._run_wikifier, [supplied_data])
+                # res = self._run_wikifier(supplied_data)
 
-        else:
-            if type(supplied_data) is d3m_DataFrame:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="df", augment_resource_id=augment_resource_id)
-            elif type(supplied_data) is d3m_Dataset:
-                res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
-                                    return_format="ds", augment_resource_id=augment_resource_id)
             else:
-                raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
+                if type(supplied_data) is d3m_DataFrame:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "df", augment_resource_id])
 
-        # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
-            res[augment_resource_id].reset_index(drop=True)
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="df", augment_resource_id=augment_resource_id)
+                elif type(supplied_data) is d3m_Dataset:
+                    res = timeout_call(1800, self._augment, [supplied_data, augment_columns, True, "ds", augment_resource_id])
+                    # res = self._augment(supplied_data=supplied_data, augment_columns=augment_columns, generate_metadata=True,
+                    #                     return_format="ds", augment_resource_id=augment_resource_id)
+                else:
+                    raise ValueError("Unknown input type for supplied data as: " + str(type(supplied_data)))
 
-        res[augment_resource_id].fillna('', inplace=True)
-        res[augment_resource_id] = res[augment_resource_id].astype(str)
+            if res is not None:
+                # sometime the index will be not continuous after augment, need to reset to ensure the index is continuous
+                res[augment_resource_id].reset_index(drop=True)
+                res[augment_resource_id].fillna('', inplace=True)
+                res[augment_resource_id] = res[augment_resource_id].astype(str)
+            else:
+                res = "failed because nothing returned, maybe because timeout?"
+
+        except Exception as e:
+            self._logger.error("Augment failed!")
+            self._logger.debug(e, exc_info=True)
+            info = sys.exc_info()
+            res = str(cgitb.text(info))
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here
         if cache_key and self.search_type != "wikifier":
+            # FIXME: should we cache failed results here?
             response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                          search_result_serialized=self.serialize(),
                                                                          augment_results=res,
                                                                          hash_key=cache_key
                                                                          )
             # save the augmented result's metadata if second augment is conducted
-            MetadataCache.save_metadata_from_dataset(res)
+            if type(res) is not string:
+                MetadataCache.save_metadata_from_dataset(res)
             if not response:
                 self._logger.warning("Push augment results to results failed!")
             else:
                 self._logger.info("Push augment results to memcache success!")
 
+        # updated v2019.10.30, now raise the error instead of return the error
+        if res is string:
+            raise ValueError(res)
         return res
 
     def _augment(self, supplied_data, augment_columns=None, generate_metadata=True, return_format="ds",
@@ -1167,60 +1371,90 @@ class DatamartSearchResult:
         df_dict = dict()
         start = time.time()
         columns_new = None
+        left_pairs = defaultdict(list)
+        right_pairs = defaultdict(list)
+
         for r1, r2 in self.pairs:
-            i += 1
-            r1_int = int(r1)
-            if r1_int in r1_paired:
-                continue
-            r1_paired.add(r1_int)
-            left_res = supplied_data_df.loc[r1_int]
-            right_res = download_result.loc[int(r2)]
-            if column_names_to_join is None:
-                column_names_to_join = right_res.index.difference(left_res.index)
-                if self.search_type == "general":
-                    # only for general search condition, we should remove the target join columns
-                    right_join_column_name = self.search_result['variableName']['value']
-                    if right_join_column_name in column_names_to_join:
-                        column_names_to_join = column_names_to_join.drop(right_join_column_name)
-                # if specified augment columns given, only append these columns
-                if augment_columns:
-                    augment_columns_with_column_names = []
-                    max_length = self.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']
-                    for each in augment_columns:
-                        if each.column_index < max_length:
-                            each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
-                            augment_columns_with_column_names.append(each_column_meta["name"])
-                        else:
-                            self._logger.error("Index out of range, will ignore: " + str(each.column_index))
-                    column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
+            left_pairs[int(r1)].append(int(r2))
+            right_pairs[int(r2)].append(int(r1))
 
-                columns_new = left_res.index.tolist()
-                columns_new.extend(column_names_to_join.tolist())
-            dcit_right = right_res[column_names_to_join].to_dict()
-            dict_left = left_res.to_dict()
-            dcit_right.update(dict_left)
-            df_dict[i] = dcit_right
+        max_v1 = 0
+        max_v2 = 0
+        for k, v in left_pairs.items():
+            if len(v) > max_v1:
+                max_v1 = len(v)
 
-        df_joined = pd.DataFrame.from_dict(df_dict, "index")
-        # add up the rows don't have pairs
-        unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
-        if len(unpaired_rows) > 0:
-            unpaired_rows_list = [i for i in unpaired_rows]
-            df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
+        for k, v in right_pairs.items():
+            if len(v) > max_v2:
+                max_v2 = len(v)
 
-        # ensure that the original dataframe columns are at the first left part
-        if columns_new is not None:
-            df_joined = df_joined[columns_new]
+        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
+        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
+        self._logger.info("duplicate amount for left is: " + str(max_v1))
+        self._logger.info("duplicate amount for right is: " + str(max_v2))
+
+        if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
+            # if n_to_m_condition
+            raise ValueError("Should not augment for n-m relationship.")
+            # df_joined = supplied_data_df
+
         else:
-            self._logger.error("Attention! It seems augment do not add any extra columns!")
+            for r1, r2 in self.pairs:
+                i += 1
+                r1_int = int(r1)
+                if r1_int in r1_paired:
+                    continue
+                r1_paired.add(r1_int)
+                left_res = supplied_data_df.loc[r1_int]
+                right_res = download_result.loc[int(r2)]
+                if column_names_to_join is None:
+                    column_names_to_join = right_res.index.difference(left_res.index)
+                    if self.search_type == "general":
+                        # only for general search condition, we should remove the target join columns
+                        right_join_column_name = self.search_result['variableName']['value']
+                        if right_join_column_name in column_names_to_join:
+                            column_names_to_join = column_names_to_join.drop(right_join_column_name)
+                    # if specified augment columns given, only append these columns
+                    if augment_columns:
+                        augment_columns_with_column_names = []
+                        max_length = self.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']
+                        for each in augment_columns:
+                            if each.column_index < max_length:
+                                each_column_meta = self.d3m_metadata.query((ALL_ELEMENTS, each.column_index))
+                                augment_columns_with_column_names.append(each_column_meta["name"])
+                            else:
+                                self._logger.error("Index out of range, will ignore: " + str(each.column_index))
+                        column_names_to_join = column_names_to_join.intersection(augment_columns_with_column_names)
 
-        # if search with wikidata, we should remove duplicate Q node column
-        self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+                    columns_new = left_res.index.tolist()
+                    columns_new.extend(column_names_to_join.tolist())
+                dcit_right = right_res[column_names_to_join].to_dict()
+                dict_left = left_res.to_dict()
+                dcit_right.update(dict_left)
+                df_dict[i] = dcit_right
+
+            df_joined = pd.DataFrame.from_dict(df_dict, "index")
+            # add up the rows don't have pairs
+            unpaired_rows = set(range(supplied_data_df.shape[0])) - r1_paired
+            if len(unpaired_rows) > 0:
+                unpaired_rows_list = [i for i in unpaired_rows]
+                df_joined = df_joined.append(supplied_data_df.iloc[unpaired_rows_list, :], ignore_index=True)
+
+            # ensure that the original dataframe columns are at the first left part
+            if columns_new is not None:
+                df_joined = df_joined[columns_new]
+            else:
+                self._logger.error("Attention! It seems augment do not add any extra columns!")
+
+            # if search with wikidata, we should remove duplicate Q node column
+            self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+        # END augment part
 
         if 'q_node' in df_joined.columns:
             df_joined = df_joined.drop(columns=['q_node'])
 
         if 'id' in df_joined.columns:
+            df_joined = df_joined.sort_values(by=['id'])
             df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
@@ -1307,31 +1541,36 @@ class DatamartSearchResult:
         augmentation = dict()
         augmentation['properties'] = "join"
         if self.search_type == "general":
-            left_col_number = []
-            right_col_number = None
-            for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
-                if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
-                    right_col_number = int(each_key.split("_")[-1])
-                    break
-            augmentation['right_columns'] = [right_col_number]
-            if self.supplied_dataframe is None:
-                self._logger.error(
-                    "Can't get supplied dataframe information, failed to find the left join column number")
-            else:
-                for each in self.query_json['variables'].keys():
-                    left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
-            augmentation['left_columns'] = left_col_number
+            try:
+                left_col_number = []
+                right_col_number = None
+                for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
+                    if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
+                        right_col_number = int(each_key.split("_")[-1])
+                        break
+                augmentation['right_columns'] = [right_col_number]
+                if self.supplied_dataframe is None:
+                    self._logger.error(
+                        "Can't get supplied dataframe information, failed to find the left join column number")
+                else:
+                    for each in self.query_json['variables'].keys():
+                        left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
+                augmentation['left_columns'] = left_col_number
+            except KeyError:
+                self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+            except Exception as e:
+                self._logger.error("Can't find join columns! Unknown error!")
+                self._logger.debug(e, exc_info=True)
+
         elif self.search_type == "wikidata":
-            left_col_number = self.supplied_dataframe.columns.tolist().index(
-                self.search_result['target_q_node_column_name'])
+            left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
             augmentation['right_columns'] = [right_col_number]
         elif self.search_type == "vector":
-            left_col_number = self.supplied_dataframe.columns.tolist().index(
-                self.search_result['target_q_node_column_name'])
+            left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [left_col_number]
-            right_col_number = len(self.search_result['number_of_vectors']) # num of rows, not columns
+            right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [right_col_number]
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'

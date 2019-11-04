@@ -3,8 +3,8 @@ import requests
 import gzip 
 from io import StringIO
 
-class CSVParser(ParserBase):
 
+class CSVParser(ParserBase):
     def get_all(self, url: str) -> typing.List[pd.DataFrame]:
         try:
             download_res = requests.get(url) 
@@ -13,3 +13,4 @@ class CSVParser(ParserBase):
             return [pd.read_csv(decompressed_res, dtype="str")]
         except:
             return [pd.read_csv(url)]
+

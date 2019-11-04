@@ -5,7 +5,7 @@
     "services": [
         {
             "name": "isi_datamart",
-            "host": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
             "port": 9000,
             "path": ""
         },
@@ -17,8 +17,8 @@
         },
         {
             "name": "wikifier_identifier",
-            "host": "dsbox01.isi.edu",
-            "host-test": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
+            "host_internal": "isi_datamart",
             "port": 9000,
             "path": "get_identifiers"
         },
@@ -30,27 +30,31 @@
         },
         {
             "name": "general_search",
-            "host": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
+            "host_internal": "blazegraph_satellite",
             "port": 9002,
             "port_external": 9002,
-            "path": "bigdata/namespace/datamart3/sparql"
+            "path": "blazegraph/namespace/datamart3/sparql"
         },
         {
             "name": "general_search_test",
-            "host": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
+            "host_internal": "blazegraph_satellite",
             "port": 9002,
             "port_external": 9002,
             "path": "blazegraph/namespace/datamart4/sparql"
         },
         {
             "name": "memcached",
-            "host": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
+            "host_internal": "memcached",
             "port": 11211,
             "path": ""
         },
         {
             "name": "redis",
-            "host": "dsbox01.isi.edu",
+            "host": "dsbox02.isi.edu",
+            "host_internal": "redis",
             "port": 6379,
             "path": ""
         },

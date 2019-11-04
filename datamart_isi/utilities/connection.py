@@ -1,3 +1,5 @@
+import typing
+
 from datamart_isi import config_services
 
 
@@ -27,3 +29,8 @@ def get_es_fb_embedding_server_url() -> str:
 
 def get_general_search_test_server_url() -> str:
     return config_services.get_service_url('general_search')
+
+
+def get_redis_host_port() -> typing.Tuple[str, int]:
+    host, port, _ = config_services.get_host_port_path('redis')
+    return (host, port)
