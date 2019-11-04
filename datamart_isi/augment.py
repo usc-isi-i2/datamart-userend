@@ -97,8 +97,14 @@ class Augment(object):
         ORDER = "ORDER BY DESC(?score)"
         LIMIT = "LIMIT 10"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
+        need_keywords_search = "keywords_search" in json_query.keys() and json_query["keywords_search"] != []
+        need_variables_search = "variables" in json_query.keys() and json_query["variables"] != {}
+        need_temporal_search = "variables_search" in json_query.keys() and \
+                               "temporal_variable" in json_query["variables_search"].keys()
+        need_geospatial_search = "variables_search" in json_query.keys() and \
+                                 "geospatial_variable" in json_query["variables_search"].keys()
 
-        if "variables" in json_query.keys() and json_query["variables"] != {}:
+        if need_variables_search:
             query_variables = json_query['variables']
             query_part = " ".join(query_variables.values())
             spaqrl_query += '''
@@ -109,7 +115,7 @@ class Augment(object):
                 '''
             bind = "?score_var" if bind == "" else bind + "+ ?score_var"
 
-        if "keywords_search" in json_query.keys() and json_query["keywords_search"] != []:
+        if need_keywords_search:
             # updated v2019.11.1, for search_without_data, we should remove duplicates
             if "variables" not in json_query.keys() or json_query['variables'] == {}:
                 SELECTION = '''
@@ -124,7 +130,8 @@ class Augment(object):
             for each_keyword in query_keywords:
                 trigram_keywords.extend(trigram_tokenizer(each_keyword))
 
-            query_part = " ".join(trigram_keywords)
+            # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
+            query_part = " ".join(query_keywords)
             spaqrl_query += '''
                 optional {
                 ?keywords_url ps:C2004 [
@@ -145,8 +152,8 @@ class Augment(object):
             else:
                 bind += "+ IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)"
 
-        if "variables_search" in json_query.keys() and json_query["variables_search"] != {}:
-            if "temporal_variable" in json_query["variables_search"].keys():
+        if need_variables_search:
+            if need_temporal_search:
                 tv = json_query["variables_search"]["temporal_variable"]
                 temporal_granularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
 
@@ -161,7 +168,7 @@ class Augment(object):
                     FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
                     '''
 
-            if "geospatial_variable" in json_query["variables_search"].keys():
+            if need_geospatial_search:
                 geo_variable = json_query["variables_search"]["geospatial_variable"]
                 qnodes = self.parse_geospatial_query(geo_variable)
                 if qnodes:
@@ -186,7 +193,13 @@ class Augment(object):
         #     '''
         #     bind = "?score_title" if bind == "" else bind + "+ ?score_title"
         if bind:
-            spaqrl_query += "\n BIND((" + bind + ") AS ?score) \n filter (?score != 0)"
+            spaqrl_query += "\n BIND((" + bind + ") AS ?score) "
+
+        if need_keywords_search:
+            spaqrl_query += """
+                BIND((IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)) AS ?score_keywords)
+                filter (?score_keywords != 0)
+                """
 
         spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
 
