@@ -1558,6 +1558,8 @@ class DatamartSearchResult:
                 augmentation['left_columns'] = left_col_number
             except KeyError:
                 self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+                augmentation['left_columns'] = None
+                augmentation['right_columns'] = None
             except Exception as e:
                 self._logger.error("Can't find join columns! Unknown error!")
                 self._logger.debug(e, exc_info=True)

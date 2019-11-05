@@ -117,12 +117,12 @@ class Augment(object):
 
         if need_keywords_search:
             # updated v2019.11.1, for search_without_data, we should remove duplicates
-            if "variables" not in json_query.keys() or json_query['variables'] == {}:
+            if dataset is None:
                 SELECTION = '''
                             SELECT DISTINCT ?dataset ?datasetLabel ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
                             '''
                 spaqrl_query = PREFIX + SELECTION + STRUCTURE
-                LIMIT = "LIMIT 10"
+                LIMIT = "LIMIT 20"
 
             # updated v2019.11.1, now use fuzzy search
             query_keywords = json_query["keywords_search"]
