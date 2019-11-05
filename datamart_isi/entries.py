@@ -1279,7 +1279,9 @@ class DatamartSearchResult:
                 if type(cache_result) is string:
                     self._logger.warning("This augment was failed last time!")
                     raise ValueError("Augment appeared to be failed during last execution with messsage \n" + cache_result)
-                self._logger.info("Using caching results")
+                else:
+                    self._logger.info("Using caching results")
+                    return cache_result
 
         except Exception as e:
             cache_key = None
