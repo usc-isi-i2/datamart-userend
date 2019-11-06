@@ -4,6 +4,7 @@ import typing
 import warnings
 import traceback
 import logging
+from d3m.base import utils as d3m_utils
 from datetime import datetime
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
@@ -60,7 +61,7 @@ class Augment(object):
         """
         parse the json query to a spaqrl query format
         :param json_query:
-        :param dataset:
+        :param dataset: supplied dataset
         :return: a string indicate the sparql query
         """
         def qgram_tokenizer(x, _q):
@@ -125,7 +126,11 @@ class Augment(object):
                 LIMIT = "LIMIT 20"
 
             # updated v2019.11.1, now use fuzzy search
+            _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+
             query_keywords = json_query["keywords_search"]
+            query_keywords.extend(supplied_dataframe.columns.tolist())
+
             trigram_keywords = []
             for each_keyword in query_keywords:
                 trigram_keywords.extend(trigram_tokenizer(each_keyword))
@@ -152,36 +157,35 @@ class Augment(object):
             else:
                 bind += "+ IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)"
 
-        if need_variables_search:
-            if need_temporal_search:
-                tv = json_query["variables_search"]["temporal_variable"]
-                temporal_granularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
+        if need_temporal_search:
+            tv = json_query["variables_search"]["temporal_variable"]
+            temporal_granularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
 
-                start_date = pd.to_datetime(tv["start"]).isoformat()
-                end_date = pd.to_datetime(tv["end"]).isoformat()
-                granularity = temporal_granularity[tv["granularity"]]
+            start_date = pd.to_datetime(tv["start"]).isoformat()
+            end_date = pd.to_datetime(tv["end"]).isoformat()
+            granularity = temporal_granularity[tv["granularity"]]
+            spaqrl_query += '''
+                ?variable pq:C2013 ?time_granularity .
+                ?variable pq:C2011 ?start_time .
+                ?variable pq:C2012 ?end_time .
+                FILTER(?time_granularity >= ''' + str(granularity) + ''')
+                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                '''
+
+        if need_geospatial_search:
+            geo_variable = json_query["variables_search"]["geospatial_variable"]
+            qnodes = self.parse_geospatial_query(geo_variable)
+            if qnodes:
+                # find similar dataset from datamart
+                query_part = " ".join(qnodes)
+                # query_part = "q1494 q1400 q759 q1649 q1522 q1387 q16551" # COMMENT: for testing
                 spaqrl_query += '''
-                    ?variable pq:C2013 ?time_granularity .
-                    ?variable pq:C2011 ?start_time .
-                    ?variable pq:C2012 ?end_time .
-                    FILTER(?time_granularity >= ''' + str(granularity) + ''')
-                    FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
-                    '''
-
-            if need_geospatial_search:
-                geo_variable = json_query["variables_search"]["geospatial_variable"]
-                qnodes = self.parse_geospatial_query(geo_variable)
-                if qnodes:
-                    # find similar dataset from datamart
-                    query_part = " ".join(qnodes)
-                    # query_part = "q1494 q1400 q759 q1649 q1522 q1387 q16551" # COMMENT: for testing
-                    spaqrl_query += '''
-                                        ?variable pq:C2006 [
-                                            bds:search """''' + query_part + '''""" ;
-                                            bds:relevance ?score_geo ;
-                                        ].
-                                     '''
-                    bind = "?score_geo" if bind == "" else bind + "+ ?score_geo"
+                                    ?variable pq:C2006 [
+                                        bds:search """''' + query_part + '''""" ;
+                                        bds:relevance ?score_geo ;
+                                    ].
+                                 '''
+                bind = "?score_geo" if bind == "" else bind + "+ ?score_geo"
 
         # if "title_search" in json_query.keys() and json_query["title_search"] != '':
         #     query_title = json_query["title_search"]
