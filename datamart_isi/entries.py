@@ -996,7 +996,7 @@ class DatamartSearchResult:
         else:
             self._logger.info("Find downloaded data from previous time, will use that.")
             right_df = self.right_df
-        self._logger.debug("Download finished, start generating d3m metadata.")
+        self._logger.debug("Download finished, start finding pairs to join...")
         left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
         right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
@@ -1279,7 +1279,9 @@ class DatamartSearchResult:
                 if type(cache_result) is string:
                     self._logger.warning("This augment was failed last time!")
                     raise ValueError("Augment appeared to be failed during last execution with messsage \n" + cache_result)
-                self._logger.info("Using caching results")
+                else:
+                    self._logger.info("Using caching results")
+                    return cache_result
 
         except Exception as e:
             cache_key = None
@@ -1558,6 +1560,8 @@ class DatamartSearchResult:
                 augmentation['left_columns'] = left_col_number
             except KeyError:
                 self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+                augmentation['left_columns'] = None
+                augmentation['right_columns'] = None
             except Exception as e:
                 self._logger.error("Can't find join columns! Unknown error!")
                 self._logger.debug(e, exc_info=True)
