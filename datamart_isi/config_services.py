@@ -3,6 +3,13 @@ from pathlib import Path
 import os
 import json
 import typing
+import socket
+
+hostname = socket.gethostname()
+if hostname == "dsbox02":
+    connection_type = "https"
+else:
+    connection_type = "http"
 
 config_file = Path(os.path.join(os.path.dirname(__file__), 'datamart-services.json'))
 
@@ -40,9 +47,9 @@ def get_service_url(service_name, as_url=True) -> str:
     host, port, path = get_host_port_path(service_name)
     if as_url:
         if path:
-            url = f'http://{host}:{port}/{path}'
+            url = connection_type + f'://{host}:{port}/{path}'
         else:
-            url = f'http://{host}:{port}'
+            url = connection_type + f'://{host}:{port}'
     else:
         if path:
             url = f'{host}:{port}/{path}'
