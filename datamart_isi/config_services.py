@@ -3,13 +3,6 @@ from pathlib import Path
 import os
 import json
 import typing
-import socket
-
-hostname = socket.gethostname()
-if hostname == "dsbox02":
-    connection_type = "https"
-else:
-    connection_type = "http"
 
 config_file = Path(os.path.join(os.path.dirname(__file__), 'datamart-services.json'))
 
@@ -27,7 +20,7 @@ def _get_service_def(service_name) -> dict:
     return None
 
 
-def get_host_port_path(service_name) -> typing.Tuple[str, int, str]:
+def get_host_port_path(service_name) -> typing.Tuple[str, str, int, str]:
     definition = _get_service_def(service_name)
     if definition is None:
         print('get_service_url missing definition: ', service_name)
@@ -40,16 +33,17 @@ def get_host_port_path(service_name) -> typing.Tuple[str, int, str]:
 
     port = int(definition['port'])
     path = definition.get('path', '')
-    return (host, port, path)
+    connection_type = definition.get('connection_type', 'http')
+    return (connection_type, host, port, path)
 
 
 def get_service_url(service_name, as_url=True) -> str:
-    host, port, path = get_host_port_path(service_name)
+    connection_type, host, port, path = get_host_port_path(service_name)
     if as_url:
         if path:
-            url = connection_type + f'://{host}:{port}/{path}'
+            url = f'{connection_type}://{host}:{port}/{path}'
         else:
-            url = connection_type + f'://{host}:{port}'
+            url = f'{connection_type}://{host}:{port}'
     else:
         if path:
             url = f'{host}:{port}/{path}'
