@@ -23,7 +23,7 @@ import datamart
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_URL = 'http://dsbox02.isi.edu:9000'
+DEFAULT_URL = 'https://dsbox02.isi.edu:9000'
 
 
 class WsQueryCursor(datamart.DatamartQueryCursor):
