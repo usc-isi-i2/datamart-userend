@@ -4,6 +4,7 @@
   },
   "services": [
     {
+      "connection_type": "https",
       "name": "isi_datamart",
       "host": "dsbox02.isi.edu",
       "port": 9000,
@@ -16,6 +17,7 @@
       "path": "bigdata/namespace/wdq/sparql"
     },
     {
+      "connection_type": "https",
       "name": "wikifier_identifier",
       "host": "dsbox02.isi.edu",
       "host-test": "dsbox02.isi.edu",

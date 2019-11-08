@@ -32,5 +32,5 @@ def get_general_search_test_server_url() -> str:
 
 
 def get_redis_host_port() -> typing.Tuple[str, int]:
-    host, port, _ = config_services.get_host_port_path('redis')
+    _, host, port, _ = config_services.get_host_port_path('redis')
     return (host, port)
