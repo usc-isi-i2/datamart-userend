@@ -10,7 +10,9 @@ if home_dir == "/":
 
 default_datamart_url = config_services.get_default_datamart_url()
 
-cache_file_storage_base_loc = os.path.join(home_dir, "memcache_storage")
+# !!!! datamachines
+# cache_file_storage_base_loc = os.path.join(home_dir, "memcache_storage")
+cache_file_storage_base_loc = '/data/memcache_storage'
 
 # current memcache server's max size is 100MB
 memcache_max_value_size = 1024*1024*100
