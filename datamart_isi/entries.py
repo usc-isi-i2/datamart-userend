@@ -1227,7 +1227,7 @@ class DatamartSearchResult:
         self._logger.debug("Running wikifier finished.")
         return results
 
-    def augment(self, supplied_data, augment_columns=None, connection_url=None, augment_resource_id=AUGMENT_RESOURCE_ID):
+    def augment(self, supplied_data, augment_columns=None, connection_url=None, **kwargs):
         """
         Produces a D3M dataset that augments the supplied data with data that can be retrieved from this search result.
         The augment methods is a baseline implementation of download plus augment.
@@ -1246,9 +1246,16 @@ class DatamartSearchResult:
         connection_url : str
             A connection string used to connect to a specific Datamart deployment. If not provided, a different
             deployment might be used.
+        ---------
+        Possible kwargs
+        ---------
         augment_resource_id: str
             The augmented dataframe's resource id in return dataset
+        use_cache: bool
+        The augmented dataframe's resource id in return dataset
         """
+        augment_resource_id = kwargs.get("augment_resource_id", AUGMENT_RESOURCE_ID)
+        use_cache = kwargs.get("use_cache", config.use_cache)
 
         if type(supplied_data) is d3m_Dataset:
             # try to update with more correct metadata if possible
@@ -1271,24 +1278,27 @@ class DatamartSearchResult:
             connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
-        try:
-            cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
-                                                                       search_result_serialized=self.serialize())
-            cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
-            if cache_result is not None:
-                if type(cache_result) is string:
-                    self._logger.warning("This augment was failed last time!")
-                    raise ValueError("Augment appeared to be failed during last execution with messsage \n" + cache_result)
-                else:
-                    self._logger.info("Using caching results")
-                    return cache_result
+        if use_cache:
+            try:
+                cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
+                                                                           search_result_serialized=self.serialize())
+                cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
+                if cache_result is not None:
+                    if type(cache_result) is string:
+                        self._logger.warning("This augment was failed last time!")
+                        raise ValueError("Augment appeared to be failed during last execution with messsage \n" + str(cache_result))
+                    else:
+                        self._logger.info("Using caching results")
+                        return cache_result
 
-        except Exception as e:
+            except Exception as e:
+                cache_key = None
+                self._logger.error("Some error happened when getting results from cache! Will ignore the cache")
+                self._logger.debug(e, exc_info=True)
+        else:
             cache_key = None
-            self._logger.error("Some error happened when getting results from cache! Will ignore the cache")
-            self._logger.debug(e, exc_info=True)
 
-        self._logger.info("Cache not hit, start running augment.")
+        self._logger.info("Cache not hit or cache not used, start running augment.")
 
         try:
             if self.search_type == "wikifier":
@@ -1324,7 +1334,7 @@ class DatamartSearchResult:
 
         # should not cache wikifier results here, as we already cached it in wikifier part
         # and we don't know if the wikifier success or not here
-        if cache_key and self.search_type != "wikifier":
+        if use_cache and cache_key and self.search_type != "wikifier":
             # FIXME: should we cache failed results here?
             response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
                                                                          search_result_serialized=self.serialize(),
@@ -1340,7 +1350,7 @@ class DatamartSearchResult:
                 self._logger.info("Push augment results to memcache success!")
 
         # updated v2019.10.30, now raise the error instead of return the error
-        if res is string:
+        if type(res) is string:
             raise ValueError(res)
         return res
 
@@ -1576,6 +1586,7 @@ class DatamartSearchResult:
             augmentation['left_columns'] = [left_col_number]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [right_col_number]
+
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
         result_str = json.dumps(result)
