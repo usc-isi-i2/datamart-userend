@@ -1255,7 +1255,9 @@ class DatamartSearchResult:
         The augmented dataframe's resource id in return dataset
         """
         augment_resource_id = kwargs.get("augment_resource_id", AUGMENT_RESOURCE_ID)
-        use_cache = kwargs.get("use_cache", config.use_cache)
+        use_cache = kwargs.get("use_cache")
+        if use_cache is None:
+            use_cache = config.use_cache
 
         if type(supplied_data) is d3m_Dataset:
             # try to update with more correct metadata if possible
