@@ -98,7 +98,7 @@ class Utils:
                               PREFIX wdt: <http://www.wikidata.org/prop/direct/>
                               SELECT \n""" + label_part + "WHERE \n {\n" + where_part \
                            + """  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }\n}\n""" \
-                           + "LIMIT " + length
+                           + "LIMIT " + str(length)
 
             results = WIKIDATA_CACHE_MANAGER.get_result(sparql_query)
             all_res = {}
