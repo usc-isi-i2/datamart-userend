@@ -13,6 +13,7 @@ from ast import literal_eval
 from d3m.container import DataFrame as d3m_DataFrame
 from datamart_isi.config import cache_file_storage_base_loc
 from datamart_isi.utilities import connection
+from datamart_isi.cache.wikidata_cache import QueryCache
 from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
 from dsbox.datapreprocessing.cleaner.cleaning_featurizer import CleaningFeaturizer, CleaningFeaturizerHyperparameter
 
@@ -20,6 +21,7 @@ WIKIDATA_SERVER = connection.get_wikidata_server_url()
 
 _logger = logging.getLogger(__name__)
 seed_dataset_store_location = os.path.join(cache_file_storage_base_loc, "datasets_cache")
+WIKIDATA_CACHE_MANAGER = QueryCache()
 
 
 class Utils:
@@ -85,28 +87,20 @@ class Utils:
             # wikidata materializer
             label_part = "  ?itemLabel \n"
             where_part = ""
+            length = metadata.get("length", 100)
             for i, each_p_node in enumerate(metadata["p_nodes_needed"]):
                 label_part += "  ?value" + str(i) + "Label\n"
                 where_part += "  ?item wdt:" + each_p_node + " ?value" + str(i) + ".\n"
-            try:
-                sparql_query = """PREFIX wikibase: <http://wikiba.se/ontology#>
-                                  PREFIX wd: <http://www.wikidata.org/entity/>
-                                  prefix bd: <http://www.bigdata.com/rdf#>
-                                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-                                  SELECT \n""" + label_part + "WHERE \n {\n" + where_part \
-                               + """  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }\n}\n""" \
-                               + "LIMIT 100"
 
-                sparql = SPARQLWrapper(WIKIDATA_SERVER)
-                sparql.setQuery(sparql_query)
-                sparql.setReturnFormat(JSON)
-                # sparql.setMethod(POST)
-                # sparql.setRequestMethod(URLENCODED)
-            except:
-                print("[ERROR] Wikidata query failed!")
-                traceback.print_exc()
+            sparql_query = """PREFIX wikibase: <http://wikiba.se/ontology#>
+                              PREFIX wd: <http://www.wikidata.org/entity/>
+                              prefix bd: <http://www.bigdata.com/rdf#>
+                              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+                              SELECT \n""" + label_part + "WHERE \n {\n" + where_part \
+                           + """  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }\n}\n""" \
+                           + "LIMIT " + length
 
-            results = sparql.query().convert()["results"]["bindings"]
+            results = WIKIDATA_CACHE_MANAGER.get_result(sparql_query)
             all_res = {}
             for i, result in enumerate(results):
                 each_res = {}
@@ -120,9 +114,9 @@ class Utils:
             for each in zip(column_names, metadata["p_nodes_needed"]):
                 column_names_replaced[each[0]] = Utils.get_node_name(each[1])
             df_res.rename(columns=column_names_replaced, inplace=True)
-
             df_res = d3m_DataFrame(df_res, generate_metadata=True)
             return df_res
+
         else:
             raise ValueError("Unknown type for materialize!")
 
