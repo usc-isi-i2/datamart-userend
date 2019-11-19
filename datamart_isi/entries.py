@@ -800,6 +800,7 @@ class Datamart(object):
                 if 'http://schema.org/Text' in each_column_meta["semantic_types"] or treat_as_a_text_column:
                     column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
                     query_column_entities = list(set(column_values.tolist()))
+                    random.seed(42)  # ensure always get the same random number
                     if len(query_column_entities) > MAX_ENTITIES_LENGTH:
                         query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
                     for each in query_column_entities:
