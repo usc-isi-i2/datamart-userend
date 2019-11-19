@@ -51,6 +51,7 @@ SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
+random.seed(42)
 
 
 class DatamartQueryCursor(object):
@@ -275,6 +276,8 @@ class DatamartQueryCursor(object):
                     unique_qnodes = set(q_nodes_list)
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
+                    if len(unique_qnodes) > config.max_q_node_query_size:
+                        unique_qnodes = random.sample(unique_qnodes, config.max_q_node_query_size)
 
                     for each in unique_qnodes:
                         if len(each) > 0:

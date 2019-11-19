@@ -28,6 +28,7 @@ special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 wikifier_column_mark = "%^$#@wikifier@%^$#"
 max_entities_length = 10000
+max_q_node_query_size = 100
 
 need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",
                                   "http://schema.org/Text"
