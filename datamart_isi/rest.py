@@ -1,5 +1,6 @@
 from copy import deepcopy
 from d3m import container
+from d3m.base import utils as d3m_utils
 import d3m.metadata.base as metadata_base
 import io
 import json
@@ -486,7 +487,23 @@ class RESTSearchResult(datamart.DatamartSearchResult):
         dataset = download_dataset(res)
         if dataset:
             dataset = fix_metadata(dataset, supplied_data)
-            return dataset
+            _, augmented_df = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+            augmented_df_columns = augmented_df.columns.tolist()
+            _, original_df = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+            original_df_columns = original_df.columns.tolist()
+
+            useless_augment = False
+            if len(original_df_columns) == len(augmented_df_columns):
+                useless_augment = True
+            else:
+                added_columns = set(augmented_df_columns) - set(original_df_columns)
+                if all((each_column.endswith("_wikidata") and each_column[:-9] in original_df_columns for each_column in added_columns)):
+                    useless_augment = True
+
+            if useless_augment:
+                raise Exception("This augment do not augment any extra columns!")
+            else:
+                return dataset
         raise Exception("Error while reading the HTTP response.")
 
 

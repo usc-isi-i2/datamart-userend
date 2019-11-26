@@ -35,6 +35,7 @@ from datamart_isi.utilities.download_manager import DownloadManager
 from datamart_isi.cache.wikidata_cache import QueryCache
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.cache.metadata_cache import MetadataCache
+from datamart_isi.cache.materializer_cache import MaterializerCache
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
@@ -880,7 +881,7 @@ class DatamartSearchResult:
 
             elif self.search_type == "wikidata":
                 materialize_info = self.search_result
-                return_df = Utils.materialize(materialize_info, run_wikifier=False)
+                return_df = MaterializerCache.materialize(materialize_info, run_wikifier=False)
                 return_df = return_df[:10]
                 return_res = return_df.to_csv()
 
@@ -995,7 +996,7 @@ class DatamartSearchResult:
         # start finding pairs
         left_df = copy.deepcopy(self.supplied_dataframe)
         if self.right_df is None:
-            self.right_df = Utils.materialize(metadata=self.search_result, run_wikifier=run_wikifier)
+            self.right_df = MaterializerCache.materialize(metadata=self.search_result, run_wikifier=run_wikifier)
             right_df = self.right_df
         else:
             self._logger.info("Find downloaded data from previous time, will use that.")
