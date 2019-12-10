@@ -14,7 +14,6 @@ from datamart_isi.utilities.utils import Utils
 from d3m.container import DataFrame as d3m_DataFrame
 
 
-
 WIKIDATA_CACHE_MANAGER = QueryCache()
 WIKIDATA_SERVER = connection.get_wikidata_server_url()
 _logger = logging.getLogger(__name__)

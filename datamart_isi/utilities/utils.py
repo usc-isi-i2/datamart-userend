@@ -107,3 +107,122 @@ class Utils:
         if original_meta:
             metadata_dict.update(original_meta)
         return metadata_dict
+
+    @staticmethod
+    def get_time_granularity(time_column: pd.DataFrame) -> str:
+        if "datetime" not in time_column.dtype.name:
+            try:
+                time_column = pd.to_datetime(time_column)
+            except:
+                raise ValueError("Can't parse given time column!")
+        if any(time_column.dt.second != 0):
+            time_granularity = 'second'
+        elif any(time_column.dt.minute != 0):
+            time_granularity = 'minute'
+        elif any(time_column.dt.hour != 0):
+            time_granularity = 'hour'
+        elif any(time_column.dt.day != 0):
+            # it is also possible weekly data
+            is_weekly_data = True
+            time_column_sorted = time_column.sort_values()
+            temp1 = time_column_sorted.iloc[0]
+            for i in range(1, len(time_column_sorted)):
+                temp2 = time_column_sorted.iloc[i]
+                if (temp2 - temp1).days != 7:
+                    is_weekly_data = False
+                    break
+            if is_weekly_data:
+                time_granularity = 'week'
+            else:
+                time_granularity = 'day'
+        elif any(time_column.dt.month != 0):
+            time_granularity = 'month'
+        elif any(time_column.dt.year != 0):
+            time_granularity = 'year'
+        else:
+            raise ValueError("Can't guess the time granularity for this dataset!")
+        return time_granularity
+
+    @staticmethod
+    def map_granularity_to_d3m_format(granularity: str):
+        """
+        d3m allowed following granularities:
+        "timeGranularity":{"type":"dict", "required":false, "schema":{
+            "value":{"type":"number", "required":true},
+            "units":{"type":"string", "required":true, "allowed":[
+                "seconds",
+                "minutes",
+                "days",
+                "weeks",
+                "years",
+                "unspecified"
+            ]
+        }
+        :param granularity:
+        :return: a list follow d3m format
+        """
+        if "second" in granularity:
+            return [('value', 1), ('unit', 'seconds')]
+        elif "minute" in granularity:
+            return [('value', 1), ('unit', 'minutes')]
+        elif "hour" in granularity:
+            return [('value', 1), ('unit', 'hours')]
+        elif "day" in granularity:
+            return [('value', 1), ('unit', 'days')]
+        elif "week" in granularity:
+            return [('value', 1), ('unit', 'weeks')]
+        # how about months??
+        elif "month" in granularity:
+            return [('value', 1), ('unit', 'months')]
+        elif "year" in granularity:
+            return [('value', 1), ('unit', 'years')]
+        else:
+            raise ValueError("Unrecognized granularity")
+
+    @staticmethod
+    def map_granularity_to_value(granularity_str: str) -> int:
+        TemporalGranularity = {
+            'second': 14,
+            'minute': 13,
+            'hour': 12,
+            'day': 11,
+            'month': 10,
+            'year': 9
+        }
+        if granularity_str.lower() in TemporalGranularity:
+            return TemporalGranularity[granularity_str.lower()]
+        else:
+            raise ValueError("Can't find corresponding granularity value.")
+
+    @staticmethod
+    def map_d3m_granularity_to_value(granularity_str: str) -> int:
+        TemporalGranularity = {
+            'unspecified': 15,
+            'seconds': 14,
+            'minutes': 13,
+            'hours': 12,
+            'days': 11,
+            'months': 10,
+            'years': 9
+
+        }
+        if granularity_str.lower() in TemporalGranularity:
+            return TemporalGranularity[granularity_str.lower()]
+        else:
+            raise ValueError("Can't find corresponding granularity value.")
+
+    @staticmethod
+    def overlap(first_inter, second_inter) -> bool:
+        """
+        function used to check whether two time intervals has overlap
+        :param first_inter: [start_time, end_time]
+        :param second_inter: [start_time, end_time]
+        :return: a bool value indicate has overlap or not
+        """
+        for f, s in ((first_inter, second_inter), (second_inter, first_inter)):
+            # will check both ways
+            for time in (f[0], f[1]):
+                if s[0] < time < s[1]:
+                    return True
+        else:
+            return False

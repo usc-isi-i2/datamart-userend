@@ -19,6 +19,7 @@ cache_expire_time = 3600*24
 
 # following are datamart detail configs, usually these should not be changed
 augmented_column_semantic_type = "https://metadata.datadrivendiscovery.org/types/Datamart_augmented_column"
+time_semantic_type = 'http://schema.org/DateTime'
 augmented_resource_id = "learningData"
 d3m_container_version = "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
 p_nodes_ignore_list = {"P1549"}

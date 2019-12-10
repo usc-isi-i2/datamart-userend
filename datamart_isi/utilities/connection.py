@@ -28,7 +28,7 @@ def get_es_fb_embedding_server_url() -> str:
 
 
 def get_general_search_test_server_url() -> str:
-    return config_services.get_service_url('general_search')
+    return config_services.get_service_url('general_search_test')
 
 
 def get_redis_host_port() -> typing.Tuple[str, int]:
