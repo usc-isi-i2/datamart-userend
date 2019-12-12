@@ -197,11 +197,12 @@ class Utils:
     @staticmethod
     def map_d3m_granularity_to_value(granularity_str: str) -> int:
         TemporalGranularity = {
-            'unspecified': 15,
+            'unspecified': 8,
             'seconds': 14,
             'minutes': 13,
             'hours': 12,
             'days': 11,
+            'weeks': 11,  # now also use week as days
             'months': 10,
             'years': 9
 
