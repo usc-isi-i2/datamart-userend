@@ -13,7 +13,7 @@ from collections import Counter
 from datamart_isi.cache.metadata_cache import MetadataCache
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.utilities import connection
-from .utils import check_wikifier_choice
+from .utils import check_wikifier_choice, wikifier_for_ethiopia
 
 CACHE_MANAGER = GeneralSearchCache()
 _logger = logging.getLogger(__name__)
@@ -46,6 +46,14 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
                 _logger.debug("Cache not hitted.")
         else:
             _logger.debug("Not use cache for this time's wikification.")
+        
+        # updated v2019.12.11, add special ethoipia wikifier
+        ethiopia_wikifiered_result = wikifier_for_ethiopia(inputs)
+        if ethiopia_wikifiered_result.shape != inputs.shape:
+            if use_cache:
+                push_to_cache(inputs, produce_config, ethiopia_wikifiered_result, cache_key)
+            return ethiopia_wikifiered_result
+        # END update v2019.12.11
 
         column_to_p_node_dict = dict()
 
@@ -113,15 +121,7 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
 
         if use_cache:
             # push to cache system
-            response = CACHE_MANAGER.add_to_memcache(supplied_dataframe=inputs,
-                                                     search_result_serialized=json.dumps(produce_config),
-                                                     augment_results=return_df,
-                                                     hash_key=cache_key
-                                                     )
-            if not response:
-                _logger.warning("Push wikifier results to results failed!")
-            else:
-                _logger.info("Push wikifier results to memcache success!")
+            push_to_cache(inputs, produce_config, return_df, cache_key)
 
         return return_df
 
@@ -132,6 +132,19 @@ def produce(inputs, target_columns: typing.List[int] = None, target_p_nodes: typ
     else:
         raise ValueError("unknown type of input!")
 
+
+def push_to_cache(inputs, produce_config, wikifiered_df, cache_key):
+    response = CACHE_MANAGER.add_to_memcache(supplied_dataframe=inputs,
+                                             search_result_serialized=json.dumps(produce_config),
+                                             augment_results=wikifiered_df,
+                                             hash_key=cache_key
+                                             )
+    if not response:
+        _logger.warning("Push wikifier results to results failed!")
+        return False
+    else:
+        _logger.info("Push wikifier results to memcache success!")
+        return True
 
 def all_in_range_0_to_100(inputs):
     min_val = min(inputs)

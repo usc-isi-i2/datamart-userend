@@ -47,8 +47,11 @@ __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchRe
            'VariableConstraint', 'TabularVariable', 'VariableConstraint')
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
+TEXT_SEMANTIC_TYPE = config.text_semantic_type
+ATTRIBUTE_SEMANTIC_TYPE = config.attribute_semantic_type
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
 TIME_SEMANTIC_TYPE = config.time_semantic_type
+
 MAX_ENTITIES_LENGTH = config.max_entities_length
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
@@ -347,15 +350,18 @@ class DatamartQueryCursor(object):
         variables, title = dict(), dict()
         variables_temp = dict()  # this temp is specially used to store variable for time query
         for each_variable in self.search_query[self.current_searching_query_index].variables:
-            if each_variable.key.startswith(TIME_COLUMN_MARK):
+            # updated v2019.12.11, now we only search "time column only" if augment with time is set to false
+            if each_variable.key.startswith(TIME_COLUMN_MARK) and not self.augment_with_time:
                 variables_temp[each_variable.key.split("____")[1]] = each_variable.values
                 start_time, end_time, granularity = each_variable.values.split("____")
-                variables_search = {"temporal_variable": {
-                    "start": start_time,
-                    "end": end_time,
-                    "granularity": granularity
-                }
-                }
+                variables_search = {
+                    "temporal_variable":
+                        {
+                            "start": start_time,
+                            "end": end_time,
+                            "granularity": granularity
+                        }
+                    }
             else:
                 variables[each_variable.key] = each_variable.values
 
@@ -587,6 +593,8 @@ class DatamartQueryCursor(object):
                         if not all(re.match(r'^Q\d+$', x) for x in data):
                             fit_requirement = False
                             break
+                    else:
+                        fit_requirement = False
 
             if fit_requirement:
                 filter_search_results.append(each_search_result)
@@ -601,16 +609,19 @@ class DatamartQueryCursor(object):
         :return:
         """
         # find time columns first
-        # import pdb
-        # pdb.set_trace()
         # get time ranges on supplied data
         time_columns_left = list()
-        for i in range(len(self.supplied_dataframe)):
+        for i in range(self.supplied_dataframe.shape[1]):
             if type(self.supplied_data) is d3m_Dataset:
                 each_selector = (self.res_id, ALL_ELEMENTS, i)
             else:
                 each_selector = (ALL_ELEMENTS, i)
             each_column_metadata = self.supplied_data.metadata.query(each_selector)
+            if "semantic_types" not in each_column_metadata:
+                self._logger.warning("column No.{} {} do not have semantic type on metadata!".
+                                     format(str(i), str(self.supplied_dataframe.columns[i])))
+                continue
+
             if TIME_SEMANTIC_TYPE in each_column_metadata['semantic_types']:
                 # if we got original time granularity from metadata, use it directly
                 time_column = self.supplied_dataframe.iloc[:, i]
@@ -651,9 +662,9 @@ class DatamartQueryCursor(object):
                             continue
 
                         time_columns_right.append({
-                            "granularity": time_information_query[0]['time_granularity']['value'],
-                            "start_time": time_information_query[0]['start_time']['value'],
-                            "end_time": time_information_query[0]['end_time']['value'],
+                            "granularity": int(time_information_query[0]['time_granularity']['value']),
+                            "start_time": pd.Timestamp(time_information_query[0]['start_time']['value']),
+                            "end_time": pd.Timestamp(time_information_query[0]['end_time']['value']),
                             "column_number": i,
                             "dataset_id": each_search_result.id()
                         })
@@ -664,8 +675,15 @@ class DatamartQueryCursor(object):
             for right_time_info in time_columns_right:
                 left_range = [left_time_info['start_time'], left_time_info['end_time']]
                 right_range = [right_time_info['start_time'], right_time_info['end_time']]
+                # ensure the format are correct
+                for i in range(len(left_range)):
+                    if isinstance(left_range[i], pd.Timestamp):
+                        left_range[i] = left_range[i].tz_localize('UTC')
+                    elif isinstance(left_range[i], str):
+                        left_range[i] = pd.Timestamp(left_range[i])
+
                 # TODO: if time granularity different but time range overlap? should we consider it or not
-                if left_time_info['granularity'] == right_time_info['granularity'] and Utils.overlap(left_range, right_range):
+                if left_time_info['granularity'] >= right_time_info['granularity'] and Utils.overlap(left_range, right_range):
                     can_consider_datasets[right_time_info['dataset_id']].append(
                         [left_time_info["column_number"],
                          right_time_info['dataset_id'],
@@ -676,7 +694,7 @@ class DatamartQueryCursor(object):
             if each_search_result.search_type == "general":
                 if each_search_result.id() in can_consider_datasets:
                     for each_combine in can_consider_datasets[each_search_result.id()]:
-                        each_search_result_copied = copy.deepcopy(each_search_result)
+                        each_search_result_copied = copy.copy(each_search_result)
                         # update join pairs
                         right_index = None
                         right_join_column_name = each_search_result.search_result['variableName']['value']
@@ -819,13 +837,12 @@ class Datamart(object):
             # try to parse each column to DateTime type. If success, add new semantic type, otherwise do nothing
             try:
                 pd.to_datetime(self.supplied_dataframe.iloc[:, each])
-                new_semantic_type = {"semantic_types": (TIME_SEMANTIC_TYPE,
-                                                        "https://metadata.datadrivendiscovery.org/types/Attribute")}
+                new_semantic_type = {"semantic_types": (TIME_SEMANTIC_TYPE, ATTRIBUTE_SEMANTIC_TYPE)}
                 supplied_data.metadata = supplied_data.metadata.update(selector, new_semantic_type)
             except:
                 pass
 
-            if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
+            if TEXT_SEMANTIC_TYPE in each_column_meta["semantic_types"] \
                     or TIME_SEMANTIC_TYPE in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
 
@@ -995,6 +1012,11 @@ class DatamartSearchResult:
         self._res_id = None  # only used for input is Dataset
         self.join_pairs = None
         self.right_df = None
+        extra_information = self.search_result.get('extra_information')
+        if extra_information is not None:
+            extra_information = json.loads(extra_information['value'])
+            self.special_requirement = extra_information.get("special_requirement")
+
         self.metadata_manager = MetadataGenerator(supplied_data=self.supplied_data, search_result=self.search_result,
                                                   search_type=self.search_type, connection_url=self.connection_url,
                                                   wikidata_cache_manager=self.wikidata_cache_manager)
@@ -1549,6 +1571,13 @@ class DatamartSearchResult:
             # df_joined = supplied_data_df
 
         else:
+            if self.special_requirement.get("display_columns") and len(augment_columns) == 0:
+                for each_col in self.special_requirement["display_columns"]:
+                    augment_columns.append(DatasetColumn(resource_id=None, column_index=each_col))
+
+            # add extra index column to ensure they follow the original order
+            supplied_data_df['**original_index**'] = supplied_data_df.index
+            # self.pairs = sorted(self.pairs, key=lambda x: int(x[0]))
             for r1, r2 in self.pairs:
                 i += 1
                 r1_int = int(r1)
@@ -1598,6 +1627,10 @@ class DatamartSearchResult:
 
             # if search with wikidata, we should remove duplicate Q node column
             self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+
+            # sort the joined dataframe with original index
+            df_joined = df_joined.sort_values(by='**original_index**')
+            df_joined = df_joined.drop(columns=['**original_index**'])
         # END augment part
 
         if 'q_node' in df_joined.columns:
