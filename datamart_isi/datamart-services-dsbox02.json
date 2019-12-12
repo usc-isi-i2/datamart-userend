@@ -6,7 +6,7 @@
     {
       "name": "isi_datamart",
       "host": "dsbox02.isi.edu",
-      "port": 9000,
+      "port": 9005,
       "path": ""
     },
     {
@@ -19,7 +19,7 @@
       "name": "wikifier_identifier",
       "host": "dsbox02.isi.edu",
       "host-test": "dsbox02.isi.edu",
-      "port": 9000,
+      "port": 9005,
       "path": "get_identifiers"
     },
     {
@@ -33,7 +33,7 @@
       "host": "dsbox02.isi.edu",
       "port": 9002,
       "port_external": 9002,
-      "path": "blazegraph/namespace/datamart3/sparql"
+      "path": "blazegraph/namespace/datamart_ethiopia/sparql"
     },
     {
       "name": "general_search_test",
