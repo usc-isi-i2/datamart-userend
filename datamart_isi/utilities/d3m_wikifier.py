@@ -116,6 +116,33 @@ def run_wikifier(supplied_data: d3m_Dataset, use_cache=True):
         return supplied_data
 
 
+def check_has_q_node_columns(input_dataframe) -> bool:
+    """
+    Function used to check whether a given dataframe has Q node columns
+    :param input_dataframe:
+    :param col_num:
+    :return: a bool
+    """
+    for i in range(input_dataframe.shape[1]):
+        if check_is_q_node_column(input_dataframe, i):
+            return True
+    return False
+
+
+def check_is_q_node_column(input_dataframe, col_num) -> bool:
+    """
+    Function used to check whether a given column is a Q node column or not
+    :param input_dataframe:
+    :param col_num:
+    :return: a bool
+    """
+    if input_dataframe.iloc[:, col_num].dtype.name == "object":
+        data = list(filter(None, input_dataframe.iloc[:, col_num].dropna().tolist()))
+        if all(re.match(r'^Q\d+$', x) for x in data):
+            return True
+    return False
+
+
 def check_and_correct_q_nodes_semantic_type(input):
     """
     Function used to detect whether a dataset or a dataframe already contains q nodes columns or not
@@ -147,15 +174,14 @@ def check_and_correct_q_nodes_semantic_type(input):
 
         elif 'http://schema.org/Text' in each_metadata["semantic_types"]:
             # detect Q-nodes by content
-            data = list(filter(None, input_dataframe.iloc[:, i].dropna().tolist()))
-            if all(re.match(r'^Q\d+$', x) for x in data):
+            if check_is_q_node_column(input, i):
                 input.metadata = input.metadata.update(selector=(res_id, ALL_ELEMENTS, i), metadata={
                     "semantic_types": ('http://schema.org/Text',
                                        'https://metadata.datadrivendiscovery.org/types/Attribute',
                                        Q_NODE_SEMANTIC_TYPE)
                 })
                 _logger.debug("Q nodes format data found in column No.{}, will not run wikifier.".format(str(i)))
-                find_q_node_columns = True
+            find_q_node_columns = True
 
     return find_q_node_columns, input
 

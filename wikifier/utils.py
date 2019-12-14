@@ -81,7 +81,7 @@ def _update_metadata(metadata, res_id):
     metadata = metadata.update((res_id, ALL_ELEMENTS, updated_column_number), updated_column_metadata)
     return metadata
 
-def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.5) -> pd.DataFrame:
+def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.DataFrame:
     """
         special wikifier that use human-generated dict to find correct woreda Q nodes from wikidata
         it will only care about woreda related columns

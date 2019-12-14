@@ -1,9 +1,12 @@
 import typing
 import pandas as pd
 import os
+import requests
+import json
 import logging
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi.config import cache_file_storage_base_loc
+from datamart_isi.utilities.connection import get_keywords_augmentation_server_url
 from datamart_isi.utilities import connection
 from datamart_isi.cache.wikidata_cache import QueryCache
 from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
@@ -115,13 +118,12 @@ class Utils:
                 time_column = pd.to_datetime(time_column)
             except:
                 raise ValueError("Can't parse given time column!")
-        if any(time_column.dt.second != 0):
-            time_granularity = 'second'
-        elif any(time_column.dt.minute != 0):
+        time_granularity = 'second'
+        if any(time_column.dt.minute != 0) and len(time_column.dt.minute.unique()) > 1:
             time_granularity = 'minute'
-        elif any(time_column.dt.hour != 0):
+        elif any(time_column.dt.hour != 0) and len(time_column.dt.hour.unique()) > 1:
             time_granularity = 'hour'
-        elif any(time_column.dt.day != 0):
+        elif any(time_column.dt.day != 0) and len(time_column.dt.day.unique()) > 1:
             # it is also possible weekly data
             is_weekly_data = True
             time_column_sorted = time_column.sort_values()
@@ -135,12 +137,12 @@ class Utils:
                 time_granularity = 'week'
             else:
                 time_granularity = 'day'
-        elif any(time_column.dt.month != 0):
+        elif any(time_column.dt.month != 0) and len(time_column.dt.month.unique()) > 1:
             time_granularity = 'month'
-        elif any(time_column.dt.year != 0):
+        elif any(time_column.dt.year != 0)and len(time_column.dt.year.unique()) > 1:
             time_granularity = 'year'
         else:
-            raise ValueError("Can't guess the time granularity for this dataset!")
+            _logger.error("Can't guess the time granularity for this dataset! Will use as second")
         return time_granularity
 
     @staticmethod
@@ -196,21 +198,48 @@ class Utils:
 
     @staticmethod
     def map_d3m_granularity_to_value(granularity_str: str) -> int:
+        """
+        a simple dict map which map time granulairty string to wikidata int format
+        :param granularity_str:
+        :return:
+        """
         TemporalGranularity = {
-            'unspecified': 8,
             'seconds': 14,
             'minutes': 13,
             'hours': 12,
             'days': 11,
             'weeks': 11,  # now also use week as days
             'months': 10,
-            'years': 9
+            'years': 9,
+            'unspecified': 8,
 
         }
         if granularity_str.lower() in TemporalGranularity:
             return TemporalGranularity[granularity_str.lower()]
         else:
             raise ValueError("Can't find corresponding granularity value.")
+
+    @staticmethod
+    def time_granularity_value_to_stringfy_time_format(granularity_int: int) -> str:
+        try:
+            granularity_int = int(granularity_int)
+        except ValueError:
+            raise ValueError("The given granulairty is not int format!")
+
+        granularity_dict = {
+            14: "%Y-%m-%d %H:%M:%S",
+            13: "%Y-%m-%d %H:%M",
+            12: "%Y-%m-%d %H",
+            11: "%Y-%m-%d",
+            10: "%Y-%m",
+            9: "%Y"
+
+        }
+        if granularity_int in granularity_dict:
+            return granularity_dict[granularity_int]
+        else:
+            _logger.warning("Unknown time granularity value as {}! Will use second level.".format(str(granularity_int)))
+            return granularity_dict[14]
 
     @staticmethod
     def overlap(first_inter, second_inter) -> bool:
@@ -227,3 +256,23 @@ class Utils:
                     return True
         else:
             return False
+
+    @staticmethod
+    def keywords_augmentation(keywords: typing.List[str], server_address: str = None) -> typing.List[str]:
+        """
+        function that use fuzzy search to get more related keywords
+        :param server_address: the request server address
+        :param keywords: a list of keywords
+        :return:
+        """
+        if not server_address:
+            server_address = connection.get_keywords_augmentation_server_url()
+        url = server_address + "/" + ",".join(keywords)
+        resp = requests.get(url)
+        if resp.status_code // 100 == 2:
+            new_keywords = json.loads(resp.text)['message'].split(",")
+            _logger.info("Get augmented keywords as {}".format(str(new_keywords)))
+        else:
+            new_keywords = keywords
+            _logger.warning("Failed on augmenting keywords! Please check the service condition!")
+        return new_keywords

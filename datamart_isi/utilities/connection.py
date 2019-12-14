@@ -19,6 +19,10 @@ def get_wikifier_identifier_server_url() -> str:
     return config_services.get_service_url('wikifier_identifier')
 
 
+def get_keywords_augmentation_server_url() -> str:
+    return config_services.get_service_url('keywords_augmentation')
+
+
 def get_wikifier_knowledge_graph_server_url() -> str:
     return config_services.get_service_url('wikifier_knowledge_graph')
 

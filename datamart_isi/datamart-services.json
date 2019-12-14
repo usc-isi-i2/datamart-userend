@@ -31,6 +31,12 @@
       "path": "wikify"
     },
     {
+      "name": "keywords_augmentation",
+      "host": "dsbox02.isi.edu",
+      "port": 9005,
+      "path": "keywords_augmentation"
+    },
+    {
       "name": "general_search",
       "host": "dsbox02.isi.edu",
       "port": 9002,

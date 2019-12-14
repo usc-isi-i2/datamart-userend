@@ -11,6 +11,7 @@ from datamart_isi.cache.wikidata_cache import QueryCache
 from datamart_isi.config import cache_file_storage_base_loc
 from datamart_isi.utilities import connection
 from datamart_isi.utilities.utils import Utils
+from datamart_isi.utilities.d3m_wikifier import check_has_q_node_columns
 from d3m.container import DataFrame as d3m_DataFrame
 
 
@@ -26,8 +27,12 @@ class MaterializerCache(object):
         if 'url' in metadata:
             loaded_data = MaterializerCache.get_data(metadata=metadata)
 
-            if run_wikifier:
-                loaded_data = wikifier.produce(loaded_data)
+            has_q_nodes = check_has_q_node_columns(loaded_data)
+            if has_q_nodes:
+                _logger.warning("The original data already has Q nodes! Will not run wikifier")
+            else:
+                if run_wikifier:
+                    loaded_data = wikifier.produce(loaded_data)
 
             return loaded_data
 

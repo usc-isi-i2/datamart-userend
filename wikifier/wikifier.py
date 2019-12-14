@@ -165,9 +165,13 @@ def are_almost_continues_numbers(inputs, threshold=0.7):
 
 
 def one_character_alphabet(inputs):
-    if all(x.isalpha() and len(x) == 1 for x in inputs):
-        return True
-    return False
+    try:
+        if all(x.isalpha() and len(x) == 1 for x in inputs):
+            return True
+    except:
+        pass
+    finally:
+        return False
 
 
 def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target_p_nodes: dict = None,

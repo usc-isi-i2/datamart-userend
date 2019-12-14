@@ -657,8 +657,9 @@ class DatamartQueryCursor(object):
                     if TIME_SEMANTIC_TYPE in each_column_metadata['semantic_types']:
                         time_information_query = self.augmenter.get_dataset_time_information(each_search_result.id())
                         if len(time_information_query) == 0:
-                            self._logger.warning("Detect timestamp on dataset {} but no time information was found!"
-                                                 .format(each_search_result.id()))
+                            self._logger.warning("Detect timestamp on dataset {} {} but no time information was found!"
+                                                 .format(each_search_result.id(),
+                                                         each_search_result.search_result['title']['value']))
                             continue
 
                         time_columns_right.append({
@@ -685,9 +686,14 @@ class DatamartQueryCursor(object):
                 # TODO: if time granularity different but time range overlap? should we consider it or not
                 if left_time_info['granularity'] >= right_time_info['granularity'] and Utils.overlap(left_range, right_range):
                     can_consider_datasets[right_time_info['dataset_id']].append(
-                        [left_time_info["column_number"],
-                         right_time_info['dataset_id'],
-                         right_time_info['column_number']])
+                        {
+                            "left_column_number" : left_time_info["column_number"],
+                            "right_dataset_id": right_time_info['dataset_id'],
+                            "right_join_column_number": right_time_info['column_number'],
+                            "right_join_start_time": right_time_info['start_time'],
+                            "right_join_end_time": right_time_info['end_time'],
+                            "right_join_time_granularity": right_time_info['granularity']
+                         })
 
         filtered_search_result = []
         for each_search_result in search_results:
@@ -695,7 +701,7 @@ class DatamartQueryCursor(object):
                 if each_search_result.id() in can_consider_datasets:
                     for each_combine in can_consider_datasets[each_search_result.id()]:
                         each_search_result_copied = copy.copy(each_search_result)
-                        # update join pairs
+                        # update join pairs information
                         right_index = None
                         right_join_column_name = each_search_result.search_result['variableName']['value']
                         for i in range(each_search_result.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']):
@@ -712,15 +718,21 @@ class DatamartQueryCursor(object):
                         original_left_index_column = DatasetColumn(resource_id=self.res_id, column_index=left_index)
                         original_right_index_column = DatasetColumn(resource_id=None, column_index=right_index)
                         left_columns = [
-                            [DatasetColumn(resource_id=self.res_id, column_index=each_combine[0])],
-                            [original_left_index_column]
+                            DatasetColumn(resource_id=self.res_id, column_index=each_combine["left_column_number"]),
+                            original_left_index_column
                         ]
                         right_columns = [
-                            [DatasetColumn(resource_id=None, column_index=each_combine[2])],
-                            [original_right_index_column]
+                            DatasetColumn(resource_id=None, column_index=each_combine["right_join_column_number"]),
+                            original_right_index_column
                         ]
-                        updated_join_pairs = [TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)]
+                        updated_join_pairs = [TabularJoinSpec(left_columns=[left_columns], right_columns=[right_columns])]
                         each_search_result_copied.set_join_pairs(updated_join_pairs)
+                        # update the search result with time information
+                        time_search_keyword = TIME_COLUMN_MARK + "____" + right_join_column_name
+                        each_search_result_copied.query_json['keywords'].append(time_search_keyword)
+                        each_search_result_copied.search_result['start_time'] = str(each_combine["right_join_start_time"])
+                        each_search_result_copied.search_result['end_time'] = str(each_combine["right_join_end_time"])
+                        each_search_result_copied.search_result['time_granularity'] = str(each_combine["right_join_time_granularity"])
                         filtered_search_result.append(each_search_result_copied)
 
         return filtered_search_result
@@ -991,9 +1003,11 @@ class DatamartSearchResult:
                                                                                   resource_id=None)
             self.selector_base_type = "ds"
         elif type(supplied_data) is d3m_DataFrame:
+            self.res_id = None
             self.supplied_dataframe = supplied_data
             self.selector_base_type = "df"
         else:
+            self.res_id = None
             self.supplied_dataframe = None
 
         if connection_url:
@@ -1009,7 +1023,6 @@ class DatamartSearchResult:
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
-        self._res_id = None  # only used for input is Dataset
         self.join_pairs = None
         self.right_df = None
         extra_information = self.search_result.get('extra_information')
@@ -1027,6 +1040,7 @@ class DatamartSearchResult:
         Inner function used to get first 10 rows of the search results
         :return:
         """
+        return_res = ""
         try:
             if self.search_type == "general":
                 return_res = json.loads(self.search_result['extra_information']['value'])['first_10_rows']
@@ -1046,11 +1060,10 @@ class DatamartSearchResult:
                 self._logger.error("unknown format of search result as {}!".format(str(self.search_type)))
 
         except Exception as e:
-            return_res = ""
             self._logger.error("failed on getting first ten rows of search results")
             self._logger.debug(e, exc_info=True)
-
-        return return_res
+        finally:
+            return return_res
 
     def display(self) -> pd.DataFrame:
         """
@@ -1100,7 +1113,7 @@ class DatamartSearchResult:
                 self._logger.info("New connection url given from download part as " + self.connection_url)
 
         if type(supplied_data) is d3m_Dataset:
-            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+            self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
         elif type(supplied_data) is d3m_DataFrame:
             self.supplied_dataframe = supplied_data
         else:
@@ -1154,11 +1167,11 @@ class DatamartSearchResult:
             self._logger.info("Find downloaded data from previous time, will use that.")
             right_df = self.right_df
         self._logger.debug("Download finished, start finding pairs to join...")
-        left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
-        right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
+        # left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
+        # right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
         if self.join_pairs is None:
-            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=self._res_id)
+            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=self.res_id)
         else:
             candidate_join_column_pairs = self.join_pairs
         if len(candidate_join_column_pairs) > 1:
@@ -1174,10 +1187,56 @@ class DatamartSearchResult:
                     break
 
         if is_time_query:
-            # if it is the dataset fond with time query, we should transform that time column to same format
+            # if it is the dataset fond with time query, we should transform time column to same format and same granularity
             # then we can run RLTK with exact join same as str join
-            right_join_column_name = self.search_result['variableName']['value']
-            right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
+            time_granularity = self.search_result.get("time_granularity")
+            if time_granularity is None:
+                # if not get time granulairty, set as unknown, then try to get the real value
+                self._logger.info("Unable to get time granularity! Will try to guess.")
+                time_granularity = 8
+            if self.join_pairs is None:
+                right_join_column_name = self.search_result['variableName']['value']
+                right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
+            else:
+                join_pairs_numbers = self.join_pairs[0].get_column_number_pairs()
+                time_stringfy_format = Utils.time_granularity_value_to_stringfy_time_format(time_granularity)
+                if time_granularity == 8:
+                    possible_granularity = {}
+                for each_join_pair_left, each_join_pair_right in join_pairs_numbers:
+                    for each_col in each_join_pair_left:
+                        try:
+                            left_df.iloc[:, each_col] = pd.to_datetime(left_df.iloc[:, each_col])\
+                                .dt.strftime(time_stringfy_format)
+                            if time_granularity == 8:
+                                possible_granularity[("left", each_col)] = \
+                                    Utils.map_d3m_granularity_to_value(Utils.get_time_granularity(left_df.iloc[:, each_col]))
+                        except:
+                            self._logger.warning("Column No.{} {} on left_df(supplied_data) is not time column!".format(
+                                str(each_col), left_df.columns[each_col]))
+
+                    for each_col in each_join_pair_right:
+                        try:
+                            right_df.iloc[:, each_col] = pd.to_datetime(right_df.iloc[:, each_col]).\
+                                dt.strftime(time_stringfy_format)
+                            if time_granularity == 8:
+                                possible_granularity[("right", each_col)] = \
+                                    Utils.map_d3m_granularity_to_value(Utils.get_time_granularity(right_df.iloc[:, each_col]))
+                        except:
+                            self._logger.warning("Column No.{} {} on right_df is not time column!".format(
+                                str(each_col), right_df.columns[each_col]))
+
+                    # update with new time granularity
+                    if time_granularity == "8":
+                        time_granularity = min(possible_granularity.values())
+                        self._logger.info("Get new granularity value as {}".format(str(time_granularity)))
+                        time_stringfy_format = Utils.time_granularity_value_to_stringfy_time_format(time_granularity)
+                        for k, v in possible_granularity.keys():
+                            if k[0] == "left":
+                                left_df.iloc[:, k[1]] = pd.to_datetime(left_df.iloc[:, k[1]]). \
+                                    dt.strftime(time_stringfy_format)
+                            elif k[0] == "right":
+                                right_df.iloc[:, k[1]] = pd.to_datetime(right_df.iloc[:, k[1]]).\
+                                    dt.strftime(time_stringfy_format)
 
         pairs = candidate_join_column_pairs[0].get_column_number_pairs()
         # generate the pairs for each join_column_pairs
@@ -1186,11 +1245,11 @@ class DatamartSearchResult:
             right_columns = each_pair[1]
             try:
                 # Only profile the joining columns, otherwise it will be too slow:
-                left_metadata = Utils.calculate_dsbox_features(data=left_df, metadata=left_metadata,
-                                                               selected_columns=set(left_columns))
-
-                right_metadata = Utils.calculate_dsbox_features(data=right_df, metadata=right_metadata,
-                                                                selected_columns=set(right_columns))
+                # left_metadata = Utils.calculate_dsbox_features(data=left_df, metadata=left_metadata,
+                #                                                selected_columns=set(left_columns))
+                #
+                # right_metadata = Utils.calculate_dsbox_features(data=right_df, metadata=right_metadata,
+                #                                                 selected_columns=set(right_columns))
 
                 self._logger.info(" - start getting pairs for " + str(each_pair))
                 right_df_copy = copy.deepcopy(right_df)
@@ -1198,8 +1257,8 @@ class DatamartSearchResult:
                 result, self.pairs = RLTKJoinerGeneral.find_pair(left_df=left_df, right_df=right_df_copy,
                                                                  left_columns=[left_columns],
                                                                  right_columns=[right_columns],
-                                                                 left_metadata=left_metadata,
-                                                                 right_metadata=right_metadata)
+                                                                 left_metadata=None,
+                                                                 right_metadata=None)
 
                 join_pairs_result.append(result)
                 # TODO: figure out some way to compute the joining quality
@@ -1422,7 +1481,7 @@ class DatamartSearchResult:
             if updated_result[0]:  # [0] store whether it success find the metadata
                 supplied_data = updated_result[1]
             self.supplied_data = supplied_data
-            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
+            self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
                                                                                    resource_id=None,
                                                                                    has_hyperparameter=False)
 
@@ -1524,7 +1583,7 @@ class DatamartSearchResult:
             raise ValueError("Unknown return format as" + str(return_format))
 
         if type(supplied_data) is d3m_Dataset:
-            supplied_data_df = supplied_data[self._res_id]
+            supplied_data_df = supplied_data[self.res_id]
         elif type(supplied_data) is d3m_DataFrame:
             supplied_data_df = supplied_data
         else:
@@ -1571,7 +1630,8 @@ class DatamartSearchResult:
             # df_joined = supplied_data_df
 
         else:
-            if self.special_requirement.get("display_columns") and len(augment_columns) == 0:
+            # if we get special requirement from upload and not get from user side, use upload's
+            if self.special_requirement and self.special_requirement.get("display_columns") and len(augment_columns) == 0:
                 for each_col in self.special_requirement["display_columns"]:
                     augment_columns.append(DatasetColumn(resource_id=None, column_index=each_col))
 
@@ -1688,24 +1748,52 @@ class DatamartSearchResult:
         self._logger.debug("Start getting join hints.")
 
         if self.search_type == "general":
-            right_join_column_name = self.search_result['variableName']['value']
-            left_columns = []
-            right_columns = []
+            results = []
+            if left_df is None or right_df is None:
+                try:
+                    join_left_cols = []
+                    right_col_number = None
+                    for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
+                        if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
+                            right_col_number = int(each_key.split("_")[-1])
+                            break
+                    join_right_cols = [DatasetColumn(resource_id=None, column_index=right_col_number)]
+                    if self.supplied_dataframe is None:
+                        self._logger.error(
+                            "Can't get supplied dataframe information, failed to find the left join column number")
+                    else:
+                        for each in self.query_json['variables'].keys():
+                            left_col_number = self.supplied_dataframe.columns.tolist().index(each)
+                            join_left_cols.append(DatasetColumn(resource_id=self.res_id, column_index=left_col_number))
+                    results.append(TabularJoinSpec(left_columns=[join_left_cols], right_columns=[join_right_cols]))
+                    self._logger.debug("Get join hints finished, the join hints are:")
+                    self._logger.debug(str(left_col_number) + ", " + str(right_col_number))
+                except KeyError:
+                    self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+                except Exception as e:
+                    self._logger.error("Can't find join columns! Unknown error!")
+                    self._logger.debug(e, exc_info=True)
+                finally:
+                    return results
+            else:
+                right_join_column_name = self.search_result['variableName']['value']
+                left_columns = []
+                right_columns = []
 
-            for each in self.query_json['variables'].keys():
-                left_index = left_df.columns.tolist().index(each)
-                right_index = right_df.columns.tolist().index(right_join_column_name)
-                left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
-                right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
-                left_columns.append([left_index_column])
-                right_columns.append([right_index_column])
+                for each in self.query_json['variables'].keys():
+                    left_index = left_df.columns.tolist().index(each)
+                    right_index = right_df.columns.tolist().index(right_join_column_name)
+                    left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
+                    right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
+                    left_columns.append([left_index_column])
+                    right_columns.append([right_index_column])
 
-            results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
-            self._logger.debug("Get join hints finished, the join hints are:")
-            self._logger.debug(str(left_index) + ", " + str(right_index))
+                results.append(TabularJoinSpec(left_columns=left_columns, right_columns=right_columns))
+                self._logger.debug("Get join hints finished, the join hints are:")
+                self._logger.debug(str(left_index) + ", " + str(right_index))
         else:
             raise ValueError("Unsupport type to get join hints with type" + self.search_type)
-        return [results]
+        return results
 
     def serialize(self) -> str:
         """
@@ -1723,40 +1811,39 @@ class DatamartSearchResult:
         result['metadata']['search_type'] = self.search_type
         augmentation = dict()
         augmentation['properties'] = "join"
+
         if self.search_type == "general":
-            try:
-                left_col_number = []
-                right_col_number = None
-                for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
-                    if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
-                        right_col_number = int(each_key.split("_")[-1])
-                        break
-                augmentation['right_columns'] = [right_col_number]
-                if self.supplied_dataframe is None:
-                    self._logger.error(
-                        "Can't get supplied dataframe information, failed to find the left join column number")
-                else:
-                    for each in self.query_json['variables'].keys():
-                        left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
-                augmentation['left_columns'] = left_col_number
-            except KeyError:
-                self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+            if not self.join_pairs:
+                self.join_pairs = self.get_join_hints(left_df=self.supplied_dataframe, right_df=self.right_df)
+
+            if len(self.join_pairs) == 0:
+                self._logger.error("Fail to get the join pairs!")
                 augmentation['left_columns'] = None
                 augmentation['right_columns'] = None
-            except Exception as e:
-                self._logger.error("Can't find join columns! Unknown error!")
-                self._logger.debug(e, exc_info=True)
+            else:
+                if len(self.join_pairs) > 1:
+                    self._logger.warning("Multiple join pairs serialization not support yet!")
+                join_pair = self.join_pairs[0]
+                join_pair_numbers = join_pair.get_column_number_pairs()
+                left_join_pair_numbers = []
+                right_join_pair_numbers = []
+                for each_join_pair_numbers in join_pair_numbers:
+                    left_join_pair_numbers.append(each_join_pair_numbers[0])
+                    right_join_pair_numbers.append(each_join_pair_numbers[1])
+                augmentation['left_columns'] = left_join_pair_numbers
+                augmentation['right_columns'] = right_join_pair_numbers
 
+        # otherwise try to guess from information
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
-            augmentation['left_columns'] = [left_col_number]
+            augmentation['left_columns'] = [[left_col_number]]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
-            augmentation['right_columns'] = [right_col_number]
+            augmentation['right_columns'] = [[right_col_number]]
         elif self.search_type == "vector":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
-            augmentation['left_columns'] = [left_col_number]
+            augmentation['left_columns'] = [[left_col_number]]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
-            augmentation['right_columns'] = [right_col_number]
+            augmentation['right_columns'] = [[right_col_number]]
 
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
@@ -1773,8 +1860,10 @@ class DatamartSearchResult:
         search_result = serialize_result['metadata']['search_result']
         query_json = serialize_result['metadata']['query_json']
         search_type = serialize_result['metadata']['search_type']
-        return DatamartSearchResult(search_result, supplied_data, query_json, search_type)
-
+        return_res = DatamartSearchResult(search_result, supplied_data, query_json, search_type)
+        if serialize_result.get('augmentation'):
+            return_res.set_join_pairs([TabularJoinSpec.from_column_number_pairs(serialize_result['augmentation'])])
+        return return_res
     # def __getstate__(self) -> typing.Dict:
     #     """
     #     This method is used by the pickler as the state of object.
@@ -1846,15 +1935,42 @@ class TabularJoinSpec(AugmentSpec):
             For example, it will return a join pair like ([1,2], [1])
         """
         all_pairs = []
-        for each in zip(self.left_columns, self.right_columns):
+        for each_left_col_pair, each_right_col_pair in zip(self.left_columns, self.right_columns):
             left = []
             right = []
-            for each_left_col in each[0]:
+            for each_left_col in each_left_col_pair:
                 left.append(each_left_col.column_index)
-            for each_right_col in each[1]:
+            for each_right_col in each_right_col_pair:
                 right.append(each_right_col.column_index)
             all_pairs.append((left, right))
         return all_pairs
+
+    @classmethod
+    def from_column_number_pairs(cls, col_number_pair: dict):
+        """
+        reconstruct the TabularJoinSpec base on the join pairs
+        :param col_number_pair:
+        :return:
+        """
+        left_columns = []
+        right_columns = []
+        left_pairs = col_number_pair['left_columns']
+        right_pairs = col_number_pair['right_columns']
+        if len(left_pairs) != len(right_pairs):
+            raise ValueError("The given join pairs length on left = {} right = {} are different.".format(
+                str(left_pairs), str(right_pairs)))
+
+        for each_left_pair in left_pairs:
+            left_pair_transferred = []
+            for each_left_column in each_left_pair:
+                left_pair_transferred.append(DatasetColumn(resource_id=None, column_index=each_left_column))
+            left_columns.append(left_pair_transferred)
+        for each_left_pair in right_pairs:
+            right_pair_transferred = []
+            for each_right_column in each_left_pair:
+                right_pair_transferred.append(DatasetColumn(resource_id=None, column_index=each_right_column))
+            right_columns.append(right_pair_transferred)
+        return TabularJoinSpec(left_columns, right_columns)
 
 
 class VariableConstraint(object):

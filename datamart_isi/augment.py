@@ -115,6 +115,7 @@ class Augment(object):
             bind = "?score_var" if bind == "" else bind + "+ ?score_var"
 
         if need_keywords_search:
+            query_keywords = json_query["keywords_search"]
             # updated v2019.11.1, for search_without_data, we should remove duplicates
             if dataset is None:
                 SELECTION = '''
@@ -122,19 +123,20 @@ class Augment(object):
                             '''
                 spaqrl_query = PREFIX + SELECTION + STRUCTURE
                 LIMIT = "LIMIT 20"
-
-            # updated v2019.11.1, now use fuzzy search
-            _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
-
-            query_keywords = json_query["keywords_search"]
-            query_keywords.extend(supplied_dataframe.columns.tolist())
+            else:
+                # updated v2019.11.1, now use fuzzy search
+                _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+                query_keywords.extend(supplied_dataframe.columns.tolist())
 
             trigram_keywords = []
             for each_keyword in query_keywords:
                 trigram_keywords.extend(trigram_tokenizer(each_keyword))
 
             # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
+            # update v2019.12.13: use keywords augmentation
+            query_keywords = Utils.keywords_augmentation(query_keywords)
             query_part = " ".join(query_keywords)
+
             spaqrl_query += '''
                 optional {
                 ?keywords_url ps:C2004 [
