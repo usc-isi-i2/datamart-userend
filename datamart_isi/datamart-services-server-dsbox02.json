@@ -7,7 +7,7 @@
             "connection_type": "https",
             "name": "isi_datamart",
             "host": "dsbox02.isi.edu",
-            "port": 9005,
+            "port": 9000,
             "path": ""
         },
         {
@@ -21,7 +21,7 @@
             "name": "wikifier_identifier",
             "host": "dsbox02.isi.edu",
             "host_internal": "isi_datamart",
-            "port": 9005,
+            "port": 9000,
             "path": "get_identifiers"
         },
         {
@@ -31,18 +31,12 @@
             "path": "wikify"
         },
         {
-            "name": "keywords_augmentation",
-            "host": "dsbox02.isi.edu",
-            "port": 9005,
-            "path": "keywords_augmentation"
-        },
-        {
             "name": "general_search",
             "host": "dsbox02.isi.edu",
             "host_internal": "blazegraph_satellite",
             "port": 9002,
             "port_external": 9002,
-            "path": "blazegraph/namespace/datamart_ethiopia/sparql"
+            "path": "blazegraph/namespace/datamart3/sparql"
         },
         {
             "name": "general_search_test",
