@@ -6,6 +6,7 @@ import logging
 from d3m.base import utils as d3m_utils
 from datetime import datetime
 from datamart_isi.utilities.utils import Utils
+from d3m.container import Dataset as d3m_Dataset
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
 from datamart_isi.joiners.join_result import JoinResult
 from datamart_isi.utilities import connection
@@ -31,11 +32,11 @@ class Augment(object):
         self.logger = logging.getLogger(__name__)
         self.wikidata_cache_manager = QueryCache()
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: d3m_Dataset = None) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
-            dataset:
+            dataset: a d3m format dataset for reference
             **kwargs:
 
         Returns:
