@@ -1,0 +1,2541 @@
+{
+  "Q3285143": {
+    "labels": [
+      "Mene Sibu",
+      "Mana Sibu"
+    ],
+    "woreda_ids": [
+      "40101",
+      "040101"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3337870": {
+    "labels": [
+      "Nejo"
+    ],
+    "woreda_ids": [
+      "40102",
+      "040102"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3106653": {
+    "labels": [
+      "Gimbi"
+    ],
+    "woreda_ids": [
+      "40103",
+      "040103"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3216542": {
+    "labels": [
+      "Lalo Asabi"
+    ],
+    "woreda_ids": [
+      "40104",
+      "040104"
+    ],
+    "region": "West Wellega"
+  },
+  "Q6408249": {
+    "labels": [
+      "QILTU KARA",
+      "Kiltu Kara"
+    ],
+    "woreda_ids": [
+      "40105",
+      "040105"
+    ],
+    "region": "West Wellega"
+  },
+  "Q4938669": {
+    "labels": [
+      "Boji Dermeji",
+      "Boji Dirmaji"
+    ],
+    "woreda_ids": [
+      "40106",
+      "040106"
+    ],
+    "region": "West Wellega"
+  },
+  "Q5617682": {
+    "labels": [
+      "Guliso"
+    ],
+    "woreda_ids": [
+      "40107",
+      "040107"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3162804": {
+    "labels": [
+      "Jarso"
+    ],
+    "woreda_ids": [
+      "40108",
+      "040108"
+    ],
+    "region": "West Wellega"
+  },
+  "Q4938667": {
+    "labels": [
+      "Boji Cheqorsa",
+      "Boji Chokorsa"
+    ],
+    "woreda_ids": [
+      "40110",
+      "040110"
+    ],
+    "region": "West Wellega"
+  },
+  "Q4837972": {
+    "labels": [
+      "Babo Gembel",
+      "Babo Gambela"
+    ],
+    "woreda_ids": [
+      "40111",
+      "040111"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3573095": {
+    "labels": [
+      "Yubdo"
+    ],
+    "woreda_ids": [
+      "40112",
+      "040112"
+    ],
+    "region": "West Wellega"
+  },
+  "Q55612440": {
+    "labels": [
+      "GENJI"
+    ],
+    "woreda_ids": [
+      "40113",
+      "040113"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3127995": {
+    "labels": [
+      "Haru"
+    ],
+    "woreda_ids": [
+      "40114",
+      "040114"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3342884": {
+    "labels": [
+      "NOLE KABA"
+    ],
+    "woreda_ids": [
+      "40115",
+      "040115"
+    ],
+    "region": "West Wellega"
+  },
+  "Q2893815": {
+    "labels": [
+      "BEGI"
+    ],
+    "woreda_ids": [
+      "40116",
+      "040116"
+    ],
+    "region": "West Wellega"
+  },
+  "Q5887305": {
+    "labels": [
+      "Homa"
+    ],
+    "woreda_ids": [
+      "40119",
+      "040119"
+    ],
+    "region": "West Wellega"
+  },
+  "Q4831646": {
+    "labels": [
+      "Ayira",
+      "Ayra"
+    ],
+    "woreda_ids": [
+      "40120",
+      "040120"
+    ],
+    "region": "West Wellega"
+  },
+  "Q3241124": {
+    "labels": [
+      "Limu"
+    ],
+    "woreda_ids": [
+      "40201",
+      "040201"
+    ],
+    "region": "East Wellega"
+  },
+  "Q787088": {
+    "labels": [
+      "Ebantu",
+      "Ibantu District"
+    ],
+    "woreda_ids": [
+      "40202",
+      "040202"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3105402": {
+    "labels": [
+      "Gida Keremu"
+    ],
+    "woreda_ids": [
+      "40203",
+      "040203"
+    ],
+    "region": "East Wellega"
+  },
+  "Q4941221": {
+    "labels": [
+      "Boneya Bushe",
+      "Bonaya Boshe"
+    ],
+    "woreda_ids": [
+      "40205",
+      "040205"
+    ],
+    "region": "East Wellega"
+  },
+  "Q7976892": {
+    "labels": [
+      "Wayu Tuqa"
+    ],
+    "woreda_ids": [
+      "40206",
+      "040206"
+    ],
+    "region": "East Wellega"
+  },
+  "Q16965400": {
+    "labels": [
+      "Gudeyabila",
+      "Gudeya Bila"
+    ],
+    "woreda_ids": [
+      "40207",
+      "040207"
+    ],
+    "region": "East Wellega"
+  },
+  "Q5575602": {
+    "labels": [
+      "Gobu Seyo"
+    ],
+    "woreda_ids": [
+      "40208",
+      "040208"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3482960": {
+    "labels": [
+      "Sibu Sire"
+    ],
+    "woreda_ids": [
+      "40209",
+      "040209"
+    ],
+    "region": "East Wellega"
+  },
+  "Q5275497": {
+    "labels": [
+      "Diga"
+    ],
+    "woreda_ids": [
+      "40210",
+      "040210"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3473789": {
+    "labels": [
+      "Sasiga"
+    ],
+    "woreda_ids": [
+      "40211",
+      "040211"
+    ],
+    "region": "East Wellega"
+  },
+  "Q6520555": {
+    "labels": [
+      "Leqa Dulecha",
+      "Leka Dulecha"
+    ],
+    "woreda_ids": [
+      "40212",
+      "040212"
+    ],
+    "region": "East Wellega"
+  },
+  "Q5621831": {
+    "labels": [
+      "Guto Gida"
+    ],
+    "woreda_ids": [
+      "40213",
+      "040213"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3178986": {
+    "labels": [
+      "Jimma Arjo"
+    ],
+    "woreda_ids": [
+      "40214",
+      "040214"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3346443": {
+    "labels": [
+      "Nunu Qumba"
+    ],
+    "woreda_ids": [
+      "40215",
+      "040215"
+    ],
+    "region": "East Wellega"
+  },
+  "Q7966892": {
+    "labels": [
+      "Wama Hagelo"
+    ],
+    "woreda_ids": [
+      "40216",
+      "040216"
+    ],
+    "region": "East Wellega"
+  },
+  "Q376295": {
+    "labels": [
+      "Nekemte Town"
+    ],
+    "woreda_ids": [
+      "40217",
+      "040217"
+    ],
+    "region": "East Wellega"
+  },
+  "Q3016116": {
+    "labels": [
+      "Darimu"
+    ],
+    "woreda_ids": [
+      "40301",
+      "040301"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q4723965": {
+    "labels": [
+      "Algesachi",
+      "Alge Sache"
+    ],
+    "woreda_ids": [
+      "40302",
+      "040302"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q2964481": {
+    "labels": [
+      "CHORA"
+    ],
+    "woreda_ids": [
+      "40303",
+      "040303"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q5207520": {
+    "labels": [
+      "Dabo Hana"
+    ],
+    "woreda_ids": [
+      "40305",
+      "040305"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q2654779": {
+    "labels": [
+      "Gechi"
+    ],
+    "woreda_ids": [
+      "40306",
+      "040306"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q4945120": {
+    "labels": [
+      "Boricha"
+    ],
+    "woreda_ids": [
+      "40307",
+      "040307"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q3026870": {
+    "labels": [
+      "DEDESA",
+      "Didessa"
+    ],
+    "woreda_ids": [
+      "40308",
+      "040308"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q8050552": {
+    "labels": [
+      "Yayu"
+    ],
+    "woreda_ids": [
+      "40309",
+      "040309"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q3307516": {
+    "labels": [
+      "METU"
+    ],
+    "woreda_ids": [
+      "40310",
+      "040310"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q2832369": {
+    "labels": [
+      "Ale"
+    ],
+    "woreda_ids": [
+      "40311",
+      "040311"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q2928317": {
+    "labels": [
+      "Bure"
+    ],
+    "woreda_ids": [
+      "40312",
+      "040312"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q3343373": {
+    "labels": [
+      "Nono Sele"
+    ],
+    "woreda_ids": [
+      "40313",
+      "040313"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q4913557": {
+    "labels": [
+      "BILONOPA",
+      "Bilo Nopha "
+    ],
+    "woreda_ids": [
+      "40315",
+      "040315"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q16957182": {
+    "labels": [
+      "Hurumu"
+    ],
+    "woreda_ids": [
+      "40316",
+      "040316"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q5274247": {
+    "labels": [
+      "Didu",
+      "Didu, Ethiopia"
+    ],
+    "woreda_ids": [
+      "40317",
+      "040317"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q6398810": {
+    "labels": [
+      "Halu"
+    ],
+    "woreda_ids": [
+      "40319",
+      "040319"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q3175104": {
+    "labels": [
+      "METU TOWN",
+      "Metu"
+    ],
+    "woreda_ids": [
+      "40320",
+      "040320"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q56489850": {
+    "labels": [
+      "Bedele Zuriya",
+      "Buno BedeleÊ"
+    ],
+    "woreda_ids": [
+      "40322",
+      "040322"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q5094504": {
+    "labels": [
+      "CHEWAQA",
+      "Chewaka"
+    ],
+    "woreda_ids": [
+      "40323",
+      "040323"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q5297724": {
+    "labels": [
+      "Doreni"
+    ],
+    "woreda_ids": [
+      "40324",
+      "040324"
+    ],
+    "region": "Ilu Aba Bora"
+  },
+  "Q2973716": {
+    "labels": [
+      "Limu Seka"
+    ],
+    "woreda_ids": [
+      "40401",
+      "040401"
+    ],
+    "region": "Jimma"
+  },
+  "Q3241122": {
+    "labels": [
+      "Limu Kosa",
+      "Limmu Kosa"
+    ],
+    "woreda_ids": [
+      "40402",
+      "040402"
+    ],
+    "region": "Jimma"
+  },
+  "Q693640": {
+    "labels": [
+      "Sekoru",
+      "Sokoru"
+    ],
+    "woreda_ids": [
+      "40403",
+      "040403"
+    ],
+    "region": "Jimma"
+  },
+  "Q3529396": {
+    "labels": [
+      "TIRO AFETA"
+    ],
+    "woreda_ids": [
+      "40404",
+      "040404"
+    ],
+    "region": "Jimma"
+  },
+  "Q5076096": {
+    "labels": [
+      "Kerisa"
+    ],
+    "woreda_ids": [
+      "40405",
+      "040405"
+    ],
+    "region": "Jimma"
+  },
+  "Q666087": {
+    "labels": [
+      "Mana"
+    ],
+    "woreda_ids": [
+      "40406",
+      "040406"
+    ],
+    "region": "Jimma"
+  },
+  "Q3110373": {
+    "labels": [
+      "Gomma"
+    ],
+    "woreda_ids": [
+      "40407",
+      "040407"
+    ],
+    "region": "Jimma"
+  },
+  "Q3103838": {
+    "labels": [
+      "Gera"
+    ],
+    "woreda_ids": [
+      "40408",
+      "040408"
+    ],
+    "region": "Jimma"
+  },
+  "Q3477985": {
+    "labels": [
+      "Seka Chekorsa"
+    ],
+    "woreda_ids": [
+      "40409",
+      "040409"
+    ],
+    "region": "Jimma"
+  },
+  "Q3021096": {
+    "labels": [
+      "Dedo"
+    ],
+    "woreda_ids": [
+      "40410",
+      "040410"
+    ],
+    "region": "Jimma"
+  },
+  "Q3401949": {
+    "labels": [
+      "Omonada"
+    ],
+    "woreda_ids": [
+      "40411",
+      "040411"
+    ],
+    "region": "Jimma"
+  },
+  "Q304246": {
+    "labels": [
+      "SIGMO"
+    ],
+    "woreda_ids": [
+      "40412",
+      "040412"
+    ],
+    "region": "Jimma"
+  },
+  "Q2376156": {
+    "labels": [
+      "Setema"
+    ],
+    "woreda_ids": [
+      "40413",
+      "040413"
+    ],
+    "region": "Jimma"
+  },
+  "Q7492254": {
+    "labels": [
+      "Shebe Senbo"
+    ],
+    "woreda_ids": [
+      "40414",
+      "040414"
+    ],
+    "region": "Jimma"
+  },
+  "Q5104933": {
+    "labels": [
+      "Chora Boter",
+      "Chora Botor "
+    ],
+    "woreda_ids": [
+      "40415",
+      "040415"
+    ],
+    "region": "Jimma"
+  },
+  "Q5618018": {
+    "labels": [
+      "Guma"
+    ],
+    "woreda_ids": [
+      "40416",
+      "040416"
+    ],
+    "region": "Jimma"
+  },
+  "Q56460844": {
+    "labels": [
+      "Agaro"
+    ],
+    "woreda_ids": [
+      "40417",
+      "040417"
+    ],
+    "region": "Jimma"
+  },
+  "Q3106713": {
+    "labels": [
+      "Ginde Beret"
+    ],
+    "woreda_ids": [
+      "40501",
+      "040501"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3176850": {
+    "labels": [
+      "Jeldu"
+    ],
+    "woreda_ids": [
+      "40502",
+      "040502"
+    ],
+    "region": "West Shewa"
+  },
+  "Q2842131": {
+    "labels": [
+      "Ambo"
+    ],
+    "woreda_ids": [
+      "40503",
+      "040503"
+    ],
+    "region": "West Shewa"
+  },
+  "Q6841084": {
+    "labels": [
+      "Midakegni",
+      "Midakegn"
+    ],
+    "woreda_ids": [
+      "40504",
+      "040504"
+    ],
+    "region": "West Shewa"
+  },
+  "Q2972032": {
+    "labels": [
+      "Chelia"
+    ],
+    "woreda_ids": [
+      "40505",
+      "040505"
+    ],
+    "region": "West Shewa"
+  },
+  "Q2880302": {
+    "labels": [
+      "Bako Tibe"
+    ],
+    "woreda_ids": [
+      "40506",
+      "040506"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3015333": {
+    "labels": [
+      "Dano"
+    ],
+    "woreda_ids": [
+      "40507",
+      "040507"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3343374": {
+    "labels": [
+      "Nono"
+    ],
+    "woreda_ids": [
+      "40508",
+      "040508"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3528408": {
+    "labels": [
+      "Tikur Enchini"
+    ],
+    "woreda_ids": [
+      "40509",
+      "040509"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3022296": {
+    "labels": [
+      "Dendi"
+    ],
+    "woreda_ids": [
+      "40510",
+      "040510"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3049548": {
+    "labels": [
+      "Ejerie"
+    ],
+    "woreda_ids": [
+      "40511",
+      "040511"
+    ],
+    "region": "West Shewa"
+  },
+  "Q2973346": {
+    "labels": [
+      "Adea Berga"
+    ],
+    "woreda_ids": [
+      "40513",
+      "040513"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3307182": {
+    "labels": [
+      "Metarobi",
+      "Meta Robi"
+    ],
+    "woreda_ids": [
+      "40514",
+      "040514"
+    ],
+    "region": "West Shewa"
+  },
+  "Q4670620": {
+    "labels": [
+      "Abuna Gindeberet"
+    ],
+    "woreda_ids": [
+      "40516",
+      "040516"
+    ],
+    "region": "West Shewa"
+  },
+  "Q7813527": {
+    "labels": [
+      "Toko Kutaye",
+      "Toke Kutaye"
+    ],
+    "woreda_ids": [
+      "40517",
+      "040517"
+    ],
+    "region": "West Shewa"
+  },
+  "Q6192004": {
+    "labels": [
+      "Jibat"
+    ],
+    "woreda_ids": [
+      "40518",
+      "040518"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3139315": {
+    "labels": [
+      "Holeta Town",
+      "Holeta Genet"
+    ],
+    "woreda_ids": [
+      "40520",
+      "040520"
+    ],
+    "region": "West Shewa"
+  },
+  "Q3566240": {
+    "labels": [
+      "Were Jarso"
+    ],
+    "woreda_ids": [
+      "40601",
+      "040601"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3023542": {
+    "labels": [
+      "Dera"
+    ],
+    "woreda_ids": [
+      "40602",
+      "040602"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3135217": {
+    "labels": [
+      "Hidabu Abote"
+    ],
+    "woreda_ids": [
+      "40603",
+      "040603"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3200732": {
+    "labels": [
+      "Kuyu"
+    ],
+    "woreda_ids": [
+      "40604",
+      "040604"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3100103": {
+    "labels": [
+      "Degem"
+    ],
+    "woreda_ids": [
+      "40605",
+      "040605"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3103930": {
+    "labels": [
+      "Girar Jarso"
+    ],
+    "woreda_ids": [
+      "40606",
+      "040606"
+    ],
+    "region": "North Shewa"
+  },
+  "Q5248544": {
+    "labels": [
+      "Debre Libanos"
+    ],
+    "woreda_ids": [
+      "40607",
+      "040607"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3570146": {
+    "labels": [
+      "Wuchale"
+    ],
+    "woreda_ids": [
+      "40608",
+      "040608"
+    ],
+    "region": "North Shewa"
+  },
+  "Q2973686": {
+    "labels": [
+      "Kimbibit"
+    ],
+    "woreda_ids": [
+      "40610",
+      "040610"
+    ],
+    "region": "North Shewa"
+  },
+  "Q2896994": {
+    "labels": [
+      "Bereh"
+    ],
+    "woreda_ids": [
+      "40611",
+      "040611"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3327625": {
+    "labels": [
+      "Sulullta",
+      "Sululta"
+    ],
+    "woreda_ids": [
+      "40612",
+      "040612"
+    ],
+    "region": "North Shewa"
+  },
+  "Q56489743": {
+    "labels": [
+      "FicheTown",
+      "Fiche"
+    ],
+    "woreda_ids": [
+      "40613",
+      "040613"
+    ],
+    "region": "North Shewa"
+  },
+  "Q784515": {
+    "labels": [
+      "Yaya Gulele"
+    ],
+    "woreda_ids": [
+      "40614",
+      "040614"
+    ],
+    "region": "North Shewa"
+  },
+  "Q6192157": {
+    "labels": [
+      "Jido"
+    ],
+    "woreda_ids": [
+      "40615",
+      "040615"
+    ],
+    "region": "North Shewa"
+  },
+  "Q6934311": {
+    "labels": [
+      "Mulo"
+    ],
+    "woreda_ids": [
+      "40616",
+      "040616"
+    ],
+    "region": "North Shewa"
+  },
+  "Q4716049": {
+    "labels": [
+      "Aleiltu",
+      "Aleltu"
+    ],
+    "woreda_ids": [
+      "40617",
+      "040617"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3478522": {
+    "labels": [
+      "Sendafa Town"
+    ],
+    "woreda_ids": [
+      "40618",
+      "040618"
+    ],
+    "region": "North Shewa"
+  },
+  "Q3068406": {
+    "labels": [
+      "Fentale"
+    ],
+    "woreda_ids": [
+      "40701",
+      "040701"
+    ],
+    "region": "East Shewa"
+  },
+  "Q2422429": {
+    "labels": [
+      "Boset"
+    ],
+    "woreda_ids": [
+      "40702",
+      "040702"
+    ],
+    "region": "East Shewa"
+  },
+  "Q351427": {
+    "labels": [
+      "Adama"
+    ],
+    "woreda_ids": [
+      "40703",
+      "040703"
+    ],
+    "region": "East Shewa"
+  },
+  "Q590292": {
+    "labels": [
+      "Lomme"
+    ],
+    "woreda_ids": [
+      "40704",
+      "040704"
+    ],
+    "region": "East Shewa"
+  },
+  "Q3106655": {
+    "labels": [
+      "Gimbichu"
+    ],
+    "woreda_ids": [
+      "40705",
+      "040705"
+    ],
+    "region": "East Shewa"
+  },
+  "Q2823862": {
+    "labels": [
+      "Ada'a"
+    ],
+    "woreda_ids": [
+      "40706",
+      "040706"
+    ],
+    "region": "East Shewa"
+  },
+  "Q3041004": {
+    "labels": [
+      "Dugda"
+    ],
+    "woreda_ids": [
+      "40707",
+      "040707"
+    ],
+    "region": "East Shewa"
+  },
+  "Q2824059": {
+    "labels": [
+      "Adami Tulu Jido Kombolcha"
+    ],
+    "woreda_ids": [
+      "40708",
+      "040708"
+    ],
+    "region": "East Shewa"
+  },
+  "Q56580808": {
+    "labels": [
+      "Bishoftu Town",
+      "Bishoftu"
+    ],
+    "woreda_ids": [
+      "40709",
+      "040709"
+    ],
+    "region": "East Shewa"
+  },
+  "Q4944247": {
+    "labels": [
+      "Bora"
+    ],
+    "woreda_ids": [
+      "40710",
+      "040710"
+    ],
+    "region": "East Shewa"
+  },
+  "Q2597088": {
+    "labels": [
+      "Akaki"
+    ],
+    "woreda_ids": [
+      "40712",
+      "040712"
+    ],
+    "region": "East Shewa"
+  },
+  "Q3306658": {
+    "labels": [
+      "Merti"
+    ],
+    "woreda_ids": [
+      "40801",
+      "040801"
+    ],
+    "region": "Arsi"
+  },
+  "Q2866446": {
+    "labels": [
+      "Aseko"
+    ],
+    "woreda_ids": [
+      "40802",
+      "040802"
+    ],
+    "region": "Arsi"
+  },
+  "Q3110313": {
+    "labels": [
+      "gololcha"
+    ],
+    "woreda_ids": [
+      "40803",
+      "040803"
+    ],
+    "region": "Arsi"
+  },
+  "Q3176822": {
+    "labels": [
+      "Jeju"
+    ],
+    "woreda_ids": [
+      "40804",
+      "040804"
+    ],
+    "region": "Arsi"
+  },
+  "Q5287998": {
+    "labels": [
+      "Dodota"
+    ],
+    "woreda_ids": [
+      "40805",
+      "040805"
+    ],
+    "region": "Arsi"
+  },
+  "Q374201": {
+    "labels": [
+      "Zeway Dugda"
+    ],
+    "woreda_ids": [
+      "40806",
+      "040806"
+    ],
+    "region": "Arsi"
+  },
+  "Q3138657": {
+    "labels": [
+      "Hitosa"
+    ],
+    "woreda_ids": [
+      "40807",
+      "040807"
+    ],
+    "region": "Arsi"
+  },
+  "Q3502932": {
+    "labels": [
+      "Sude"
+    ],
+    "woreda_ids": [
+      "40808",
+      "040808"
+    ],
+    "region": "Arsi"
+  },
+  "Q2964388": {
+    "labels": [
+      "Chole"
+    ],
+    "woreda_ids": [
+      "40809",
+      "040809"
+    ],
+    "region": "Arsi"
+  },
+  "Q2843318": {
+    "labels": [
+      "Amigna"
+    ],
+    "woreda_ids": [
+      "40810",
+      "040810"
+    ],
+    "region": "Arsi"
+  },
+  "Q3479998": {
+    "labels": [
+      "Seru"
+    ],
+    "woreda_ids": [
+      "40811",
+      "040811"
+    ],
+    "region": "Arsi"
+  },
+  "Q3434318": {
+    "labels": [
+      "Robe"
+    ],
+    "woreda_ids": [
+      "40812",
+      "040812"
+    ],
+    "region": "Arsi"
+  },
+  "Q3517952": {
+    "labels": [
+      "Tena"
+    ],
+    "woreda_ids": [
+      "40813",
+      "040813"
+    ],
+    "region": "Arsi"
+  },
+  "Q3481927": {
+    "labels": [
+      "Shirka",
+      "Sherka"
+    ],
+    "woreda_ids": [
+      "40814",
+      "040814"
+    ],
+    "region": "Arsi"
+  },
+  "Q5275598": {
+    "labels": [
+      "Digeluna Tijo"
+    ],
+    "woreda_ids": [
+      "40815",
+      "040815"
+    ],
+    "region": "Arsi"
+  },
+  "Q3529978": {
+    "labels": [
+      "Tiyo"
+    ],
+    "woreda_ids": [
+      "40816",
+      "040816"
+    ],
+    "region": "Arsi"
+  },
+  "Q3327847": {
+    "labels": [
+      "Munesa"
+    ],
+    "woreda_ids": [
+      "40817",
+      "040817"
+    ],
+    "region": "Arsi"
+  },
+  "Q6549969": {
+    "labels": [
+      "Limuna Bilbilo"
+    ],
+    "woreda_ids": [
+      "40818",
+      "040818"
+    ],
+    "region": "Arsi"
+  },
+  "Q5618457": {
+    "labels": [
+      "Guna"
+    ],
+    "woreda_ids": [
+      "40819",
+      "040819"
+    ],
+    "region": "Arsi"
+  },
+  "Q7530072": {
+    "labels": [
+      "Sire"
+    ],
+    "woreda_ids": [
+      "40820",
+      "040820"
+    ],
+    "region": "Arsi"
+  },
+  "Q6698715": {
+    "labels": [
+      "Ludehetosa",
+      "Lude Hitosa"
+    ],
+    "woreda_ids": [
+      "40821",
+      "040821"
+    ],
+    "region": "Arsi"
+  },
+  "Q5276575": {
+    "labels": [
+      "Deksis",
+      "Diksis"
+    ],
+    "woreda_ids": [
+      "40822",
+      "040822"
+    ],
+    "region": "Arsi"
+  },
+  "Q5379022": {
+    "labels": [
+      "Enkelo Wabe"
+    ],
+    "woreda_ids": [
+      "40824",
+      "040824"
+    ],
+    "region": "Arsi"
+  },
+  "Q56461432": {
+    "labels": [
+      "Asela Town",
+      "Asella"
+    ],
+    "woreda_ids": [
+      "40825",
+      "040825"
+    ],
+    "region": "Arsi"
+  },
+  "Q3312796": {
+    "labels": [
+      "Meiso",
+      "Mieso"
+    ],
+    "woreda_ids": [
+      "40901",
+      "040901"
+    ],
+    "region": "West Hararge"
+  },
+  "Q2382572": {
+    "labels": [
+      "Doba"
+    ],
+    "woreda_ids": [
+      "40902",
+      "040902"
+    ],
+    "region": "West Hararge"
+  },
+  "Q2391504": {
+    "labels": [
+      "Tulo"
+    ],
+    "woreda_ids": [
+      "40903",
+      "040903"
+    ],
+    "region": "West Hararge"
+  },
+  "Q974511": {
+    "labels": [
+      "Mesela"
+    ],
+    "woreda_ids": [
+      "40904",
+      "040904"
+    ],
+    "region": "West Hararge"
+  },
+  "Q56249634": {
+    "labels": [
+      "CHIRO TOWN"
+    ],
+    "woreda_ids": [
+      "40905",
+      "040905"
+    ],
+    "region": "West Hararge"
+  },
+  "Q4752601": {
+    "labels": [
+      "Anchar"
+    ],
+    "woreda_ids": [
+      "40906",
+      "040906"
+    ],
+    "region": "West Hararge"
+  },
+  "Q3118829": {
+    "labels": [
+      "Guba Qoricha"
+    ],
+    "woreda_ids": [
+      "40907",
+      "040907"
+    ],
+    "region": "West Hararge"
+  },
+  "Q3125408": {
+    "labels": [
+      "Habro"
+    ],
+    "woreda_ids": [
+      "40908",
+      "040908"
+    ],
+    "region": "West Hararge"
+  },
+  "Q2909209": {
+    "labels": [
+      "Boke"
+    ],
+    "woreda_ids": [
+      "40910",
+      "040910"
+    ],
+    "region": "West Hararge"
+  },
+  "Q5530589": {
+    "labels": [
+      "Gemechis"
+    ],
+    "woreda_ids": [
+      "40912",
+      "040912"
+    ],
+    "region": "West Hararge"
+  },
+  "Q2963919": {
+    "labels": [
+      "CHIRO ZURIYA"
+    ],
+    "woreda_ids": [
+      "40913",
+      "040913"
+    ],
+    "region": "West Hararge"
+  },
+  "Q56249628": {
+    "labels": [
+      "BEDESA TOWN",
+      "Bedessa Town"
+    ],
+    "woreda_ids": [
+      "40914",
+      "040914"
+    ],
+    "region": "West Hararge"
+  },
+  "Q3198528": {
+    "labels": [
+      "Kombolicha",
+      "Kombolcha"
+    ],
+    "woreda_ids": [
+      "41001",
+      "041001"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3120969": {
+    "labels": [
+      "Gursum"
+    ],
+    "woreda_ids": [
+      "41003",
+      "041003"
+    ],
+    "region": "East Hararge"
+  },
+  "Q797696": {
+    "labels": [
+      "BABILE"
+    ],
+    "woreda_ids": [
+      "41004",
+      "041004"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3067952": {
+    "labels": [
+      "Fedis"
+    ],
+    "woreda_ids": [
+      "41005",
+      "041005"
+    ],
+    "region": "East Hararge"
+  },
+  "Q2832649": {
+    "labels": [
+      "Haromaya"
+    ],
+    "woreda_ids": [
+      "41006",
+      "041006"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3200537": {
+    "labels": [
+      "Kurfa Chele"
+    ],
+    "woreda_ids": [
+      "41007",
+      "041007"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3195516": {
+    "labels": [
+      "Qersa",
+      "Kersa, HarargeÊ"
+    ],
+    "woreda_ids": [
+      "41008",
+      "041008"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3307179": {
+    "labels": [
+      "Meta"
+    ],
+    "woreda_ids": [
+      "41009",
+      "041009"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3111366": {
+    "labels": [
+      "Goro Gutu"
+    ],
+    "woreda_ids": [
+      "41010",
+      "041010"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3021070": {
+    "labels": [
+      "Deder"
+    ],
+    "woreda_ids": [
+      "41011",
+      "041011"
+    ],
+    "region": "East Hararge"
+  },
+  "Q2893566": {
+    "labels": [
+      "Bedeno"
+    ],
+    "woreda_ids": [
+      "41013",
+      "041013"
+    ],
+    "region": "East Hararge"
+  },
+  "Q55623083": {
+    "labels": [
+      "Midega Tole",
+      "Midega Tola"
+    ],
+    "woreda_ids": [
+      "41014",
+      "041014"
+    ],
+    "region": "East Hararge"
+  },
+  "Q5100089": {
+    "labels": [
+      "Chinakesen",
+      "Chinaksen"
+    ],
+    "woreda_ids": [
+      "41015",
+      "041015"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3107593": {
+    "labels": [
+      "Girawa"
+    ],
+    "woreda_ids": [
+      "41016",
+      "041016"
+    ],
+    "region": "East Hararge"
+  },
+  "Q3109968": {
+    "labels": [
+      "Gole Oda",
+      "Gola Oda"
+    ],
+    "woreda_ids": [
+      "41017",
+      "041017"
+    ],
+    "region": "East Hararge"
+  },
+  "Q2826421": {
+    "labels": [
+      "Agarfa"
+    ],
+    "woreda_ids": [
+      "41104",
+      "041104"
+    ],
+    "region": "Bale"
+  },
+  "Q5580914": {
+    "labels": [
+      "Golocha",
+      "Gololcha"
+    ],
+    "woreda_ids": [
+      "41105",
+      "041105"
+    ],
+    "region": "Bale"
+  },
+  "Q5526420": {
+    "labels": [
+      "Gasera"
+    ],
+    "woreda_ids": [
+      "41106",
+      "041106"
+    ],
+    "region": "Bale"
+  },
+  "Q3229049": {
+    "labels": [
+      "LEGEHIDA"
+    ],
+    "woreda_ids": [
+      "41107",
+      "041107"
+    ],
+    "region": "Bale"
+  },
+  "Q960789": {
+    "labels": [
+      "GINIR"
+    ],
+    "woreda_ids": [
+      "41108",
+      "041108"
+    ],
+    "region": "Bale"
+  },
+  "Q7521774": {
+    "labels": [
+      "Sinana"
+    ],
+    "woreda_ids": [
+      "41109",
+      "041109"
+    ],
+    "region": "Bale"
+  },
+  "Q3109573": {
+    "labels": [
+      "Goba"
+    ],
+    "woreda_ids": [
+      "41110",
+      "041110"
+    ],
+    "region": "Bale"
+  },
+  "Q16964887": {
+    "labels": [
+      "Harena Buluq"
+    ],
+    "woreda_ids": [
+      "41111",
+      "041111"
+    ],
+    "region": "Bale"
+  },
+  "Q3303887": {
+    "labels": [
+      "Meda Welabu"
+    ],
+    "woreda_ids": [
+      "41113",
+      "041113"
+    ],
+    "region": "Bale"
+  },
+  "Q2896892": {
+    "labels": [
+      "BERBERE"
+    ],
+    "woreda_ids": [
+      "41114",
+      "041114"
+    ],
+    "region": "Bale"
+  },
+  "Q15222316": {
+    "labels": [
+      "GURADAMOLE"
+    ],
+    "woreda_ids": [
+      "41115",
+      "041115"
+    ],
+    "region": "Bale"
+  },
+  "Q3111360": {
+    "labels": [
+      "GORO"
+    ],
+    "woreda_ids": [
+      "41116",
+      "041116"
+    ],
+    "region": "Bale"
+  },
+  "Q3480862": {
+    "labels": [
+      "SEWEYNA"
+    ],
+    "woreda_ids": [
+      "41118",
+      "041118"
+    ],
+    "region": "Bale"
+  },
+  "Q56248058": {
+    "labels": [
+      "Goba Town"
+    ],
+    "woreda_ids": [
+      "41120",
+      "041120"
+    ],
+    "region": "Bale"
+  },
+  "Q5242290": {
+    "labels": [
+      "Dawe Qachen",
+      "Dawe Kachen"
+    ],
+    "woreda_ids": [
+      "41121",
+      "041121"
+    ],
+    "region": "Bale"
+  },
+  "Q5278718": {
+    "labels": [
+      "Dinsho"
+    ],
+    "woreda_ids": [
+      "41122",
+      "041122"
+    ],
+    "region": "Bale"
+  },
+  "Q3125691": {
+    "labels": [
+      "Bule Hora"
+    ],
+    "woreda_ids": [
+      "41206",
+      "041206"
+    ],
+    "region": "Borena"
+  },
+  "Q3571228": {
+    "labels": [
+      "YABELO"
+    ],
+    "woreda_ids": [
+      "41207",
+      "041207"
+    ],
+    "region": "Borena"
+  },
+  "Q2860849": {
+    "labels": [
+      "Arero"
+    ],
+    "woreda_ids": [
+      "41208",
+      "041208"
+    ],
+    "region": "Borena"
+  },
+  "Q3326979": {
+    "labels": [
+      "MOYALE",
+      "Moyale, OromiaÊ"
+    ],
+    "woreda_ids": [
+      "41210",
+      "041210"
+    ],
+    "region": "Borena"
+  },
+  "Q3029342": {
+    "labels": [
+      "Dire"
+    ],
+    "woreda_ids": [
+      "41211",
+      "041211"
+    ],
+    "region": "Borena"
+  },
+  "Q3517432": {
+    "labels": [
+      "Teltele"
+    ],
+    "woreda_ids": [
+      "41212",
+      "041212"
+    ],
+    "region": "Borena"
+  },
+  "Q3100263": {
+    "labels": [
+      "Abaya"
+    ],
+    "woreda_ids": [
+      "41213",
+      "041213"
+    ],
+    "region": "Borena"
+  },
+  "Q5312499": {
+    "labels": [
+      "Dugdadewa",
+      "Dugda Dawa"
+    ],
+    "woreda_ids": [
+      "41215",
+      "041215"
+    ],
+    "region": "Borena"
+  },
+  "Q5530360": {
+    "labels": [
+      "Gelana"
+    ],
+    "woreda_ids": [
+      "41217",
+      "041217"
+    ],
+    "region": "Borena"
+  },
+  "Q2841417": {
+    "labels": [
+      "Ameya",
+      "Amaya"
+    ],
+    "woreda_ids": [
+      "41301",
+      "041301"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q3569781": {
+    "labels": [
+      "Wonchi"
+    ],
+    "woreda_ids": [
+      "41302",
+      "041302"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q3402033": {
+    "labels": [
+      "Weliso",
+      "Woliso"
+    ],
+    "woreda_ids": [
+      "41303",
+      "041303"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q940315": {
+    "labels": [
+      "Dawo"
+    ],
+    "woreda_ids": [
+      "41304",
+      "041304"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q3567298": {
+    "labels": [
+      "Ilu",
+      "Were llu"
+    ],
+    "woreda_ids": [
+      "41305",
+      "041305"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q2832643": {
+    "labels": [
+      "Sebeta Hawas"
+    ],
+    "woreda_ids": [
+      "41306",
+      "041306"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q3195526": {
+    "labels": [
+      "Kersana Malima"
+    ],
+    "woreda_ids": [
+      "41307",
+      "041307"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q2374856": {
+    "labels": [
+      "Tole"
+    ],
+    "woreda_ids": [
+      "41308",
+      "041308"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q2893465": {
+    "labels": [
+      "Becho"
+    ],
+    "woreda_ids": [
+      "41309",
+      "041309"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q741581": {
+    "labels": [
+      "Seden Sodo"
+    ],
+    "woreda_ids": [
+      "41310",
+      "041310"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q5586768": {
+    "labels": [
+      "Goro"
+    ],
+    "woreda_ids": [
+      "41312",
+      "041312"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q7553400": {
+    "labels": [
+      "Sodo Dac'ha",
+      "Sodo Dacha"
+    ],
+    "woreda_ids": [
+      "41313",
+      "041313"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q56605479": {
+    "labels": [
+      "Sebeta Town",
+      "Sebeta"
+    ],
+    "woreda_ids": [
+      "41314",
+      "041314"
+    ],
+    "region": "South West Shewa"
+  },
+  "Q3552120": {
+    "labels": [
+      "Uraga"
+    ],
+    "woreda_ids": [
+      "41401",
+      "041401"
+    ],
+    "region": "Guji"
+  },
+  "Q2910804": {
+    "labels": [
+      "Bore"
+    ],
+    "woreda_ids": [
+      "41402",
+      "041402"
+    ],
+    "region": "Guji"
+  },
+  "Q2824689": {
+    "labels": [
+      "Adola"
+    ],
+    "woreda_ids": [
+      "41403",
+      "041403"
+    ],
+    "region": "Guji"
+  },
+  "Q7959167": {
+    "labels": [
+      "Wadera"
+    ],
+    "woreda_ids": [
+      "41404",
+      "041404"
+    ],
+    "region": "Guji"
+  },
+  "Q3349300": {
+    "labels": [
+      "Odo Shakiso"
+    ],
+    "woreda_ids": [
+      "41405",
+      "041405"
+    ],
+    "region": "Guji"
+  },
+  "Q6393737": {
+    "labels": [
+      "QERCHA",
+      "Kercha"
+    ],
+    "woreda_ids": [
+      "41406",
+      "041406"
+    ],
+    "region": "Guji"
+  },
+  "Q3237714": {
+    "labels": [
+      "Liben",
+      "Liben"
+    ],
+    "woreda_ids": [
+      "41407",
+      "041407"
+    ],
+    "region": "Guji"
+  },
+  "Q5277133": {
+    "labels": [
+      "Dima"
+    ],
+    "woreda_ids": [
+      "41408",
+      "041408"
+    ],
+    "region": "Guji"
+  },
+  "Q5644196": {
+    "labels": [
+      "Hambela Wamena"
+    ],
+    "woreda_ids": [
+      "41409",
+      "041409"
+    ],
+    "region": "Guji"
+  },
+  "Q5564315": {
+    "labels": [
+      "GIRJA"
+    ],
+    "woreda_ids": [
+      "41410",
+      "041410"
+    ],
+    "region": "Guji"
+  },
+  "Q704915": {
+    "labels": [
+      "Negele Town",
+      "Negele Arsi"
+    ],
+    "woreda_ids": [
+      "41411",
+      "041411"
+    ],
+    "region": "Guji"
+  },
+  "Q3402023": {
+    "labels": [
+      "Siraro"
+    ],
+    "woreda_ids": [
+      "41701",
+      "041701"
+    ],
+    "region": "West Arsi"
+  },
+  "Q7487115": {
+    "labels": [
+      "Shala"
+    ],
+    "woreda_ids": [
+      "41702",
+      "041702"
+    ],
+    "region": "West Arsi"
+  },
+  "Q2864413": {
+    "labels": [
+      "Arsi Negele"
+    ],
+    "woreda_ids": [
+      "41703",
+      "041703"
+    ],
+    "region": "West Arsi"
+  },
+  "Q3198251": {
+    "labels": [
+      "Kofele"
+    ],
+    "woreda_ids": [
+      "41704",
+      "041704"
+    ],
+    "region": "West Arsi"
+  },
+  "Q6431569": {
+    "labels": [
+      "Kore"
+    ],
+    "woreda_ids": [
+      "41705",
+      "041705"
+    ],
+    "region": "West Arsi"
+  },
+  "Q3100056": {
+    "labels": [
+      "Gedeb Asasa"
+    ],
+    "woreda_ids": [
+      "41706",
+      "041706"
+    ],
+    "region": "West Arsi"
+  },
+  "Q3033676": {
+    "labels": [
+      "Dodola"
+    ],
+    "woreda_ids": [
+      "41707",
+      "041707"
+    ],
+    "region": "West Arsi"
+  },
+  "Q3198395": {
+    "labels": [
+      "Kokosa"
+    ],
+    "woreda_ids": [
+      "41708",
+      "041708"
+    ],
+    "region": "West Arsi"
+  },
+  "Q3338054": {
+    "labels": [
+      "Nensebo"
+    ],
+    "woreda_ids": [
+      "41709",
+      "041709"
+    ],
+    "region": "West Arsi"
+  },
+  "Q2381608": {
+    "labels": [
+      "Adaba"
+    ],
+    "woreda_ids": [
+      "41710",
+      "041710"
+    ],
+    "region": "West Arsi"
+  },
+  "Q731020": {
+    "labels": [
+      "Shashemene Town"
+    ],
+    "woreda_ids": [
+      "41711",
+      "041711"
+    ],
+    "region": "West Arsi"
+  },
+  "Q56611938": {
+    "labels": [
+      "Shashemene"
+    ],
+    "woreda_ids": [
+      "41712",
+      "041712"
+    ],
+    "region": "West Arsi"
+  },
+  "Q5684158": {
+    "labels": [
+      "Hawa Gelan"
+    ],
+    "woreda_ids": [
+      "41801",
+      "041801"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q8052059": {
+    "labels": [
+      "Yemalogi Welel",
+      "Yemalogi WeleleÊ"
+    ],
+    "woreda_ids": [
+      "41802",
+      "041802"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q5210678": {
+    "labels": [
+      "Dale Wabera"
+    ],
+    "woreda_ids": [
+      "41803",
+      "041803"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q5528474": {
+    "labels": [
+      "Gawo Qebe"
+    ],
+    "woreda_ids": [
+      "41804",
+      "041804"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q2902631": {
+    "labels": [
+      "Seyo"
+    ],
+    "woreda_ids": [
+      "41805",
+      "041805"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q56581369": {
+    "labels": [
+      "Dembi Dolo Town",
+      "Dembidolo"
+    ],
+    "woreda_ids": [
+      "41806",
+      "041806"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q2849236": {
+    "labels": [
+      "Anfilo",
+      "Anfillo"
+    ],
+    "woreda_ids": [
+      "41807",
+      "041807"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q5210625": {
+    "labels": [
+      "Dale Sedi"
+    ],
+    "woreda_ids": [
+      "41808",
+      "041808"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q5559484": {
+    "labels": [
+      "Gidame",
+      "Gidami"
+    ],
+    "woreda_ids": [
+      "41809",
+      "041809"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q6199291": {
+    "labels": [
+      "JIMMA HORO"
+    ],
+    "woreda_ids": [
+      "41810",
+      "041810"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q6480552": {
+    "labels": [
+      "Laloqile",
+      "Lalo KileÊ"
+    ],
+    "woreda_ids": [
+      "41811",
+      "041811"
+    ],
+    "region": "Qeleme Wellega"
+  },
+  "Q5904664": {
+    "labels": [
+      "Horo"
+    ],
+    "woreda_ids": [
+      "41901",
+      "041901"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q56581791": {
+    "labels": [
+      "Shambu Town",
+      "Shambu"
+    ],
+    "woreda_ids": [
+      "41902",
+      "041902"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q5904662": {
+    "labels": [
+      "GUDRU"
+    ],
+    "woreda_ids": [
+      "41903",
+      "041903"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q5636596": {
+    "labels": [
+      "Hababo Guduru"
+    ],
+    "woreda_ids": [
+      "41904",
+      "041904"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q2820216": {
+    "labels": [
+      "Abay Chomen"
+    ],
+    "woreda_ids": [
+      "41905",
+      "041905"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q3178990": {
+    "labels": [
+      "Jima Rare",
+      "Jimma RareÊ"
+    ],
+    "woreda_ids": [
+      "41907",
+      "041907"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q6159615": {
+    "labels": [
+      "JARTE JARDGA"
+    ],
+    "woreda_ids": [
+      "41908",
+      "041908"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q4749007": {
+    "labels": [
+      "AMURU"
+    ],
+    "woreda_ids": [
+      "41909",
+      "041909"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q2821455": {
+    "labels": [
+      "Abe Dengoro",
+      "Abe Dongoro"
+    ],
+    "woreda_ids": [
+      "41910",
+      "041910"
+    ],
+    "region": "Horo Gudru Wellega"
+  },
+  "Q25406490": {
+    "labels": [
+      "Burayu"
+    ],
+    "woreda_ids": [
+      "42001",
+      "042001"
+    ],
+    "region": "Burayu "
+  }
+}
