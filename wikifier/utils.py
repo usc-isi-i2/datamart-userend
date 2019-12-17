@@ -1,6 +1,7 @@
 import json
 import typing
 import os
+import string
 import copy
 import logging
 import typing
@@ -18,6 +19,7 @@ _logger = logging.getLogger(__name__)
 
 ADDED_WOREDA_WIKIDATA_COLUMN_NAME = 'woreda_wikidata'
 SAMPLE_AMOUNT = 100
+TRANSLATOR = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
 
 
 def check_wikifier_choice(input_dataframe: pd.DataFrame) -> typing.Union[bool, None]:
@@ -81,7 +83,7 @@ def _update_metadata(metadata, res_id):
     metadata = metadata.update((res_id, ALL_ELEMENTS, updated_column_number), updated_column_metadata)
     return metadata
 
-def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.DataFrame:
+def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_amount=SAMPLE_AMOUNT) -> pd.DataFrame:
     """
         special wikifier that use human-generated dict to find correct woreda Q nodes from wikidata
         it will only care about woreda related columns
@@ -97,7 +99,7 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.Da
     reverse_dict_id = defaultdict(dict)
     for k, v in woreda_dict.items():
         for each_label in v['labels']:
-            reverse_dict_name[each_label.lower()][v['region'].lower()] = k
+            reverse_dict_name[remove_punctuation(each_label, "string")][v['region'].lower()] = k
     for k, v in woreda_dict.items():
         for each_id in v['woreda_ids']:
             reverse_dict_id[each_id.lower()][v['region'].lower()] = k
@@ -112,14 +114,14 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.Da
 
     col_hit_count = defaultdict(int)
     random.seed(42)
-    if len(output_dataframe) < SAMPLE_AMOUNT:
+    if len(output_dataframe) < sample_amount:
         chosen_rows = range(len(output_dataframe))
     else:
-        chosen_rows = random.sample(range(len(output_dataframe)), k = SAMPLE_AMOUNT)
+        chosen_rows = random.sample(range(len(output_dataframe)), k = sample_amount)
 
     for _, each_row in output_dataframe.iloc[chosen_rows, :].iterrows():
         for col_num, each_cell in enumerate(each_row):
-            if str(each_cell).lower() in reverse_dict_name:
+            if remove_punctuation(str(each_cell), "string") in reverse_dict_name:
                 col_hit_count[str(col_num) + "_as_name"] += 1
             try:
                 if str(int(each_cell)) in reverse_dict_id:
@@ -134,7 +136,7 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.Da
             max_hit_k = k
             max_hit_v = v
 
-    if threshold > (max_hit_v / SAMPLE_AMOUNT):
+    if threshold > (max_hit_v / sample_amount):
         _logger.warning("The coverge of found rows is {} which less than threshold, will not consider.".format(str(max_hit_v / 100)))
         return output_dataframe
 
@@ -146,29 +148,56 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.Da
     _logger.info("Will wikifier base on column No.{} {}".format(str(max_hit_column_num), str(output_dataframe.columns[max_hit_column_num])))
 
     if max_hit_k.endswith("_as_name"):
+        use_woreda_name_dict = True
         use_dict = reverse_dict_name
     elif max_hit_k.endswith("_as_id"):
         use_dict = reverse_dict_id
+        use_woreda_name_dict = False
 
     wikifier_result_list = []
     found_q_node_count = 0
     for i, each_val in enumerate(output_dataframe.iloc[:, max_hit_column_num]):
-        information = (use_dict.get(str(each_val).lower()))
+        woreda_name = remove_punctuation(str(each_val), "string")
+        information = use_dict.get(woreda_name)
         q_node = None
-        if information is not None:
+        # if not get directly, try to check the edit distance and if we get the edit distance = 1, 
+        # try to use that
+        if information is None:
+            if use_woreda_name_dict:
+                information = {}
+                for each_woreda_name in use_dict.keys():
+                    if minDistance(woreda_name, each_woreda_name) == 1:
+                        # _logger.debug("Find Q node with edit distance = 1 as {} -> {}".format(str(each_val), str(each_woreda_name)))
+                        information.update(use_dict[each_woreda_name])                
+
+        if information is not None and len(information) > 0:
             if len(information) == 1:
                 q_node = list(information.values())[0]
             else:
                 # need to check other information
                 each_row = output_dataframe.iloc[i, :]
-                for each_val in each_row:
-                    temp_key = str(each_val).lower()
+                for each_row_val in each_row:
+                    temp_key = remove_punctuation(str(each_row_val), "string")
                     if temp_key in information:
                         q_node = information[temp_key]
+                        # _logger.debug("Find Q node with exat same zone name as {}, {} -> {}".format(str(each_val),str(temp_key), str(information)))
                         break
+
                 if q_node is None:
-                    q_node = list(information.values())[0]
-                    _logger.warning("can't find information for row {}, will use the first one as {}".format(str(each_row.tolist()), str(q_node)))
+                    found_q_node = False
+                    for each_second_level_name in information.keys():
+                        for each_row_val in each_row:
+                            temp_key = remove_punctuation(str(each_row_val), "string")
+                            if minDistance(temp_key, each_second_level_name) < 2:
+                                q_node = information[each_second_level_name]
+                                found_q_node = True
+                                break
+                        if found_q_node:
+                            # _logger.debug("Find Q node with edit distance = 1 as {}, {} -> {}, {}".format(str(each_val),str(temp_key), str(each_woreda_name), str(each_second_level_name)))
+                            break
+
+                    _logger.warning("can't find information for row {}, but hit similar name as {}, ignore now!".format(str(each_row.tolist()), str(information)))
+
         if q_node is not None:
             found_q_node_count += 1
         else:
@@ -180,3 +209,29 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1) -> pd.Da
     output_dataframe[ADDED_WOREDA_WIKIDATA_COLUMN_NAME] = wikifier_result_list
 
     return output_dataframe
+
+def remove_punctuation(input_str, return_format="list") -> typing.Union[typing.List[str], str]:
+    words_processed = str(input_str).lower().translate(TRANSLATOR).split()
+    if return_format == "list":
+        return words_processed
+    elif return_format == "string":
+        return "".join(words_processed)
+
+def minDistance(word1, word2):
+    """Dynamic programming solution"""
+    m = len(word1)
+    n = len(word2)
+    table = [[0] * (n + 1) for _ in range(m + 1)]
+
+    for i in range(m + 1):
+        table[i][0] = i
+    for j in range(n + 1):
+        table[0][j] = j
+
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if word1[i - 1] == word2[j - 1]:
+                table[i][j] = table[i - 1][j - 1]
+            else:
+                table[i][j] = 1 + min(table[i - 1][j], table[i][j - 1], table[i - 1][j - 1])
+    return table[-1][-1]

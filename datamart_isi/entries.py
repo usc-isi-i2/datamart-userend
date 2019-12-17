@@ -1167,7 +1167,7 @@ class DatamartSearchResult:
             self._logger.info("Find downloaded data from previous time, will use that.")
             right_df = self.right_df
         self._logger.debug("Download finished, start finding pairs to join...")
-        # left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
+        # left_metadata = Utils.generate_metadata_from_damax_entities_lengthtaframe(data=left_df, original_meta=None)
         # right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
         if self.join_pairs is None:

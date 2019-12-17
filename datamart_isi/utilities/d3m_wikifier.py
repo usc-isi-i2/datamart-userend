@@ -211,7 +211,11 @@ def save_wikifier_choice(input_dataframe: pd.DataFrame, choice: bool = None) -> 
             if input_size >= config.maximum_accept_wikifier_size:
                 choice = False
             else:
-                choice = True
+                if check_has_q_node_columns(input_dataframe):
+                    _logger.warning("Detect exist Q node column from input frame! Will not run wikifier.")
+                    choice = False
+                else:
+                    choice = True
 
         if hash_input_data in wikifier_choices.keys() and wikifier_choices[hash_input_data] != choice:
             _logger.warning("Exist wikifier choice and the old choice is different!")
