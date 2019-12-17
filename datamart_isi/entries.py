@@ -141,7 +141,7 @@ class DatamartQueryCursor(object):
             return current_result
 
         # start searching
-        while self.current_searching_query_index < len(self.search_query) and len(current_result) < limit:
+        while self.current_searching_query_index < len(self.search_query):
             time_start = time.time()
             self._logger.debug("Start searching on query No." + str(self.current_searching_query_index))
 
@@ -179,6 +179,7 @@ class DatamartQueryCursor(object):
             self._logger.warning("No search results found!")
             return None
         else:
+            current_result = sorted(current_result, key=lambda x: x.score(), reverse=True)
             # updated v2019.12.4, add function that can keep only wikifier columns
             if self.consider_wikifier_columns_only:
                 current_result = self._keep_wikifier_column_search_results(current_result)
@@ -314,6 +315,10 @@ class DatamartQueryCursor(object):
                                        " received, start parsing the returned data from server.")
                     # count the appeared times and find the p nodes appeared  rate that higher than threshold
                     for each in results:
+                        if "property" not in each:
+                            self._logger.error("Wikidata query returned wrong results!!! Please check!!!")
+                            raise ValueError("Wikidata query returned wrong results!!! Please check!!!")
+
                         p_count[each['property']['value'].split("/")[-1]] += 1
 
                     for key, val in p_count.items():
@@ -361,7 +366,7 @@ class DatamartQueryCursor(object):
                             "end": end_time,
                             "granularity": granularity
                         }
-                    }
+                }
             else:
                 variables[each_variable.key] = each_variable.values
 
@@ -687,13 +692,13 @@ class DatamartQueryCursor(object):
                 if left_time_info['granularity'] >= right_time_info['granularity'] and Utils.overlap(left_range, right_range):
                     can_consider_datasets[right_time_info['dataset_id']].append(
                         {
-                            "left_column_number" : left_time_info["column_number"],
+                            "left_column_number": left_time_info["column_number"],
                             "right_dataset_id": right_time_info['dataset_id'],
                             "right_join_column_number": right_time_info['column_number'],
                             "right_join_start_time": right_time_info['start_time'],
                             "right_join_end_time": right_time_info['end_time'],
                             "right_join_time_granularity": right_time_info['granularity']
-                         })
+                        })
 
         filtered_search_result = []
         for each_search_result in search_results:
@@ -732,7 +737,8 @@ class DatamartQueryCursor(object):
                         each_search_result_copied.query_json['keywords'].append(time_search_keyword)
                         each_search_result_copied.search_result['start_time'] = str(each_combine["right_join_start_time"])
                         each_search_result_copied.search_result['end_time'] = str(each_combine["right_join_end_time"])
-                        each_search_result_copied.search_result['time_granularity'] = str(each_combine["right_join_time_granularity"])
+                        each_search_result_copied.search_result['time_granularity'] = str(
+                            each_combine["right_join_time_granularity"])
                         filtered_search_result.append(each_search_result_copied)
 
         return filtered_search_result
@@ -1205,7 +1211,7 @@ class DatamartSearchResult:
                 for each_join_pair_left, each_join_pair_right in join_pairs_numbers:
                     for each_col in each_join_pair_left:
                         try:
-                            left_df.iloc[:, each_col] = pd.to_datetime(left_df.iloc[:, each_col])\
+                            left_df.iloc[:, each_col] = pd.to_datetime(left_df.iloc[:, each_col]) \
                                 .dt.strftime(time_stringfy_format)
                             if time_granularity == 8:
                                 possible_granularity[("left", each_col)] = \
@@ -1216,7 +1222,7 @@ class DatamartSearchResult:
 
                     for each_col in each_join_pair_right:
                         try:
-                            right_df.iloc[:, each_col] = pd.to_datetime(right_df.iloc[:, each_col]).\
+                            right_df.iloc[:, each_col] = pd.to_datetime(right_df.iloc[:, each_col]). \
                                 dt.strftime(time_stringfy_format)
                             if time_granularity == 8:
                                 possible_granularity[("right", each_col)] = \
@@ -1235,7 +1241,7 @@ class DatamartSearchResult:
                                 left_df.iloc[:, k[1]] = pd.to_datetime(left_df.iloc[:, k[1]]). \
                                     dt.strftime(time_stringfy_format)
                             elif k[0] == "right":
-                                right_df.iloc[:, k[1]] = pd.to_datetime(right_df.iloc[:, k[1]]).\
+                                right_df.iloc[:, k[1]] = pd.to_datetime(right_df.iloc[:, k[1]]). \
                                     dt.strftime(time_stringfy_format)
 
         pairs = candidate_join_column_pairs[0].get_column_number_pairs()
@@ -1482,8 +1488,8 @@ class DatamartSearchResult:
                 supplied_data = updated_result[1]
             self.supplied_data = supplied_data
             self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
-                                                                                   resource_id=None,
-                                                                                   has_hyperparameter=False)
+                                                                                  resource_id=None,
+                                                                                  has_hyperparameter=False)
 
         else:
             self.supplied_dataframe = supplied_data

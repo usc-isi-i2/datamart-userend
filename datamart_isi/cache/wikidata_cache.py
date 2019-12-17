@@ -78,7 +78,6 @@ class QueryCache(object):
             self._logger.error("Query for " + hash_tag + " failed!")
             self._logger.debug(e, exc_info=True)
             results = None
-
         return results
 
     def get_cache_result(self, hash_key) -> typing.Optional[bytes]:
