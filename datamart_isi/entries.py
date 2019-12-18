@@ -96,13 +96,16 @@ class DatamartQueryCursor(object):
         self.current_searching_query_index = 0
         self.remained_part = None
         self.wikidata_cache_manager = QueryCache()
+        self.q_nodes_columns = list()
+        self.q_node_column_names = set()
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
             self.need_run_wikifier = need_run_wikifier
         self.consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
         self.augment_with_time = kwargs.get("augment_with_time", False)
-        self.q_nodes_columns = list()
+        if self.consider_wikifier_columns_only:
+            self._find_q_node_columns()
 
     def get_next_page(self, *, limit: typing.Optional[int] = 20, timeout: int = None) \
             -> typing.Optional[typing.Sequence['DatamartSearchResult']]:
@@ -180,12 +183,6 @@ class DatamartQueryCursor(object):
             return None
         else:
             current_result = sorted(current_result, key=lambda x: x.score(), reverse=True)
-            # updated v2019.12.4, add function that can keep only wikifier columns
-            if self.consider_wikifier_columns_only:
-                current_result = self._keep_wikifier_column_search_results(current_result)
-            # updated v2019.12.4, add function that can automatically search with both target column and time column
-            if self.augment_with_time:
-                current_result = self._search_with_time_columns(current_result)
             if len(current_result) > limit:
                 self.remained_part = current_result[limit:]
                 current_result = current_result[:limit]
@@ -202,15 +199,19 @@ class DatamartQueryCursor(object):
         need_wikifier_or_not, self.supplied_data = d3m_wikifier.check_and_correct_q_nodes_semantic_type(self.supplied_data)
         if not need_wikifier_or_not:
             # if not need to run wikifier, we can find q node columns now
-            self.q_nodes_columns = self._find_q_node_columns()
+            self._find_q_node_columns()
         return need_wikifier_or_not
 
-    def _find_q_node_columns(self) -> typing.List[int]:
+    def _find_q_node_columns(self) -> None:
         """
         Inner function used to find q node columns by semantic type
-        :return: a list of int which indcate the q node columns
+        :return: None
         """
-        q_nodes_columns = list()
+        if len(self.q_nodes_columns) > 0 or len(self.q_node_column_names) > 0:
+            self._logger.warning("Q node columns has already been found once! Should not run again")
+            self.q_node_column_names = set()
+            self.q_nodes_columns = list()
+
         if type(self.supplied_data) is d3m_Dataset:
             selector_base_type = "ds"
         else:
@@ -225,8 +226,34 @@ class DatamartQueryCursor(object):
                 metadata_selector = (ALL_ELEMENTS, i)
             if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
                 # if no required variables given, attach any Q nodes found
-                q_nodes_columns.append(i)
-        return q_nodes_columns
+                self.q_nodes_columns.append(i)
+                self.q_node_column_names.add(self.supplied_dataframe.columns[i])
+
+    def _find_time_ranges(self) -> dict:
+        """
+        inner function that used to find the time information from search queries
+        :return: a dict with start time, end time and time granularity
+        """
+        info = defaultdict(list)
+        for i, each_search_query in enumerate(self.search_query):
+            if each_search_query.search_type == "general":
+                for each_variable in each_search_query.variables:
+                    if each_variable.key.startswith(TIME_COLUMN_MARK):
+                        start_time, end_time, granularity = each_variable.values.split("____")
+                        info["start"].append(pd.to_datetime(start_time).isoformat())
+                        info["end"].append(pd.to_datetime(end_time).isoformat())
+                        info["granularity"].append(Utils.map_granularity_to_value(granularity))
+
+        # if no time information found
+        if len(info) == 0:
+            return {}
+
+        time_column_info = {
+            "start": min(info["start"]),
+            "end": max(info["end"]),
+            "granularity": min(info["granularity"]),
+        }
+        return time_column_info
 
     def run_wikifier(self, input_data: d3m_Dataset) -> d3m_Dataset:
         """
@@ -238,7 +265,7 @@ class DatamartQueryCursor(object):
         results = d3m_wikifier.run_wikifier(supplied_data=input_data)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
-        self.q_nodes_columns = self._find_q_node_columns()
+        self._find_q_node_columns()
         return results
 
     def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
@@ -354,20 +381,35 @@ class DatamartQueryCursor(object):
         # COMMENT: title does not used, may delete later
         variables, title = dict(), dict()
         variables_temp = dict()  # this temp is specially used to store variable for time query
+        if self.augment_with_time:
+            time_information = self._find_time_ranges()
+            if len(time_information) == 0:
+                self._logger.warning("Required to search with time but no time column found from supplied data!")
+                return []
+
         for each_variable in self.search_query[self.current_searching_query_index].variables:
-            # updated v2019.12.11, now we only search "time column only" if augment with time is set to false
-            if each_variable.key.startswith(TIME_COLUMN_MARK) and not self.augment_with_time:
-                variables_temp[each_variable.key.split("____")[1]] = each_variable.values
-                start_time, end_time, granularity = each_variable.values.split("____")
-                variables_search = {
-                    "temporal_variable":
-                        {
-                            "start": start_time,
-                            "end": end_time,
-                            "granularity": granularity
-                        }
-                }
+            # updated v2019.12.11, now we only search "time column only" if augment_with_time is set to false
+            if each_variable.key.startswith(TIME_COLUMN_MARK):
+                if self.augment_with_time:
+                    self._logger.warning("Not search with time only if augment_with_time is set to True")
+                    return []
+                else:
+                    variables_temp[each_variable.key.split("____")[1]] = each_variable.values
+                    start_time, end_time, granularity = each_variable.values.split("____")
+                    variables_search = {
+                        "temporal_variable":
+                            {
+                                "start": start_time,
+                                "end": end_time,
+                                "granularity": granularity
+                            }
+                    }
             else:
+                # updated v2019.12.18: if consider wikifier columns only, not search on other columns
+                if self.consider_wikifier_columns_only and each_variable.key not in self.q_node_column_names:
+                    self._logger.warning("Set to consider wikifier columns only, will not search for column {}".format(each_variable.key))
+                    return []
+
                 variables[each_variable.key] = each_variable.values
 
         query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
@@ -376,7 +418,13 @@ class DatamartQueryCursor(object):
                  "variables_search": variables_search,
                  }
 
-        query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
+        if self.augment_with_time:
+            query["variables_time"] = time_information
+
+        query_results = self.augmenter.query_by_sparql(query=query,
+                                                       dataset=self.supplied_data,
+                                                       consider_wikifier_columns_only=self.consider_wikifier_columns_only,
+                                                       augment_with_time=self.augment_with_time)
 
         if len(variables_temp) != 0:
             query["variables"] = variables_temp
@@ -387,7 +435,10 @@ class DatamartQueryCursor(object):
 
             # the special way to calculate the score of temporal variable search
             if "start_time" in each_result.keys() and "end_time" in each_result.keys():
-                tv = query["variables_search"]["temporal_variable"]
+                if self.augment_with_time:
+                    tv = time_information
+                else:
+                    tv = query["variables_search"]["temporal_variable"]
                 start_date = pd.to_datetime(tv["start"]).timestamp()
                 end_date = pd.to_datetime(tv["end"]).timestamp()  # query time
                 start_time = pd.to_datetime(each_result['start_time']['value']).timestamp()
@@ -411,7 +462,7 @@ class DatamartQueryCursor(object):
 
                 if time_score != 0.0 and 'score' in each_result.keys():
                     old_score = float(each_result['score']['value'])
-                    each_result['score']['value'] = (old_score + time_score) / 2
+                    each_result['score']['value'] = old_score + time_score
                 else:
                     each_result['score'] = {"value": time_score}
 
@@ -420,8 +471,12 @@ class DatamartQueryCursor(object):
             search_result.append(temp)
 
         search_result.sort(key=lambda x: x.score(), reverse=True)
-
         self._logger.debug("Searching on datamart finished.")
+
+        # need to add time on join pairs
+        if self.augment_with_time:
+            search_result = self._search_with_time_columns(search_result)
+            
         return search_result
 
     def _search_vector(self) -> typing.List["DatamartSearchResult"]:
@@ -579,31 +634,6 @@ class DatamartQueryCursor(object):
 
         self._logger.debug("Running search on geospatial data finished.")
         return search_results
-
-    def _keep_wikifier_column_search_results(self, search_results: typing.List["DatamartSearchResult"]) -> \
-            typing.List["DatamartSearchResult"]:
-        """
-        function used to keep only the search results which left column(supplied data's column) are from wikifiered columns
-        currently this function is designed for woredas related data
-        :param search_results: list of "DatamartSearchResult"
-        :return: list of "DatamartSearchResult"
-        """
-        filter_search_results = []
-        for each_search_result in search_results:
-            fit_requirement = True
-            if each_search_result.search_type == "general":
-                for left_column in each_search_result.query_json['variables'].keys():
-                    if left_column.endswith("_wikidata"):
-                        data = list(filter(None, self.supplied_dataframe[left_column].dropna().tolist()))
-                        if not all(re.match(r'^Q\d+$', x) for x in data):
-                            fit_requirement = False
-                            break
-                    else:
-                        fit_requirement = False
-
-            if fit_requirement:
-                filter_search_results.append(each_search_result)
-        return filter_search_results
 
     def _search_with_time_columns(self, search_results: typing.List["DatamartSearchResult"]) \
             -> typing.List["DatamartSearchResult"]:

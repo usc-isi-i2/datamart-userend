@@ -4,6 +4,7 @@ import os
 import string
 import copy
 import logging
+import pickle
 import typing
 import frozendict
 import random
@@ -94,6 +95,16 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     with open(oromia_wikifier_file, "r") as f:
         woreda_dict = json.load(f)
 
+    wikifier_cache_file = os.path.join(wikifier.__path__[0], "ethiopia_wikifier_cache.pkl")
+    if os.path.exists(wikifier_cache_file):
+        try:
+            with open(wikifier_cache_file, "rb") as f:
+                wikifier_cache_dict = pickle.load(f)
+        except:
+            wikifier_cache_dict = {}
+    else:
+        wikifier_cache_dict = {}
+
     # reference by woreda name or woreda id
     reverse_dict_name = defaultdict(dict)
     reverse_dict_id = defaultdict(dict)
@@ -164,11 +175,16 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
         # try to use that
         if information is None:
             if use_woreda_name_dict:
-                information = {}
-                for each_woreda_name in use_dict.keys():
-                    if minDistance(woreda_name, each_woreda_name) == 1:
-                        # _logger.debug("Find Q node with edit distance = 1 as {} -> {}".format(str(each_val), str(each_woreda_name)))
-                        information.update(use_dict[each_woreda_name])                
+                if woreda_name in wikifier_cache_dict:
+                    information = wikifier_cache_dict.get(woreda_name)
+                else:
+                    information = {}
+                    for each_woreda_name in use_dict.keys():
+                        if minDistance(woreda_name, each_woreda_name) == 1:
+                            # _logger.debug("Find Q node with edit distance = 1 as {} -> {}".format(str(each_val), str(each_woreda_name)))
+                            information.update(use_dict[each_woreda_name]) 
+                    # update cache dict
+                    wikifier_cache_dict[woreda_name] = information              
 
         if information is not None and len(information) > 0:
             if len(information) == 1:
@@ -178,8 +194,13 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
                 each_row = output_dataframe.iloc[i, :]
                 for each_row_val in each_row:
                     temp_key = remove_punctuation(str(each_row_val), "string")
+                    if (each_val, temp_key) in wikifier_cache_dict:
+                        q_node = wikifier_cache_dict[(each_val, temp_key)]
+                        break
+
                     if temp_key in information:
                         q_node = information[temp_key]
+                        wikifier_cache_dict[(each_val, temp_key)] = q_node
                         # _logger.debug("Find Q node with exat same zone name as {}, {} -> {}".format(str(each_val),str(temp_key), str(information)))
                         break
 
@@ -193,6 +214,7 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
                                 found_q_node = True
                                 break
                         if found_q_node:
+                            wikifier_cache_dict[(each_val, temp_key)] = q_node
                             # _logger.debug("Find Q node with edit distance = 1 as {}, {} -> {}, {}".format(str(each_val),str(temp_key), str(each_woreda_name), str(each_second_level_name)))
                             break
 
@@ -207,6 +229,10 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     _logger.info("Totally {} of {} woreda data found.".format(str(found_q_node_count), str(len(wikifier_result_list))))
     # add to dataframe
     output_dataframe[ADDED_WOREDA_WIKIDATA_COLUMN_NAME] = wikifier_result_list
+
+    # save cache
+    with open(wikifier_cache_file, "wb") as f:
+        wikifier_cache_dict = pickle.dump(wikifier_cache_dict, f)
 
     return output_dataframe
 

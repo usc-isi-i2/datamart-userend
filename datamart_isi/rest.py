@@ -89,15 +89,22 @@ class RESTQueryCursor(datamart.DatamartQueryCursor):
             query: dict,
             data: bytes = None,
             data_id: str = None,
-            data_resource_id: str = None
+            data_resource_id: str = None,
+            **kwargs
         ) -> None:
-        self._args = url, query, data
+        
         self._mutex = threading.RLock()
         self._sent = False
         self._done = threading.Condition(self._mutex)
         self._results = None
         self._supplied_data_id = data_id
         self._supplied_resource_id = data_resource_id
+        self._parameter_choices = []
+        if len(kwargs) > 0:
+            for k, v in kwargs.items():
+                self._parameter_choices.append(k + "=" + str(v).lower())
+            url += "?" + "&".join(self._parameter_choices)
+        self._args = url, query, data
 
     def _query(self, timeout: int = None) -> None:
         url, query, data = self._args
@@ -190,36 +197,43 @@ class RESTDatamart(datamart.Datamart):
 
     def search_with_data(self, query: datamart.DatamartQuery,
                          supplied_data: container.Dataset,
+                         **kwargs
                          ) -> datamart.DatamartQueryCursor:
-        return self._search_stream(query, supplied_data, None)
+        return self._search_stream(query=query, supplied_data=supplied_data, data_constraints=None, **kwargs)
 
     def search_with_data_columns(
             self, query: datamart.DatamartQuery,
             supplied_data: container.Dataset,
-            data_constraints: typing.List[datamart.TabularVariable],
+            data_constraints: typing.List[datamart.TabularVariable], **kwargs,
     ) -> datamart.DatamartQueryCursor:
-        return self._search_stream(query, supplied_data, data_constraints)
+        return self._search_stream(query, supplied_data, data_constraints, kwargs)
 
     def _search_rest(
             self, query: datamart.DatamartQuery,
             supplied_data: typing.Optional[container.Dataset],
             data_constraints: typing.Optional[
                 typing.List[datamart.TabularVariable]
-            ]) -> datamart.DatamartQueryCursor:
+            ],
+            **kwargs
+            ) -> datamart.DatamartQueryCursor:
         return RESTQueryCursor(
             self.url + '/search',
             query_to_json(query, data_constraints),
             get_dataset_bytes(supplied_data),
             get_dataset_id(supplied_data),
-            get_resource_id(supplied_data)
+            get_resource_id(supplied_data),
+            **kwargs
         )
 
     def _search_stream(
-            self, query: datamart.DatamartQuery,
+            self, 
+            query: datamart.DatamartQuery,
             supplied_data: typing.Optional[container.Dataset],
             data_constraints: typing.Optional[
                 typing.List[datamart.TabularVariable]
-            ]) -> datamart.DatamartQueryCursor:
+            ],
+            **kwargs
+            ) -> datamart.DatamartQueryCursor:
         # TODO: handle datasets with more than 1 resource
         if supplied_data and len(supplied_data.keys()) > 1:
             raise Exception("Datasets with multiple resources are"
@@ -237,7 +251,7 @@ class RESTDatamart(datamart.Datamart):
             ws = websocket.create_connection(ws_url)
         except (IOError, websocket.WebSocketException):
             # Use HTTP
-            return self._search_rest(query, supplied_data, data_constraints)
+            return self._search_rest(query, supplied_data, data_constraints, **kwargs)
 
         # Send query
         logger.info("Connected to %s, sending query...", ws_url)

@@ -138,7 +138,7 @@ def check_is_q_node_column(input_dataframe, col_num) -> bool:
     """
     if input_dataframe.iloc[:, col_num].dtype.name == "object":
         data = set(list(filter(None, input_dataframe.iloc[:, col_num].dropna().tolist())))
-        if all(re.match(r'^Q\d+$', x) for x in data):
+        if len(data) > 0 and all(re.match(r'^Q\d+$', x) for x in data):
             return True
     return False
 

@@ -118,12 +118,18 @@ class Utils:
                 time_column = pd.to_datetime(time_column)
             except:
                 raise ValueError("Can't parse given time column!")
+
+        if len(time_column.unique()) == 1:
+            allow_duplicate_amount = 0
+        else:
+            allow_duplicate_amount = 1
+
         time_granularity = 'second'
-        if any(time_column.dt.minute != 0) and len(time_column.dt.minute.unique()) > 1:
+        if any(time_column.dt.minute != 0) and len(time_column.dt.minute.unique()) > allow_duplicate_amount:
             time_granularity = 'minute'
-        elif any(time_column.dt.hour != 0) and len(time_column.dt.hour.unique()) > 1:
+        elif any(time_column.dt.hour != 0) and len(time_column.dt.hour.unique()) > allow_duplicate_amount:
             time_granularity = 'hour'
-        elif any(time_column.dt.day != 0) and len(time_column.dt.day.unique()) > 1:
+        elif any(time_column.dt.day != 0) and len(time_column.dt.day.unique()) > allow_duplicate_amount:
             # it is also possible weekly data
             is_weekly_data = True
             time_column_sorted = time_column.sort_values()
@@ -137,9 +143,9 @@ class Utils:
                 time_granularity = 'week'
             else:
                 time_granularity = 'day'
-        elif any(time_column.dt.month != 0) and len(time_column.dt.month.unique()) > 1:
+        elif any(time_column.dt.month != 0) and len(time_column.dt.month.unique()) > allow_duplicate_amount:
             time_granularity = 'month'
-        elif any(time_column.dt.year != 0)and len(time_column.dt.year.unique()) > 1:
+        elif any(time_column.dt.year != 0) and len(time_column.dt.year.unique()) > allow_duplicate_amount:
             time_granularity = 'year'
         else:
             _logger.error("Can't guess the time granularity for this dataset! Will use as second")
@@ -252,7 +258,7 @@ class Utils:
         for f, s in ((first_inter, second_inter), (second_inter, first_inter)):
             # will check both ways
             for time in (f[0], f[1]):
-                if s[0] < time < s[1]:
+                if s[0] <= time <= s[1]:
                     return True
         else:
             return False
@@ -276,3 +282,13 @@ class Utils:
             new_keywords = keywords
             _logger.warning("Failed on augmenting keywords! Please check the service condition!")
         return new_keywords
+
+    @staticmethod
+    def qgram_tokenizer(x, _q):
+        if len(x) < _q:
+            return [x]
+        return [x[i:i + _q] + "*" for i in range(len(x) - _q + 1)]
+
+    @staticmethod
+    def trigram_tokenizer(x):
+        return Utils.qgram_tokenizer(x, 3)
