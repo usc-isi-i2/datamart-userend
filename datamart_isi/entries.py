@@ -476,7 +476,7 @@ class DatamartQueryCursor(object):
         # need to add time on join pairs
         if self.augment_with_time:
             search_result = self._search_with_time_columns(search_result)
-            
+
         return search_result
 
     def _search_vector(self) -> typing.List["DatamartSearchResult"]:

@@ -156,13 +156,14 @@ class Augment(object):
             tv = json_query["variables_search"]["temporal_variable"]
             start_date = pd.to_datetime(tv["start"]).isoformat()
             end_date = pd.to_datetime(tv["end"]).isoformat()
-            granularity = Utils.map_granularity_to_value([tv["granularity"]])
+            granularity = Utils.map_granularity_to_value(tv["granularity"])
             spaqrl_query += '''
                 ?variable pq:C2013 ?time_granularity .
                 ?variable pq:C2011 ?start_time .
                 ?variable pq:C2012 ?end_time .
                 FILTER(?time_granularity >= ''' + str(granularity) + ''')
-                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            start_date + '''"^^xsd:dateTime)))
                 '''
 
         if need_geospatial_search:
@@ -206,7 +207,10 @@ class Augment(object):
                 ?variable2 pq:C2012 ?end_time.
                 ?variable2 pq:C2013 ?time_granularity.
                 FILTER(?time_granularity >= ''' + str(time_info['granularity']) + ''')
-                FILTER(!((?start_time > "''' + time_info['start'] + '''"^^xsd:dateTime) || (?end_time < "''' + time_info['end'] + '''"^^xsd:dateTime)))
+                FILTER(!((?start_time > "''' + \
+                            time_info['start'] + \
+                            '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            time_info['end'] + '''"^^xsd:dateTime)))
             '''
 
         spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
