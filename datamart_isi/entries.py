@@ -1226,10 +1226,17 @@ class DatamartSearchResult:
             # if it is the dataset fond with time query, we should transform time column to same format and same granularity
             # then we can run RLTK with exact join same as str join
             time_granularity = self.search_result.get("time_granularity")
-            if time_granularity is None:
-                # if not get time granulairty, set as unknown, then try to get the real value
+            if isinstance(time_granularity, str) or isinstance(time_granularity, int):
+                time_granularity = int(time_granularity)
+            elif isinstance(time_granularity, dict) and "value" in time_granularity:
+                time_granularity = int(time_granularity["value"])
+            elif time_granularity is None:
+                # if not get time granularity, set as unknown, then try to get the real value
                 self._logger.info("Unable to get time granularity! Will try to guess.")
                 time_granularity = 8
+            else:
+                raise ValueError("Can't parse time granularity from {}".format(str(time_granularity)))
+
             if self.join_pairs is None:
                 right_join_column_name = self.search_result['variableName']['value']
                 right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
@@ -1532,9 +1539,12 @@ class DatamartSearchResult:
             connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
+        # ensure this supplied dataframe will not changed afterwards
+        supplied_dataframe_original = copy.copy(self.supplied_dataframe)
+
         if use_cache:
             try:
-                cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
+                cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=supplied_dataframe_original,
                                                                            search_result_serialized=self.serialize())
                 cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
                 if cache_result is not None:
@@ -1591,7 +1601,7 @@ class DatamartSearchResult:
         # and we don't know if the wikifier success or not here
         if use_cache and cache_key and self.search_type != "wikifier":
             # FIXME: should we cache failed results here?
-            response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
+            response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=supplied_dataframe_original,
                                                                          search_result_serialized=self.serialize(),
                                                                          augment_results=res,
                                                                          hash_key=cache_key
@@ -1619,11 +1629,11 @@ class DatamartSearchResult:
             raise ValueError("Unknown return format as" + str(return_format))
 
         if type(supplied_data) is d3m_Dataset:
-            supplied_data_df = supplied_data[self.res_id]
+            supplied_data_df = copy.copy(supplied_data[self.res_id])
         elif type(supplied_data) is d3m_DataFrame:
-            supplied_data_df = supplied_data
+            supplied_data_df = copy.copy(supplied_data)
         else:
-            supplied_data_df = self.supplied_dataframe
+            supplied_data_df = copy.copy(self.supplied_dataframe)
 
         if supplied_data_df is None:
             raise ValueError("Can't find supplied data!")
@@ -1655,7 +1665,7 @@ class DatamartSearchResult:
             if len(v) > max_v2:
                 max_v2 = len(v)
 
-        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
+        maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
         self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
         self._logger.info("duplicate amount for left is: " + str(max_v1))
         self._logger.info("duplicate amount for right is: " + str(max_v2))

@@ -645,3 +645,15 @@ def fix_metadata(
     dataset.metadata = new_metadata
 
     return dataset
+
+def pretty_print_search_results(search_results):
+    for i, each_search_result in enumerate(search_results):
+        each_search_res_json = each_search_result.get_json_metadata()
+        logger.info("------------ Search result No.{} ------------".format(str(i)))
+        logger.info(each_search_res_json['augmentation'])
+        summary = each_search_res_json['summary'].copy()
+        if "Columns" in summary:
+            summary.pop("Columns")
+        logger.info(summary)
+        logger.info("-"*100)
+
