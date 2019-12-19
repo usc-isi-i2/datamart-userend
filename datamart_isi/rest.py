@@ -102,8 +102,11 @@ class RESTQueryCursor(datamart.DatamartQueryCursor):
         self._parameter_choices = []
         if len(kwargs) > 0:
             for k, v in kwargs.items():
+                logger.info("Set parameter {} as {}".format(str(k), str(v)))
                 self._parameter_choices.append(k + "=" + str(v).lower())
             url += "?" + "&".join(self._parameter_choices)
+        if "consider_time=" in self._parameter_choices and "augment_with_time=true" in self._parameter_choices:
+            logger.warning("Received augment_with_time set to be true, setting consider time will be useless!")
         self._args = url, query, data
 
     def _query(self, timeout: int = None) -> None:

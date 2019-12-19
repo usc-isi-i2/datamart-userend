@@ -104,6 +104,7 @@ class DatamartQueryCursor(object):
             self.need_run_wikifier = need_run_wikifier
         self.consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
         self.augment_with_time = kwargs.get("augment_with_time", False)
+        self.consider_time = kwargs.get("consider_time", True)
         if self.consider_wikifier_columns_only:
             self._find_q_node_columns()
 
@@ -392,6 +393,9 @@ class DatamartQueryCursor(object):
             if each_variable.key.startswith(TIME_COLUMN_MARK):
                 if self.augment_with_time:
                     self._logger.warning("Not search with time only if augment_with_time is set to True")
+                    return []
+                elif self.consider_time is False:
+                    self._logger.warning("Not search with time only if consider_time is set to False")
                     return []
                 else:
                     variables_temp[each_variable.key.split("____")[1]] = each_variable.values
@@ -834,6 +838,16 @@ class Datamart(object):
             Query specification
         supplied_data : container.Dataset
             The data you are trying to augment.
+        kwargs : dict
+            Some extra control parameters. For example:
+            need_wikidata: (Default is True) If set to Ture, the program will run wikifier on supplied data and find possible
+                Q nodes, then search for possible attributes with those Q nodes and search for vectors
+            augment_with_time: (Default is False) If set to True, a pair with two columns will be searched, only data with
+                both join columns like [time, key] will be considered
+            consider_time: (Default is True) If set to True, no time columns on datamart will be considered as candidates.
+                This control parameter will be useless if augment_with_time was True
+            consider_wikifier_columns_only: (Default is False) If set to True, only columns with Q nodes will be considered
+                as join candiadates
 
         Returns
         -------
@@ -853,6 +867,10 @@ class Datamart(object):
         need_wikidata = kwargs.get("need_wikidata", True)
         consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
         augment_with_time = kwargs.get("augment_with_time", False)
+        consider_time = kwargs.get("consider_time", True)
+        if consider_time is False and augment_with_time is True:
+            self._logger.warning("Augment with time is set to be true! consider_time parameter will be useless.")
+
         # add some special search query in the first search queries
         if not need_wikidata:
             search_queries = [DatamartQuery(search_type="geospatial")]
@@ -910,7 +928,8 @@ class Datamart(object):
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
                                    need_run_wikifier=need_run_wikifier, connection_url=self.connection_url,
                                    consider_wikifier_columns_only=consider_wikifier_columns_only,
-                                   augment_with_time=augment_with_time)
+                                   augment_with_time=augment_with_time,
+                                   consider_time=consider_time)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
