@@ -1022,7 +1022,10 @@ class Datamart(object):
                         words_processed = str(each).lower().translate(translator).split()
                         for word in words_processed:
                             all_value_str_set.add(word)
-                    all_value_str = " ".join(all_value_str_set)
+                    all_value_str_list = list(all_value_str_set)
+                    # ensure the order we get are always same
+                    all_value_str_list.sort()
+                    all_value_str = " ".join(all_value_str_list)
                     each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
                     keywords.append(each_keyword)
 
@@ -1565,6 +1568,7 @@ class DatamartSearchResult:
             try:
                 cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=supplied_dataframe_original,
                                                                            search_result_serialized=self.serialize())
+
                 cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
                 if cache_result is not None:
                     if type(cache_result) is string:
