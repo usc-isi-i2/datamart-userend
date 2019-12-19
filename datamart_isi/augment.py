@@ -86,7 +86,7 @@ class Augment(object):
                 ?keywords_url ps:C2004 ?keywords.
         '''
         bind = ""
-        ORDER = "ORDER BY DESC(?score)"
+        ORDER = "ORDER BY DESC(?score) ?title"
         LIMIT = "LIMIT 20"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
         need_keywords_search = "keywords_search" in json_query.keys() and json_query["keywords_search"] != []
