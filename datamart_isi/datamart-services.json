@@ -11,6 +11,7 @@
       "path": ""
     },
     {
+      "connection_type": "https",
       "name": "wikidata",
       "host": "dsbox02.isi.edu",
       "port": 8888,
@@ -29,6 +30,13 @@
       "host": "minds03.isi.edu",
       "port": 8396,
       "path": "wikify"
+    },
+    {
+      "connection_type": "https",
+      "name": "keywords_augmentation",
+      "host": "dsbox02.isi.edu",
+      "port": 9000,
+      "path": "keywords_augmentation"
     },
     {
       "name": "general_search",

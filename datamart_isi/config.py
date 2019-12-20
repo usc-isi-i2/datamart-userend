@@ -32,6 +32,7 @@ p_nodes_ignore_list = {"P1549"}
 special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 wikifier_column_mark = "%^$#@wikifier@%^$#"
+upload_special_requirement_mark = "*&#"
 max_entities_length = 10000
 max_q_node_query_size = 100
 

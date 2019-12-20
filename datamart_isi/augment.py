@@ -6,6 +6,7 @@ import logging
 from d3m.base import utils as d3m_utils
 from datetime import datetime
 from datamart_isi.utilities.utils import Utils
+from d3m.container import Dataset as d3m_Dataset
 from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
 from datamart_isi.joiners.join_result import JoinResult
 from datamart_isi.utilities import connection
@@ -31,18 +32,18 @@ class Augment(object):
         self.logger = logging.getLogger(__name__)
         self.wikidata_cache_manager = QueryCache()
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: d3m_Dataset = None, **kwargs) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
-            dataset:
-            **kwargs:
+            dataset: a d3m format dataset for reference
+            **kwargs: some extra parameters may get
 
         Returns:
 
         """
         if query:
-            query_body = self.parse_sparql_query(query, dataset)
+            query_body = self.parse_sparql_query(query, dataset, **kwargs)
             try:
                 self.qm.setQuery(query_body)
                 results = self.qm.query().convert()['results']['bindings']
@@ -55,21 +56,13 @@ class Augment(object):
             self.logger.error("No query given, query failed!")
             return []
 
-    def parse_sparql_query(self, json_query, dataset) -> str:
+    def parse_sparql_query(self, json_query, dataset, **kwargs) -> str:
         """
         parse the json query to a spaqrl query format
         :param json_query:
         :param dataset: supplied dataset
         :return: a string indicate the sparql query
         """
-        def qgram_tokenizer(x, _q):
-            if len(x) < _q:
-                return [x]
-            return [x[i:i + _q] + "*" for i in range(len(x) - _q + 1)]
-
-        def trigram_tokenizer(x):
-            return qgram_tokenizer(x, 3)
-
         # example of query variables: Chaves Los Angeles Sacramento
         PREFIX = '''
             prefix ps: <http://www.wikidata.org/prop/statement/>
@@ -93,8 +86,8 @@ class Augment(object):
                 ?keywords_url ps:C2004 ?keywords.
         '''
         bind = ""
-        ORDER = "ORDER BY DESC(?score)"
-        LIMIT = "LIMIT 10"
+        ORDER = "ORDER BY DESC(?score) ?title"
+        LIMIT = "LIMIT 20"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
         need_keywords_search = "keywords_search" in json_query.keys() and json_query["keywords_search"] != []
         need_variables_search = "variables" in json_query.keys() and json_query["variables"] != {}
@@ -102,6 +95,8 @@ class Augment(object):
                                "temporal_variable" in json_query["variables_search"].keys()
         need_geospatial_search = "variables_search" in json_query.keys() and \
                                  "geospatial_variable" in json_query["variables_search"].keys()
+        need_consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
+        need_augment_with_time = kwargs.get("augment_with_time", False)
 
         if need_variables_search:
             query_variables = json_query['variables']
@@ -130,7 +125,7 @@ class Augment(object):
 
             trigram_keywords = []
             for each_keyword in query_keywords:
-                trigram_keywords.extend(trigram_tokenizer(each_keyword))
+                trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
 
             # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
             # update v2019.12.13: use keywords augmentation
@@ -159,17 +154,16 @@ class Augment(object):
 
         if need_temporal_search:
             tv = json_query["variables_search"]["temporal_variable"]
-            temporal_granularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
-
             start_date = pd.to_datetime(tv["start"]).isoformat()
             end_date = pd.to_datetime(tv["end"]).isoformat()
-            granularity = temporal_granularity[tv["granularity"]]
+            granularity = Utils.map_granularity_to_value(tv["granularity"])
             spaqrl_query += '''
                 ?variable pq:C2013 ?time_granularity .
                 ?variable pq:C2011 ?start_time .
                 ?variable pq:C2012 ?end_time .
                 FILTER(?time_granularity >= ''' + str(granularity) + ''')
-                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            start_date + '''"^^xsd:dateTime)))
                 '''
 
         if need_geospatial_search:
@@ -204,6 +198,20 @@ class Augment(object):
                 BIND((IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)) AS ?score_keywords)
                 filter (?score_keywords != 0)
                 """
+
+        if need_augment_with_time:
+            time_info = json_query["variables_time"]
+            spaqrl_query += '''
+                ?dataset p:C2005 ?variable2.
+                ?variable2 pq:C2011 ?start_time.
+                ?variable2 pq:C2012 ?end_time.
+                ?variable2 pq:C2013 ?time_granularity.
+                FILTER(?time_granularity >= ''' + str(time_info['granularity']) + ''')
+                FILTER(!((?start_time > "''' + \
+                            time_info['start'] + \
+                            '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            time_info['end'] + '''"^^xsd:dateTime)))
+            '''
 
         spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
 
