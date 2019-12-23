@@ -123,14 +123,18 @@ class Augment(object):
                 _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
                 query_keywords.extend(supplied_dataframe.columns.tolist())
 
-            trigram_keywords = []
-            for each_keyword in query_keywords:
-                trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
+            # trigram_keywords = []
+            # for each_keyword in query_keywords:
+                # trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
 
             # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
             # update v2019.12.13: use keywords augmentation
             query_keywords = Utils.keywords_augmentation(query_keywords)
-            query_part = " ".join(query_keywords)
+            query_keywords_filtered = set()
+            for each_keyword in query_keywords:
+                query_keywords_filtered.add(each_keyword.lower())
+
+            query_part = " ".join(list(query_keywords_filtered))
 
             spaqrl_query += '''
                 optional {

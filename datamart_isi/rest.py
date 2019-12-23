@@ -105,6 +105,8 @@ class RESTQueryCursor(datamart.DatamartQueryCursor):
                 logger.info("Set parameter {} as {}".format(str(k), str(v)))
                 self._parameter_choices.append(k + "=" + str(v).lower())
             url += "?" + "&".join(self._parameter_choices)
+        if "run_wikifier=false" in self._parameter_choices and "consider_wikifier_columns_only=true" in self._parameter_choices:
+            logger.warning("There will be no results found if run wikifier is set to false while require consider wikifier columns only!")
         if "consider_time=" in self._parameter_choices and "augment_with_time=true" in self._parameter_choices:
             logger.warning("Received augment_with_time set to be true, setting consider time will be useless!")
         self._args = url, query, data
@@ -494,14 +496,19 @@ class RESTSearchResult(datamart.DatamartSearchResult):
             stream=True
         )
 
-        if res.status_code != 200:
-            msg = "Error from DataMart: %s %s" % (
-                res.status_code, res.reason
-            )
-            logger.warning(msg)
-            raise Exception(msg)
-
+        try:
+            response = json.loads(res.content)
+            if response['code'] != 200:
+                msg = "Error from DataMart: %s %s" % (
+                    response['code'], response['message']
+                )
+                logger.warning(msg)
+                raise Exception(msg)
+        except:
+            pass
+            
         dataset = download_dataset(res)
+
         if dataset:
             dataset = fix_metadata(dataset, supplied_data)
             _, augmented_df = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
@@ -649,14 +656,22 @@ def fix_metadata(
 
     return dataset
 
-def pretty_print_search_results(search_results):
+def pretty_print_search_results(search_results, to_std=False):
     for i, each_search_result in enumerate(search_results):
         each_search_res_json = each_search_result.get_json_metadata()
-        logger.info("------------ Search result No.{} ------------".format(str(i)))
+        print_sentence = "------------ Search result No.{} ------------".format(str(i))
+        if to_std:
+            print(print_sentence)
+        logger.info(print_sentence)
         logger.info(each_search_res_json['augmentation'])
+        if to_std:
+            print(each_search_res_json['augmentation'])
         summary = each_search_res_json['summary'].copy()
         if "Columns" in summary:
             summary.pop("Columns")
+        if to_std:
+            print(summary)
+            print("-"*100)
         logger.info(summary)
         logger.info("-"*100)
 

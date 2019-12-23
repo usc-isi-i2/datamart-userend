@@ -1087,7 +1087,8 @@ class DatamartSearchResult:
         if extra_information is not None:
             extra_information = json.loads(extra_information['value'])
             self.special_requirement = extra_information.get("special_requirement")
-
+        else:
+            self.special_requirement = None
         self.metadata_manager = MetadataGenerator(supplied_data=self.supplied_data, search_result=self.search_result,
                                                   search_type=self.search_type, connection_url=self.connection_url,
                                                   wikidata_cache_manager=self.wikidata_cache_manager)
