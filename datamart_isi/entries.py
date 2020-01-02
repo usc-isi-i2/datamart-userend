@@ -1758,6 +1758,8 @@ class DatamartSearchResult:
             # if search with wikidata, we should remove duplicate Q node column
             self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
 
+            import pdb
+            pdb.set_trace()
             # sort the joined dataframe with original index
             df_joined = df_joined.sort_values(by='**original_index**')
             df_joined = df_joined.drop(columns=['**original_index**'])
@@ -1767,7 +1769,6 @@ class DatamartSearchResult:
             df_joined = df_joined.drop(columns=['q_node'])
 
         if 'id' in df_joined.columns:
-            df_joined = df_joined.sort_values(by=['id'])
             df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset

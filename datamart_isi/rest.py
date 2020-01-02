@@ -498,7 +498,7 @@ class RESTSearchResult(datamart.DatamartSearchResult):
 
         try:
             response = json.loads(res.content)
-            if response['code'] != 200:
+            if response['code'] != 200 or res.code != 200:
                 msg = "Error from DataMart: %s %s" % (
                     response['code'], response['message']
                 )
@@ -506,7 +506,7 @@ class RESTSearchResult(datamart.DatamartSearchResult):
                 raise Exception(msg)
         except:
             pass
-            
+
         dataset = download_dataset(res)
 
         if dataset:

@@ -2,7 +2,8 @@
   "Q3285143": {
     "labels": [
       "Mene Sibu",
-      "Mana Sibu"
+      "Mana Sibu",
+      "Lata Sibu"
     ],
     "woreda_ids": [
       "40101",
@@ -12,7 +13,10 @@
   },
   "Q3337870": {
     "labels": [
-      "Nejo"
+      "Nejo",
+      "Nejo Rural",
+      "Nejo Town",
+      "Nejo Hospital"
     ],
     "woreda_ids": [
       "40102",
@@ -22,7 +26,10 @@
   },
   "Q3106653": {
     "labels": [
-      "Gimbi"
+      "Gimbi",
+      "Gimbi Adventist hospital",
+      "Gimbi public Hospital",
+      "Gimbi Rural"
     ],
     "woreda_ids": [
       "40103",
@@ -43,7 +50,8 @@
   "Q6408249": {
     "labels": [
       "QILTU KARA",
-      "Kiltu Kara"
+      "Kiltu Kara",
+      "Qiltu Kara"
     ],
     "woreda_ids": [
       "40105",
@@ -126,7 +134,8 @@
   },
   "Q3127995": {
     "labels": [
-      "Haru"
+      "Haru",
+      "Halu"
     ],
     "woreda_ids": [
       "40114",
@@ -146,7 +155,9 @@
   },
   "Q2893815": {
     "labels": [
-      "BEGI"
+      "BEGI",
+      "Begi",
+      "Begi hospital"
     ],
     "woreda_ids": [
       "40116",
@@ -177,7 +188,8 @@
   },
   "Q3241124": {
     "labels": [
-      "Limu"
+      "Limu",
+      "Limmu District"
     ],
     "woreda_ids": [
       "40201",
@@ -260,7 +272,8 @@
   },
   "Q5275497": {
     "labels": [
-      "Diga"
+      "Diga",
+      "Diga: East Welga"
     ],
     "woreda_ids": [
       "40210",
@@ -362,7 +375,8 @@
   },
   "Q2964481": {
     "labels": [
-      "CHORA"
+      "CHORA",
+      "Chora"
     ],
     "woreda_ids": [
       "40303",
@@ -372,7 +386,8 @@
   },
   "Q5207520": {
     "labels": [
-      "Dabo Hana"
+      "Dabo Hana",
+      "Dapho Hana"
     ],
     "woreda_ids": [
       "40305",
@@ -382,7 +397,8 @@
   },
   "Q2654779": {
     "labels": [
-      "Gechi"
+      "Gechi",
+      "Guchi"
     ],
     "woreda_ids": [
       "40306",
@@ -630,7 +646,9 @@
   },
   "Q3477985": {
     "labels": [
-      "Seka Chekorsa"
+      "Seka Chekorsa",
+      "Seka Chhokorsa",
+      "Seka Chhokorsa Hospital"
     ],
     "woreda_ids": [
       "40409",
@@ -680,7 +698,8 @@
   },
   "Q7492254": {
     "labels": [
-      "Shebe Senbo"
+      "Shebe Senbo",
+      "Shabe"
     ],
     "woreda_ids": [
       "40414",
@@ -711,7 +730,9 @@
   },
   "Q56460844": {
     "labels": [
-      "Agaro"
+      "Agaro",
+      "Agarfa",
+      "Agaro Hospital"
     ],
     "woreda_ids": [
       "40417",
@@ -721,7 +742,8 @@
   },
   "Q3106713": {
     "labels": [
-      "Ginde Beret"
+      "Ginde Beret",
+      "Gindeberet Hospital"
     ],
     "woreda_ids": [
       "40501",
@@ -741,7 +763,9 @@
   },
   "Q2842131": {
     "labels": [
-      "Ambo"
+      "Ambo",
+      "Ambo Hospital",
+      "Ambo Town"
     ],
     "woreda_ids": [
       "40503",
@@ -772,7 +796,8 @@
   },
   "Q2880302": {
     "labels": [
-      "Bako Tibe"
+      "Bako Tibe",
+      "Bako Hospital"
     ],
     "woreda_ids": [
       "40506",
@@ -885,7 +910,9 @@
   "Q3139315": {
     "labels": [
       "Holeta Town",
-      "Holeta Genet"
+      "Holeta Genet",
+      "Holeta",
+      "Holeta town"
     ],
     "woreda_ids": [
       "40520",
@@ -905,7 +932,8 @@
   },
   "Q3023542": {
     "labels": [
-      "Dera"
+      "Dera",
+      "Dera Hospital"
     ],
     "woreda_ids": [
       "40602",
@@ -925,7 +953,8 @@
   },
   "Q3200732": {
     "labels": [
-      "Kuyu"
+      "Kuyu",
+      "Kuyu Hospital"
     ],
     "woreda_ids": [
       "40604",
@@ -965,7 +994,8 @@
   },
   "Q3570146": {
     "labels": [
-      "Wuchale"
+      "Wuchale",
+      "Muke Turi Hospital"
     ],
     "woreda_ids": [
       "40608",
@@ -985,7 +1015,8 @@
   },
   "Q2896994": {
     "labels": [
-      "Bereh"
+      "Bereh",
+      "Berreh"
     ],
     "woreda_ids": [
       "40611",
@@ -1078,7 +1109,10 @@
   },
   "Q2422429": {
     "labels": [
-      "Boset"
+      "Boset",
+      "Bule Hora",
+      "Bule Hora hospital",
+      "Bule Hora Toun"
     ],
     "woreda_ids": [
       "40702",
@@ -1118,7 +1152,8 @@
   },
   "Q2823862": {
     "labels": [
-      "Ada'a"
+      "Ada'a",
+      "Adea"
     ],
     "woreda_ids": [
       "40706",
@@ -1199,7 +1234,8 @@
   },
   "Q3110313": {
     "labels": [
-      "gololcha"
+      "gololcha",
+      "Gololcha: Arsi"
     ],
     "woreda_ids": [
       "40803",
@@ -1239,7 +1275,8 @@
   },
   "Q3138657": {
     "labels": [
-      "Hitosa"
+      "Hitosa",
+      "Hidabu Abote"
     ],
     "woreda_ids": [
       "40807",
@@ -1289,7 +1326,8 @@
   },
   "Q3434318": {
     "labels": [
-      "Robe"
+      "Robe",
+      "Robe Town"
     ],
     "woreda_ids": [
       "40812",
@@ -1464,7 +1502,8 @@
   },
   "Q56249634": {
     "labels": [
-      "CHIRO TOWN"
+      "CHIRO TOWN",
+      "Chiro Town"
     ],
     "woreda_ids": [
       "40905",
@@ -1524,7 +1563,8 @@
   },
   "Q2963919": {
     "labels": [
-      "CHIRO ZURIYA"
+      "CHIRO ZURIYA",
+      "Chiro Zuriya"
     ],
     "woreda_ids": [
       "40913",
@@ -1566,7 +1606,9 @@
   },
   "Q797696": {
     "labels": [
-      "BABILE"
+      "BABILE",
+      "Babile",
+      "Babile Woreda"
     ],
     "woreda_ids": [
       "41004",
@@ -1586,7 +1628,10 @@
   },
   "Q2832649": {
     "labels": [
-      "Haromaya"
+      "Haromaya",
+      "Haromaya Hospital",
+      "Haromaya Rural",
+      "Haromaya Town"
     ],
     "woreda_ids": [
       "41006",
@@ -1607,7 +1652,8 @@
   "Q3195516": {
     "labels": [
       "Qersa",
-      "Kersa, HarargeÊ"
+      "Kersa, HarargeÊ",
+      "Kersa EH"
     ],
     "woreda_ids": [
       "41008",
@@ -1711,7 +1757,8 @@
   "Q5580914": {
     "labels": [
       "Golocha",
-      "Gololcha"
+      "Gololcha",
+      "Gololcha: Bale"
     ],
     "woreda_ids": [
       "41105",
@@ -1731,7 +1778,8 @@
   },
   "Q3229049": {
     "labels": [
-      "LEGEHIDA"
+      "LEGEHIDA",
+      "Legehida"
     ],
     "woreda_ids": [
       "41107",
@@ -1771,7 +1819,9 @@
   },
   "Q16964887": {
     "labels": [
-      "Harena Buluq"
+      "Harena Buluq",
+      "Arena Buluq",
+      "Horro Buluk"
     ],
     "woreda_ids": [
       "41111",
@@ -1791,7 +1841,8 @@
   },
   "Q2896892": {
     "labels": [
-      "BERBERE"
+      "BERBERE",
+      "Berbere"
     ],
     "woreda_ids": [
       "41114",
@@ -1801,7 +1852,8 @@
   },
   "Q15222316": {
     "labels": [
-      "GURADAMOLE"
+      "GURADAMOLE",
+      "Gura Dhamole"
     ],
     "woreda_ids": [
       "41115",
@@ -1811,7 +1863,8 @@
   },
   "Q3111360": {
     "labels": [
-      "GORO"
+      "GORO",
+      "Goro: Bale"
     ],
     "woreda_ids": [
       "41116",
@@ -1872,7 +1925,8 @@
   },
   "Q3571228": {
     "labels": [
-      "YABELO"
+      "YABELO",
+      "Yabelo"
     ],
     "woreda_ids": [
       "41207",
@@ -2007,7 +2061,8 @@
   },
   "Q2832643": {
     "labels": [
-      "Sebeta Hawas"
+      "Sebeta Hawas",
+      "Sebeta Awas"
     ],
     "woreda_ids": [
       "41306",
@@ -2079,7 +2134,8 @@
   "Q56605479": {
     "labels": [
       "Sebeta Town",
-      "Sebeta"
+      "Sebeta",
+      "Sabeta"
     ],
     "woreda_ids": [
       "41314",
@@ -2099,7 +2155,9 @@
   },
   "Q2910804": {
     "labels": [
-      "Bore"
+      "Bore",
+      "Bore Hospital",
+      "Boricha"
     ],
     "woreda_ids": [
       "41402",
@@ -2109,7 +2167,10 @@
   },
   "Q2824689": {
     "labels": [
-      "Adola"
+      "Adola",
+      "Adola Hospital",
+      "Adola Reda",
+      "Adola Town"
     ],
     "woreda_ids": [
       "41403",
@@ -2119,7 +2180,8 @@
   },
   "Q7959167": {
     "labels": [
-      "Wadera"
+      "Wadera",
+      "Wadara"
     ],
     "woreda_ids": [
       "41404",
@@ -2140,7 +2202,9 @@
   "Q6393737": {
     "labels": [
       "QERCHA",
-      "Kercha"
+      "Kercha",
+      "kercha",
+      "Kercha hospital"
     ],
     "woreda_ids": [
       "41406",
@@ -2222,7 +2286,9 @@
   },
   "Q2864413": {
     "labels": [
-      "Arsi Negele"
+      "Arsi Negele",
+      "Arsi Negele Rural",
+      "Arsi Negele Town"
     ],
     "woreda_ids": [
       "41703",
@@ -2272,7 +2338,8 @@
   },
   "Q3198395": {
     "labels": [
-      "Kokosa"
+      "Kokosa",
+      "Kokosa  Hospital"
     ],
     "woreda_ids": [
       "41708",
@@ -2312,7 +2379,10 @@
   },
   "Q56611938": {
     "labels": [
-      "Shashemene"
+      "Shashemene",
+      "Shashamane",
+      "Shashamane Rural",
+      "Shashamane Town"
     ],
     "woreda_ids": [
       "41712",
@@ -2322,7 +2392,8 @@
   },
   "Q5684158": {
     "labels": [
-      "Hawa Gelan"
+      "Hawa Gelan",
+      "Hawa Gelan Hosp"
     ],
     "woreda_ids": [
       "41801",
@@ -2333,7 +2404,8 @@
   "Q8052059": {
     "labels": [
       "Yemalogi Welel",
-      "Yemalogi WeleleÊ"
+      "Yemalogi WeleleÊ",
+      "Yemalogi Welele"
     ],
     "woreda_ids": [
       "41802",
@@ -2374,7 +2446,9 @@
   "Q56581369": {
     "labels": [
       "Dembi Dolo Town",
-      "Dembidolo"
+      "Dembidolo",
+      "Dambi Dollo",
+      "Dambi Dolo Hospital"
     ],
     "woreda_ids": [
       "41806",
@@ -2406,7 +2480,8 @@
   "Q5559484": {
     "labels": [
       "Gidame",
-      "Gidami"
+      "Gidami",
+      "Gidami Hospital"
     ],
     "woreda_ids": [
       "41809",
@@ -2416,7 +2491,8 @@
   },
   "Q6199291": {
     "labels": [
-      "JIMMA HORO"
+      "JIMMA HORO",
+      "Jimma Horo"
     ],
     "woreda_ids": [
       "41810",
@@ -2448,7 +2524,8 @@
   "Q56581791": {
     "labels": [
       "Shambu Town",
-      "Shambu"
+      "Shambu",
+      "Shambu Hospital"
     ],
     "woreda_ids": [
       "41902",
@@ -2499,7 +2576,8 @@
   },
   "Q6159615": {
     "labels": [
-      "JARTE JARDGA"
+      "JARTE JARDGA",
+      "Jarte Jardga"
     ],
     "woreda_ids": [
       "41908",
@@ -2509,7 +2587,8 @@
   },
   "Q4749007": {
     "labels": [
-      "AMURU"
+      "AMURU",
+      "Amuru"
     ],
     "woreda_ids": [
       "41909",
@@ -2530,12 +2609,277 @@
   },
   "Q25406490": {
     "labels": [
-      "Burayu"
+      "Burayu",
+      "Burayu Town"
     ],
     "woreda_ids": [
       "42001",
       "042001"
     ],
     "region": "Burayu "
+  },
+  "Q1266796": {
+    "labels": [
+      "Ambo town"
+    ]
+  },
+  "Q16999696": {
+    "labels": [
+      "Jima Geneti"
+    ]
+  },
+  "Q2563156": {
+    "labels": [
+      "Dambi Dollo"
+    ]
+  },
+  "Q2570767": {
+    "labels": [
+      "Batu"
+    ]
+  },
+  "Q2893561": {
+    "labels": [
+      "Bedele Hospital",
+      "Bedele Town",
+      "Bedele Zuriya"
+    ]
+  },
+  "Q2893571": {
+    "labels": [
+      "Bedesa Town"
+    ]
+  },
+  "Q29569926": {
+    "labels": [
+      "Ambo University  Hosp"
+    ]
+  },
+  "Q2962195": {
+    "labels": [
+      "Chelia"
+    ]
+  },
+  "Q2973371": {
+    "labels": [
+      "Ameya",
+      "Ameya Hospital"
+    ]
+  },
+  "Q2973400": {
+    "labels": [
+      "Ayira",
+      "Ayira Hospital"
+    ]
+  },
+  "Q2973454": {
+    "labels": [
+      "Bilonopa"
+    ]
+  },
+  "Q3162805": {
+    "labels": [
+      "Jarso"
+    ]
+  },
+  "Q3195518": {
+    "labels": [
+      "Kersa"
+    ]
+  },
+  "Q385341": {
+    "labels": [
+      "Jimma Spe Town"
+    ]
+  },
+  "Q55603877": {
+    "labels": [
+      "Anna Sora"
+    ]
+  },
+  "Q55609664": {
+    "labels": [
+      "Inchini Hospital"
+    ]
+  },
+  "Q5659805": {
+    "labels": [
+      "Haro Limu"
+    ]
+  },
+  "Q6428936": {
+    "labels": [
+      "Kundala"
+    ]
+  },
+  "Q740236": {
+    "labels": [
+      "Assela Town"
+    ]
+  },
+  "Q740499": {
+    "labels": [
+      "Bishoftu Town"
+    ]
+  },
+  "Q764231": {
+    "labels": [
+      "Chiro Hospital"
+    ]
+  },
+  "Q815044": {
+    "labels": [
+      "Bekoji Town"
+    ]
+  },
+  "Q3565370": {
+    "labels": [
+      "Woliso"
+    ]
+  },
+  "Q24032558": {
+    "labels": [
+      "Sululta"
+    ]
+  },
+  "Q56628181": {
+    "labels": [
+      "Sodo",
+      "Sodo Dac'Ha"
+    ]
+  },
+  "Q56605485": {
+    "labels": [
+      "Sendafa",
+      "Sandefa"
+    ]
+  },
+  "Q3352093": {
+    "labels": [
+      "Omo Nada",
+      "Omonada"
+    ]
+  },
+  "Q56653589": {
+    "labels": [
+      "Nekemte",
+      "Nekemte Town"
+    ]
+  },
+  "Q2714363": {
+    "labels": [
+      "Negele Boran",
+      "Negele Town",
+      "Negele Hospital"
+    ]
+  },
+  "Q55809395": {
+    "labels": [
+      "Moyale",
+      "Moyale Hospital"
+    ]
+  },
+  "Q3034264": {
+    "labels": [
+      "Dolo Odo",
+      "Mkelka Soda"
+    ]
+  },
+  "Q56489923": {
+    "labels": [
+      "Metu",
+      "Metu Town",
+      "Metu Rural"
+    ]
+  },
+  "Q3312794": {
+    "labels": [
+      "Mieso",
+      "Meiso"
+    ]
+  },
+  "Q3307328": {
+    "labels": [
+      "Metehara",
+      "Matahara"
+    ]
+  },
+  "Q3258847": {
+    "labels": [
+      "Lome",
+      "Lomme"
+    ]
+  },
+  "Q3241125": {
+    "labels": [
+      "Limmu Sakka",
+      "Limu Seka"
+    ]
+  },
+  "Q3016437": {
+    "labels": [
+      "Darolebu",
+      "Daro Lebu"
+    ]
+  },
+  "Q55609174": {
+    "labels": [
+      "Dawe Serara",
+      "Dawe Serar"
+    ]
+  },
+  "Q5249768": {
+    "labels": [
+      "Deder",
+      "Deder Hospital",
+      "Deder Town"
+    ]
+  },
+  "Q5254300": {
+    "labels": [
+      "Delo Menna",
+      "Delo Mena"
+    ]
+  },
+  "Q55609596": {
+    "labels": [
+      "Dillo",
+      "Dilo"
+    ]
+  },
+  "Q5313170": {
+    "labels": [
+      "Dukem",
+      "Dukem Town"
+    ]
+  },
+  "Q5359876": {
+    "labels": [
+      "Elfata",
+      "Elifata"
+    ]
+  },
+  "Q3073074": {
+    "labels": [
+      "Fiche",
+      "Fiche Hospital",
+      "Fichetown"
+    ]
+  },
+  "Q3100278": {
+    "labels": [
+      "Gelemso",
+      "Gelemso Hospital"
+    ]
+  },
+  "Q3106775": {
+    "labels": [
+      "Ginir Town"
+    ]
+  },
+  "Q55612789": {
+    "labels": [
+      "Gomole"
+    ]
   }
 }
