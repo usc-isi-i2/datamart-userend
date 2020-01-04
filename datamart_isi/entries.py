@@ -434,8 +434,8 @@ class DatamartQueryCursor(object):
             query["variables"] = variables_temp
 
         for i, each_result in enumerate(query_results):
-            self._logger.debug("Get returned No." + str(i) + " query result as ")
-            self._logger.debug(str(each_result))
+            # self._logger.debug("Get returned No." + str(i) + " query result as ")
+            # self._logger.debug(str(each_result))
 
             # the special way to calculate the score of temporal variable search
             if "start_time" in each_result.keys() and "end_time" in each_result.keys():
