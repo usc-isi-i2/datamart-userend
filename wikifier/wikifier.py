@@ -184,6 +184,10 @@ def produce_for_pandas(input_df, target_columns: typing.List[int] = None, target
     :param threshold_for_coverage: minimum coverage ratio for a wikidata columns to be appended
     :return: a pd.dataFrame with updated columns from wikidata
     """
+    # updated v2020.1.6, raise value error when running
+    if input_df.shape[0] == 0:
+        raise ValueError("Can't wikify an empty dataframe!")
+
     _logger.info("Start to produce Q-nodes by identifier")
     # if no target columns given, just try every str columns
     if target_columns is None:

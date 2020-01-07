@@ -43,7 +43,10 @@ class MetadataGenerator:
             
         if self.search_type == "general":
             self.id = self.search_result['datasetLabel']['value']
-            self.score = float(self.search_result['score']['value'])
+            if "score" in self.search_result:
+                self.score = float(self.search_result['score']['value'])
+            else:
+                self.score = 0.0
         elif self.search_type == "wikidata":
             self.id = "wikidata search on " + str(self.search_result['p_nodes_needed']) + " with column " + \
                        self.search_result['target_q_node_column_name']

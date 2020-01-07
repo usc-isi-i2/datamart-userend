@@ -1113,7 +1113,7 @@ class DatamartSearchResult:
             elif self.search_type == "vector":
                 sample_q_nodes = self.search_result["q_nodes_list"][:10]
                 return_df = DownloadManager.fetch_fb_embeddings(sample_q_nodes, self.search_result["target_q_node_column_name"])
-                return_res = return_df.to_csv()
+                return_res = return_df.to_csv(index=False)
 
             else:
                 self._logger.error("unknown format of search result as {}!".format(str(self.search_type)))
@@ -1663,6 +1663,14 @@ class DatamartSearchResult:
             raise ValueError("Can't find supplied data!")
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
+
+        maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
+        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
+
+        join_pair_column = download_result['joining_pairs']
+        for each_row in join_pair_column:
+            if len(each_row) >= maximum_accept_duplicate_amount:
+                raise ValueError("Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
         download_result = download_result.drop(columns=['joining_pairs'])
 
         column_names_to_join = None
@@ -1674,27 +1682,22 @@ class DatamartSearchResult:
         columns_new = None
         left_pairs = defaultdict(list)
         right_pairs = defaultdict(list)
-
+        left_pairs_oversize = False
+        right_pairs_oversize = False
         for r1, r2 in self.pairs:
-            left_pairs[int(r1)].append(int(r2))
-            right_pairs[int(r2)].append(int(r1))
+            if left_pairs_oversize and right_pairs_oversize:
+                raise ValueError("Should not augment for n-m relationship.")
+            # otherwise continue counting
+            if len(left_pairs[int(r1)]) >= maximum_accept_duplicate_amount:
+                left_pairs_oversize = True
+            elif not left_pairs_oversize:
+                left_pairs[int(r1)].append(int(r2))
+            if len(right_pairs[int(r2)]) >= maximum_accept_duplicate_amount:
+                right_pairs_oversize = True
+            elif not right_pairs_oversize:
+                right_pairs[int(r2)].append(int(r1))
 
-        max_v1 = 0
-        max_v2 = 0
-        for k, v in left_pairs.items():
-            if len(v) > max_v1:
-                max_v1 = len(v)
-
-        for k, v in right_pairs.items():
-            if len(v) > max_v2:
-                max_v2 = len(v)
-
-        maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
-        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
-        self._logger.info("duplicate amount for left is: " + str(max_v1))
-        self._logger.info("duplicate amount for right is: " + str(max_v2))
-
-        if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
+        if left_pairs_oversize and right_pairs_oversize:
             # if n_to_m_condition
             raise ValueError("Should not augment for n-m relationship.")
             # df_joined = supplied_data_df
