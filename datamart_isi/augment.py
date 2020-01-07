@@ -12,6 +12,7 @@ from datamart_isi.joiners.join_result import JoinResult
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
 from itertools import chain
+from wikifier.utils import remove_punctuation
 from datamart_isi.utilities.geospatial_related import GeospatialRelated
 from datamart_isi.cache.wikidata_cache import QueryCache
 
@@ -44,6 +45,8 @@ class Augment(object):
         """
         if query:
             query_body = self.parse_sparql_query(query, dataset, **kwargs)
+            self.logger.debug("Query sent to datamart blazegraph is:")
+            self.logger.debug(query_body)
             try:
                 self.qm.setQuery(query_body)
                 results = self.qm.query().convert()['results']['bindings']
@@ -111,6 +114,9 @@ class Augment(object):
 
         if need_keywords_search:
             query_keywords = json_query["keywords_search"]
+            # update v2019.12.13: use keywords augmentation
+            query_keywords = Utils.keywords_augmentation(query_keywords)
+
             # updated v2019.11.1, for search_without_data, we should remove duplicates
             if dataset is None:
                 SELECTION = '''
@@ -121,16 +127,19 @@ class Augment(object):
             else:
                 # updated v2019.11.1, now use fuzzy search
                 _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
-                query_keywords.extend(supplied_dataframe.columns.tolist())
+                # column_names_list = supplied_dataframe.columns.tolist()
+                # for each_col_name in supplied_dataframe.columns:
+                #     query_keywords.extend(remove_punctuation(each_col_name, "list"))
 
-            trigram_keywords = []
+            # trigram_keywords = []
+            # for each_keyword in query_keywords:
+                # trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
+
+            query_keywords_filtered = set()
             for each_keyword in query_keywords:
-                trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
+                query_keywords_filtered.add(each_keyword.lower())
 
-            # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
-            # update v2019.12.13: use keywords augmentation
-            query_keywords = Utils.keywords_augmentation(query_keywords)
-            query_part = " ".join(query_keywords)
+            query_part = " ".join(list(query_keywords_filtered))
 
             spaqrl_query += '''
                 optional {

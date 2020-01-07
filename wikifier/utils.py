@@ -109,11 +109,18 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     reverse_dict_name = defaultdict(dict)
     reverse_dict_id = defaultdict(dict)
     for k, v in woreda_dict.items():
+        if "labels" not in v:
+            _logger.warning("Can't find labels for key {} !".format(str(k)))
+            continue
         for each_label in v['labels']:
-            reverse_dict_name[remove_punctuation(each_label, "string")][v['region'].lower()] = k
+            if "region" in v:
+                reverse_dict_name[remove_punctuation(each_label, "string")][v['region'].lower()] = k
+            else:
+                reverse_dict_name[remove_punctuation(each_label, "string")]['_'] = k
     for k, v in woreda_dict.items():
-        for each_id in v['woreda_ids']:
-            reverse_dict_id[each_id.lower()][v['region'].lower()] = k
+        if 'woreda_ids' in v:
+            for each_id in v['woreda_ids']:
+                reverse_dict_id[each_id.lower()][v['region'].lower()] = k
 
     # woredas = []
     # qnodes = []
@@ -218,7 +225,14 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
                             # _logger.debug("Find Q node with edit distance = 1 as {}, {} -> {}, {}".format(str(each_val),str(temp_key), str(each_woreda_name), str(each_second_level_name)))
                             break
 
-                    _logger.warning("can't find information for row {}, but hit similar name as {}, ignore now!".format(str(each_row.tolist()), str(information)))
+                    if not found_q_node and "_" in information:
+                        found_q_node = True
+                        q_node = information['_']
+
+                    if not found_q_node:
+                        found_q_node = True
+                        q_node = list(information.values())[0]
+                        _logger.warning("can't find information for row {}, but hit similar name as {}, choose first one {} for now".format(str(each_row.tolist()), str(information), str(q_node)))
 
         if q_node is not None:
             found_q_node_count += 1
