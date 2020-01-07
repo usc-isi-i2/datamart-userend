@@ -10,6 +10,12 @@
       "path": ""
     },
     {
+      "name": "keywords_augmentation",
+      "host": "dsbox02.isi.edu",
+      "port": 9000,
+      "path": "keywords_augmentation"
+    },
+    {
       "name": "wikidata",
       "host": "dsbox02.isi.edu",
       "port": 8888,

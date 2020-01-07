@@ -17,6 +17,12 @@
             "path": "bigdata/namespace/wdq/sparql"
         },
         {
+          "name": "keywords_augmentation",
+          "host": "dsbox02.isi.edu",
+          "port": 9000,
+          "path": "keywords_augmentation"
+        },
+        {
             "connection_type": "https",
             "name": "wikifier_identifier",
             "host": "dsbox02.isi.edu",
