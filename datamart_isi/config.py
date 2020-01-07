@@ -35,6 +35,7 @@ wikifier_column_mark = "%^$#@wikifier@%^$#"
 upload_special_requirement_mark = "*&#"
 max_entities_length = 10000
 max_q_node_query_size = 100
+min_q_node_query_size_percent = 0.01
 
 need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",
                                   "http://schema.org/Text"

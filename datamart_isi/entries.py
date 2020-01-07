@@ -318,6 +318,13 @@ class DatamartQueryCursor(object):
                     unique_qnodes = set(q_nodes_list)
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
+                    # updated v2020.1.6, not skip if unique Q nodes are too few
+                    if len(unique_qnodes) < config.min_q_node_query_size_percent * len(q_nodes_list):
+                        self._logger.warning("Too few Q nodes (rate = {}/{}) found on column {}, will skip this column.".
+                                             format(str(len(unique_qnodes)),
+                                                    str(config.min_q_node_query_size_percent * len(q_nodes_list)),
+                                                    str(each_column)))
+                        continue
                     if len(unique_qnodes) > config.max_q_node_query_size:
                         unique_qnodes = random.sample(unique_qnodes, config.max_q_node_query_size)
 
@@ -505,7 +512,13 @@ class DatamartQueryCursor(object):
                     q_nodes_list = list(filter(None, self.supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
                     unique_qnodes.sort()
-
+                    # updated v2020.1.6, not skip if unique Q nodes are too few
+                    if len(unique_qnodes) < config.min_q_node_query_size_percent * len(q_nodes_list):
+                        self._logger.warning("Too few Q nodes (rate = {}/{}) found on column {}, will skip this column.".
+                                             format(str(len(unique_qnodes)),
+                                                    str(config.min_q_node_query_size_percent * len(q_nodes_list)),
+                                                    str(each_column)))
+                        continue
                     vector_search_result = {"number_of_vectors": str(len(unique_qnodes)),
                                             "target_q_node_column_name": self.supplied_dataframe.columns[each_column],
                                             "q_nodes_list": unique_qnodes}
@@ -1664,38 +1677,34 @@ class DatamartSearchResult:
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
 
-        maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
-        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
-
         join_pair_column = download_result['joining_pairs']
-        for each_row in join_pair_column:
-            if len(each_row) >= maximum_accept_duplicate_amount:
-                raise ValueError("Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
         download_result = download_result.drop(columns=['joining_pairs'])
-
-        column_names_to_join = None
-        r1_paired = set()
-        i = 0
-
-        df_dict = dict()
-        start = time.time()
-        columns_new = None
-        left_pairs = defaultdict(list)
-        right_pairs = defaultdict(list)
         left_pairs_oversize = False
         right_pairs_oversize = False
-        for r1, r2 in self.pairs:
-            if left_pairs_oversize and right_pairs_oversize:
-                raise ValueError("Should not augment for n-m relationship.")
-            # otherwise continue counting
-            if len(left_pairs[int(r1)]) >= maximum_accept_duplicate_amount:
-                left_pairs_oversize = True
-            elif not left_pairs_oversize:
-                left_pairs[int(r1)].append(int(r2))
-            if len(right_pairs[int(r2)]) >= maximum_accept_duplicate_amount:
-                right_pairs_oversize = True
-            elif not right_pairs_oversize:
-                right_pairs[int(r2)].append(int(r1))
+        start = time.time()
+
+        # only need to check duplicate for general search's join
+        if self.search_type == "general":
+            maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
+            self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
+            for each_row in join_pair_column:
+                if len(each_row) >= maximum_accept_duplicate_amount:
+                    raise ValueError("Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
+
+            left_pairs = defaultdict(list)
+            right_pairs = defaultdict(list)
+
+            for r1, r2 in self.pairs:
+                if left_pairs_oversize and right_pairs_oversize:
+                    raise ValueError("Should not augment for n-m relationship.")
+                # otherwise continue counting
+                if len(left_pairs[int(r1)]) >= maximum_accept_duplicate_amount:
+                    left_pairs_oversize = True
+                    left_pairs[int(r1)].append(int(r2))
+                if len(right_pairs[int(r2)]) >= maximum_accept_duplicate_amount:
+                    right_pairs_oversize = True
+                elif not right_pairs_oversize:
+                    right_pairs[int(r2)].append(int(r1))
 
         if left_pairs_oversize and right_pairs_oversize:
             # if n_to_m_condition
@@ -1711,6 +1720,11 @@ class DatamartSearchResult:
             # add extra index column to ensure they follow the original order
             supplied_data_df['**original_index**'] = supplied_data_df.index
             # self.pairs = sorted(self.pairs, key=lambda x: int(x[0]))
+            i = 0
+            r1_paired = set()
+            df_dict = dict()
+            columns_new = None
+            column_names_to_join = None
             for r1, r2 in self.pairs:
                 i += 1
                 r1_int = int(r1)
