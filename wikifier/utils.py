@@ -40,7 +40,7 @@ def check_wikifier_choice(input_dataframe: pd.DataFrame) -> typing.Union[bool, N
             wikifier_choice = wikifier_choices[hash_input_data]
             return wikifier_choice
         else:
-            _logger.error("No choice record found for dataset " + hash_input_data)
+            _logger.warning("No choice record found for dataset " + hash_input_data)
             return None
 
     except Exception as e:
@@ -84,7 +84,8 @@ def _update_metadata(metadata, res_id):
     metadata = metadata.update((res_id, ALL_ELEMENTS, updated_column_number), updated_column_metadata)
     return metadata
 
-def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_amount=SAMPLE_AMOUNT) -> pd.DataFrame:
+
+def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.05, sample_amount=SAMPLE_AMOUNT) -> pd.DataFrame:
     """
         special wikifier that use human-generated dict to find correct woreda Q nodes from wikidata
         it will only care about woreda related columns
@@ -95,15 +96,15 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     with open(oromia_wikifier_file, "r") as f:
         woreda_dict = json.load(f)
 
-    wikifier_cache_file = os.path.join(wikifier.__path__[0], "ethiopia_wikifier_cache.pkl")
-    if os.path.exists(wikifier_cache_file):
-        try:
-            with open(wikifier_cache_file, "rb") as f:
-                wikifier_cache_dict = pickle.load(f)
-        except:
-            wikifier_cache_dict = {}
-    else:
-        wikifier_cache_dict = {}
+    # wikifier_cache_file = os.path.join(wikifier.__path__[0], "ethiopia_wikifier_cache.pkl")
+    # if os.path.exists(wikifier_cache_file):
+    #     try:
+    #         with open(wikifier_cache_file, "rb") as f:
+    #             wikifier_cache_dict = pickle.load(f)
+    #     except:
+    #         wikifier_cache_dict = {}
+    # else:
+    wikifier_cache_dict = {}
 
     # reference by woreda name or woreda id
     reverse_dict_name = defaultdict(dict)
@@ -129,13 +130,13 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     #         qnodes.append(k)
     #         woredas.append(each_label + "-" + v['region'])
 
-
     col_hit_count = defaultdict(int)
     random.seed(42)
+
     if len(output_dataframe) < sample_amount:
         chosen_rows = range(len(output_dataframe))
     else:
-        chosen_rows = random.sample(range(len(output_dataframe)), k = sample_amount)
+        chosen_rows = random.sample(range(len(output_dataframe)), k=sample_amount)
 
     for _, each_row in output_dataframe.iloc[chosen_rows, :].iterrows():
         for col_num, each_cell in enumerate(each_row):
@@ -155,7 +156,7 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
             max_hit_v = v
 
     if threshold > (max_hit_v / sample_amount):
-        _logger.warning("The coverge of found rows is {} which less than threshold, will not consider.".format(str(max_hit_v / 100)))
+        _logger.warning("The coverge of found rows is {} which less than threshold, will not consider to use ethiopia wikifier.".format(str(max_hit_v / 100)))
         return output_dataframe
 
     elif max_hit_k is None:
@@ -245,10 +246,11 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.1, sample_a
     output_dataframe[ADDED_WOREDA_WIKIDATA_COLUMN_NAME] = wikifier_result_list
 
     # save cache
-    with open(wikifier_cache_file, "wb") as f:
-        wikifier_cache_dict = pickle.dump(wikifier_cache_dict, f)
+    # with open(wikifier_cache_file, "wb") as f:
+    #     wikifier_cache_dict = pickle.dump(wikifier_cache_dict, f)
 
     return output_dataframe
+
 
 def remove_punctuation(input_str, return_format="list") -> typing.Union[typing.List[str], str]:
     words_processed = str(input_str).lower().translate(TRANSLATOR).split()

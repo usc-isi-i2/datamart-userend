@@ -88,7 +88,7 @@
       "40108",
       "040108"
     ],
-    "region": "West Wellega"
+    "region": "Misraq Harerge"
   },
   "Q4938667": {
     "labels": [
@@ -171,7 +171,9 @@
     ],
     "woreda_ids": [
       "40119",
-      "040119"
+      "040119",
+      "40117",
+      "040117"
     ],
     "region": "West Wellega"
   },
@@ -604,9 +606,9 @@
     ],
     "region": "Jimma"
   },
-  "Q5076096": {
+  "Q3195518": {
     "labels": [
-      "Kerisa"
+      "Kersa"
     ],
     "woreda_ids": [
       "40405",
@@ -1122,7 +1124,9 @@
   },
   "Q351427": {
     "labels": [
-      "Adama"
+      "Adama",
+      "Nazreth",
+      "Nazareth"
     ],
     "woreda_ids": [
       "40703",
@@ -1701,6 +1705,15 @@
     ],
     "region": "East Hararge"
   },
+  "Q3021233": {
+    "labels": [
+      "Dega"
+    ],
+    "woreda_ids": [
+      "40304",
+      "040304"
+    ],
+  },
   "Q55623083": {
     "labels": [
       "Midega Tole",
@@ -1853,6 +1866,7 @@
   "Q15222316": {
     "labels": [
       "GURADAMOLE",
+      "Gordamole"
       "Gura Dhamole"
     ],
     "woreda_ids": [
@@ -1881,6 +1895,16 @@
       "041118"
     ],
     "region": "Bale"
+  },
+  "Q2821604": {
+    "labels": [
+      "Abichuna Gne'a"
+    ],
+    "woreda_ids": [
+      "40609",
+      "040609"
+    ],
+    "region": "Semien Shewa"
   },
   "Q56248058": {
     "labels": [
@@ -2232,6 +2256,36 @@
       "041408"
     ],
     "region": "Guji"
+  },
+  "Q3282150": {
+    "labels": [
+      "Malka Balo"
+    ],
+    "woreda_ids": [
+      "41012",
+      "041012"
+    ],
+    "region": "Misraq Harerge"
+  },
+  "Q7429268": {
+    "labels": [
+      "Sayo Nole"
+    ],
+    "woreda_ids": [
+      "40118",
+      "040118"
+    ],
+    "region": "Mirab Welega"
+  },
+  "Q3565576": {
+    "labels": [
+      "Walmara"
+    ],
+    "woreda_ids": [
+      "40512",
+      "040512"
+    ],
+    "region": "Mirab Welega"
   },
   "Q5644196": {
     "labels": [
@@ -2625,7 +2679,21 @@
   },
   "Q16999696": {
     "labels": [
-      "Jima Geneti"
+      "Jima Geneti",
+      "Jimma Genete"
+    ],
+    "woreda_ids": [
+      "41906",
+      "041906"
+    ]
+  },
+  "Q3200454": {
+    "labels": [
+      "Kuni",
+    ],
+    "woreda_ids": [
+      "40911",
+      "040911"
     ]
   },
   "Q2563156": {
@@ -2635,7 +2703,9 @@
   },
   "Q2570767": {
     "labels": [
-      "Batu"
+      "Batu",
+      "Ziway",
+      "zway"
     ]
   },
   "Q2893561": {
@@ -2647,7 +2717,8 @@
   },
   "Q2893571": {
     "labels": [
-      "Bedesa Town"
+      "Bedesa Town",
+      "Bedessa"
     ]
   },
   "Q29569926": {
@@ -2680,12 +2751,8 @@
   "Q3162805": {
     "labels": [
       "Jarso"
-    ]
-  },
-  "Q3195518": {
-    "labels": [
-      "Kersa"
-    ]
+    ],
+    "region": "Mirab Welega"
   },
   "Q385341": {
     "labels": [
@@ -2704,7 +2771,12 @@
   },
   "Q5659805": {
     "labels": [
+      "Haro Limmu",
       "Haro Limu"
+    ],
+    "woreda_ids": [
+      "40204",
+      "040204"
     ]
   },
   "Q6428936": {
@@ -2714,7 +2786,8 @@
   },
   "Q740236": {
     "labels": [
-      "Assela Town"
+      "Assela Town",
+      "Assela"
     ]
   },
   "Q740499": {
@@ -2820,6 +2893,10 @@
     "labels": [
       "Darolebu",
       "Daro Lebu"
+    ],
+    "woreda_ids": [
+      "40909",
+      "040909"
     ]
   },
   "Q55609174": {
@@ -2845,6 +2922,10 @@
     "labels": [
       "Dillo",
       "Dilo"
+    ],
+    "woreda_ids": [
+      "41219",
+      "041219"
     ]
   },
   "Q5313170": {
@@ -2856,7 +2937,12 @@
   "Q5359876": {
     "labels": [
       "Elfata",
-      "Elifata"
+      "Elifata",
+      "Ifata"
+    ],
+    "woreda_ids": [
+      "40519",
+      "040519"
     ]
   },
   "Q3073074": {
@@ -2881,5 +2967,21 @@
     "labels": [
       "Gomole"
     ]
+  },
+  "Q2973898": {
+    "labels": [
+      "Wolenchiti"
+    ]
+  },
+  "Q376295": {
+    "labels": [
+      "Nekemte"
+    ]
+  },
+  "Q55757708": {
+    "labels": [
+      "Derashe"
+    ]
   }
+
 }
