@@ -30,6 +30,7 @@ from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.utilities.timeout import timeout_call
+from datamart_isi.utilities.singleton import singleton
 from datamart_isi.utilities import d3m_wikifier
 from datamart_isi.utilities.d3m_metadata import MetadataGenerator
 from datamart_isi.utilities.download_manager import DownloadManager
@@ -81,8 +82,7 @@ class DatamartQueryCursor(object):
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
         self.supplied_data = supplied_data
         if type(self.supplied_data) is d3m_Dataset:
@@ -316,14 +316,13 @@ class DatamartQueryCursor(object):
                     q_node_query_part = ""
                     # ensure every time we get same order of q nodes so the hash tag will be same
                     unique_qnodes = set(q_nodes_list)
+                    # updated v2020.1.7, use blacklist to filter q nodes
+                    unique_qnodes = unique_qnodes - DownloadManager.blacklist_nodes
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
                     # updated v2020.1.6, not skip if unique Q nodes are too few
-                    if len(unique_qnodes) < config.min_q_node_query_size_percent * len(q_nodes_list):
-                        self._logger.warning("Too few Q nodes (rate = {}/{}) found on column {}, will skip this column.".
-                                             format(str(len(unique_qnodes)),
-                                                    str(config.min_q_node_query_size_percent * len(q_nodes_list)),
-                                                    str(each_column)))
+                    if len(unique_qnodes) == 0:
+                        self._logger.warning("No Q nodes detected on column No.{} need to search, skip.".format(str(each_column)))
                         continue
                     if len(unique_qnodes) > config.max_q_node_query_size:
                         unique_qnodes = random.sample(unique_qnodes, config.max_q_node_query_size)
@@ -791,6 +790,7 @@ class DatamartQueryCursor(object):
         return filtered_search_result
 
 
+@singleton
 class Datamart(object):
     """
     ISI implement of datamart
@@ -802,8 +802,7 @@ class Datamart(object):
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
@@ -1085,8 +1084,7 @@ class DatamartSearchResult:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self.wikidata_cache_manager = QueryCache()
@@ -1571,8 +1569,7 @@ class DatamartSearchResult:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         # ensure this supplied dataframe will not changed afterwards

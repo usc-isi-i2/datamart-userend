@@ -12,6 +12,7 @@ from d3m.container import DataFrame as d3m_DataFrame
 from d3m.base import utils as d3m_utils
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.cache.metadata_cache import MetadataCache
+from datamart_isi.cache.wikidata_cache import QueryCache
 from datamart_isi import config
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
@@ -22,12 +23,30 @@ EM_ES_URL = connection.get_es_fb_embedding_server_url()
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
 logger = logging.getLogger(__name__)
 
+
 # EM_ES_URL = config.em_es_url
 # EM_ES_INDEX = config.em_es_index
 # EM_ES_TYPE = config.em_es_type
+def fetch_blacklist_nodes():
+    query = """
+        SELECT ?item ?itemLabel 
+        WHERE 
+        {
+          ?item wdt:P31/wdt:P279* wd:Q12132.
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+        }
+    """
+    blacklist_nodes_set = set()
+    result = QueryCache().get_result(query)
+    for each_Q_node in result:
+        blacklist_nodes_set.add(each_Q_node['item']['value'].split("/")[-1])
+    logger.info("Following Q nodes are added to blacklist which will not be considered for wikidata search")
+    logger.info(str(blacklist_nodes_set))
+    return blacklist_nodes_set
 
 
 class DownloadManager:
+    blacklist_nodes = fetch_blacklist_nodes()
     @staticmethod
     def fetch_fb_embeddings(q_nodes_list, target_q_node_column_name):
         # add vectors columns in wikifier_res

@@ -4,9 +4,9 @@ import os
 import requests
 import json
 import logging
+from functools import wraps
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi.config import cache_file_storage_base_loc
-from datamart_isi.utilities.connection import get_keywords_augmentation_server_url
 from datamart_isi.utilities import connection
 from datamart_isi.cache.wikidata_cache import QueryCache
 from dsbox.datapreprocessing.cleaner.data_profile import Profiler, Hyperparams as ProfilerHyperparams
@@ -292,3 +292,4 @@ class Utils:
     @staticmethod
     def trigram_tokenizer(x):
         return Utils.qgram_tokenizer(x, 3)
+
