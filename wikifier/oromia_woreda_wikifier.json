@@ -346,13 +346,8 @@
   },
   "Q376295": {
     "labels": [
-      "Nekemte Town"
-    ],
-    "woreda_ids": [
-      "40217",
-      "040217"
-    ],
-    "region": "East Wellega"
+      "Nekemte"
+    ]
   },
   "Q3016116": {
     "labels": [
@@ -1579,7 +1574,9 @@
   "Q56249628": {
     "labels": [
       "BEDESA TOWN",
-      "Bedessa Town"
+      "Bedessa Town",
+      "Bedesa",
+      "Bedessa"
     ],
     "woreda_ids": [
       "40914",
@@ -1691,13 +1688,14 @@
     ],
     "woreda_ids": [
       "41011",
-      "041011"
+      "041011",
     ],
     "region": "East Hararge"
   },
   "Q2893566": {
     "labels": [
-      "Bedeno"
+      "Bedeno",
+      "Beddenno"
     ],
     "woreda_ids": [
       "41013",
@@ -1712,7 +1710,7 @@
     "woreda_ids": [
       "40304",
       "040304"
-    ],
+    ]
   },
   "Q55623083": {
     "labels": [
@@ -1866,7 +1864,7 @@
   "Q15222316": {
     "labels": [
       "GURADAMOLE",
-      "Gordamole"
+      "Gordamole",
       "Gura Dhamole"
     ],
     "woreda_ids": [
@@ -2051,10 +2049,11 @@
     ],
     "region": "South West Shewa"
   },
-  "Q3402033": {
+  "Q3565370": {
     "labels": [
       "Weliso",
-      "Woliso"
+      "Woliso",
+      "Waliso"
     ],
     "woreda_ids": [
       "41303",
@@ -2689,7 +2688,7 @@
   },
   "Q3200454": {
     "labels": [
-      "Kuni",
+      "Kuni"
     ],
     "woreda_ids": [
       "40911",
@@ -2713,12 +2712,6 @@
       "Bedele Hospital",
       "Bedele Town",
       "Bedele Zuriya"
-    ]
-  },
-  "Q2893571": {
-    "labels": [
-      "Bedesa Town",
-      "Bedessa"
     ]
   },
   "Q29569926": {
@@ -2803,11 +2796,6 @@
   "Q815044": {
     "labels": [
       "Bekoji Town"
-    ]
-  },
-  "Q3565370": {
-    "labels": [
-      "Woliso"
     ]
   },
   "Q24032558": {
@@ -2907,7 +2895,6 @@
   },
   "Q5249768": {
     "labels": [
-      "Deder",
       "Deder Hospital",
       "Deder Town"
     ]
@@ -2973,15 +2960,9 @@
       "Wolenchiti"
     ]
   },
-  "Q376295": {
-    "labels": [
-      "Nekemte"
-    ]
-  },
   "Q55757708": {
     "labels": [
       "Derashe"
     ]
   }
-
 }

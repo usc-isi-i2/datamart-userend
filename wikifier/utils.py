@@ -121,7 +121,10 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.05, sample_
     for k, v in woreda_dict.items():
         if 'woreda_ids' in v:
             for each_id in v['woreda_ids']:
-                reverse_dict_id[each_id.lower()][v['region'].lower()] = k
+                if 'region' in v:
+                    reverse_dict_id[each_id.lower()][v['region'].lower()] = k
+                else:
+                    reverse_dict_id[each_id.lower()] = k
 
     # woredas = []
     # qnodes = []
