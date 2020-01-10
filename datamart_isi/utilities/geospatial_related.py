@@ -48,6 +48,8 @@ class GeospatialRelated:
         :return: a float indicate the distance
         """
         try:
+            if point_A == point_B:
+                return 0
             ra = 6378.140
             rb = 6356.755
             flatten = (ra - rb) / ra
@@ -73,7 +75,11 @@ class GeospatialRelated:
             elif distance == "mile":
                 distance *= 1.6
         except ZeroDivisionError:
+            print("get zero division on calculating pair {} {}, treat value as 0".format(str(point_A), str(point_B)))
             return 0
+        except:
+            print("get error on calculating pair {} {}".format(str(point_A), str(point_B)))
+            raise
         return distance
 
 
