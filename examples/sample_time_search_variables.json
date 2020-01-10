@@ -1,0 +1,12 @@
+{
+  "keywords": [
+    "rain"
+  ],
+  "variable": {
+    "temporal_variable": {
+      "start": "2018-01-01T01",
+      "end": "2018-07-01T01",
+      "granularity": "hour"
+    }
+  }
+}
