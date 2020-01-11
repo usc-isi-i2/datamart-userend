@@ -107,6 +107,7 @@ class DatamartQueryCursor(object):
         self.consider_time = kwargs.get("consider_time", True)
         if self.consider_wikifier_columns_only:
             self._find_q_node_columns()
+        self.search_limit_amount = 20
 
     def get_next_page(self, *, limit: typing.Optional[int] = 20, timeout: int = None) \
             -> typing.Optional[typing.Sequence['DatamartSearchResult']]:
@@ -132,6 +133,9 @@ class DatamartQueryCursor(object):
         if timeout is None:
             timeout = 1800
         self._logger.info("Set time limit to be " + str(timeout) + " seconds.")
+
+        if limit is not None:
+            self.search_limit_amount = limit
 
         # if need to run wikifier, run it before any search
         if self.current_searching_query_index == 0 and self.need_run_wikifier:
@@ -434,7 +438,8 @@ class DatamartQueryCursor(object):
         query_results = self.augmenter.query_by_sparql(query=query,
                                                        dataset=self.supplied_data,
                                                        consider_wikifier_columns_only=self.consider_wikifier_columns_only,
-                                                       augment_with_time=self.augment_with_time)
+                                                       augment_with_time=self.augment_with_time,
+                                                       limit_amount=self.search_limit_amount)
 
         if len(variables_temp) != 0:
             query["variables"] = variables_temp

@@ -1,31 +1,22 @@
 import pandas as pd
 import typing
-import warnings
 import traceback
 import logging
 from d3m.base import utils as d3m_utils
-from datetime import datetime
 from datamart_isi.utilities.utils import Utils
 from d3m.container import Dataset as d3m_Dataset
-from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
-from datamart_isi.joiners.join_result import JoinResult
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
-from itertools import chain
 from wikifier.utils import remove_punctuation
 from datamart_isi.utilities.geospatial_related import GeospatialRelated
+from datamart_isi.utilities.singleton import singleton
 from datamart_isi.cache.wikidata_cache import QueryCache
+from datamart_isi import config
 
 
+@singleton
 class Augment(object):
-
     def __init__(self) -> None:
-        """Init method of QuerySystem, set up connection to elastic search.
-
-        Returns:
-
-        """
-
         self.qm = SPARQLWrapper(connection.get_general_search_server_url())
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
@@ -88,9 +79,6 @@ class Augment(object):
                 ?dataset p:C2004 ?keywords_url.
                 ?keywords_url ps:C2004 ?keywords.
         '''
-        bind = ""
-        ORDER = "ORDER BY DESC(?score) ?title"
-        LIMIT = "LIMIT 20"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
         need_keywords_search = "keywords_search" in json_query.keys() and json_query["keywords_search"] != []
         need_variables_search = "variables" in json_query.keys() and json_query["variables"] != {}
@@ -100,6 +88,10 @@ class Augment(object):
                                  "geospatial_variable" in json_query["variables_search"].keys()
         need_consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
         need_augment_with_time = kwargs.get("augment_with_time", False)
+        limit_amount = kwargs.get("limit_amount", config.default_search_limit)
+        bind = ""
+        ORDER = "ORDER BY DESC(?score) ?title"
+        LIMIT = "LIMIT " + str(limit_amount)
 
         if need_variables_search:
             query_variables = json_query['variables']
@@ -123,7 +115,6 @@ class Augment(object):
                             SELECT DISTINCT ?dataset ?datasetLabel ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
                             '''
                 spaqrl_query = PREFIX + SELECTION + STRUCTURE
-                LIMIT = "LIMIT 20"
             else:
                 # updated v2019.11.1, now use fuzzy search
                 _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)

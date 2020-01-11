@@ -68,4 +68,5 @@ max_latitude_val = 90
 min_latitude_val = -90
 
 maximum_accept_wikifier_size = 2000000
+default_search_limit = 20
 use_cache = True
