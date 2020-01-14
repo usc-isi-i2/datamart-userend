@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import requests
 import json
+import sys
+import argparse
 import logging
 import copy
 from functools import wraps
@@ -368,3 +370,39 @@ class Utils:
             if len(output_df) == 0:
                 _logger.error("Get 0 rows after join with No.{} DataFrame".format(str(i + 1)))
         return output_df
+
+
+def main(argv: typing.Sequence) -> None:
+    parser = argparse.ArgumentParser(prog='datamart_isi', description="Run ISI datamart utils command.")
+    subparsers = parser.add_subparsers(dest='commands', title='commands')
+    # define join parser
+    join_parser = subparsers.add_parser(
+        'join', help="join ethiopia related datasets directly by commands",
+        description="Join datasets",
+    )
+    join_parser.add_argument(
+        '-d', '--dataset_dirs', action='store', dest='datasets_dirs',
+        help="paths to the datasets",
+    )
+    join_parser.add_argument(
+        '-o', '--output_dir', action='store', dest='output_dir',
+        help="paths to the output file",
+    )
+    arguments = parser.parse_args(argv[1:])
+
+    _logger.debug("given arguments are {}".format(str(arguments)))
+    _logger.info("Running {} function.".format(arguments.commands))
+    if arguments.commands == 'join':
+        processed_dirs = arguments.datasets_dirs.split(",")
+        _logger.info("Join from following files")
+        for i, each_dir in enumerate(processed_dirs):
+            if each_dir[0] == " ":
+                each_dir = each_dir[1:]
+                processed_dirs[i] = each_dir
+            _logger.info(each_dir)
+        res = Utils.join_datasets_by_files(files=processed_dirs)
+        res.to_csv(arguments.output_dir, index=False)
+
+
+if __name__ == '__main__':
+    main(sys.argv)
