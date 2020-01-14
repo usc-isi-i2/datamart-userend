@@ -321,7 +321,7 @@ class DatamartQueryCursor(object):
                     # ensure every time we get same order of q nodes so the hash tag will be same
                     unique_qnodes = set(q_nodes_list)
                     # updated v2020.1.7, use blacklist to filter q nodes
-                    unique_qnodes = unique_qnodes - DownloadManager.blacklist_nodes
+                    unique_qnodes = unique_qnodes - DownloadManager.fetch_blacklist_nodes()
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
                     # updated v2020.1.6, not skip if unique Q nodes are too few

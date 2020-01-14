@@ -27,26 +27,26 @@ logger = logging.getLogger(__name__)
 # EM_ES_URL = config.em_es_url
 # EM_ES_INDEX = config.em_es_index
 # EM_ES_TYPE = config.em_es_type
-def fetch_blacklist_nodes():
-    query = """
-        SELECT ?item ?itemLabel 
-        WHERE 
-        {
-          ?item wdt:P31/wdt:P279* wd:Q12132.
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
-        }
-    """
-    blacklist_nodes_set = set()
-    result = QueryCache().get_result(query)
-    for each_Q_node in result:
-        blacklist_nodes_set.add(each_Q_node['item']['value'].split("/")[-1])
-    logger.info("Following Q nodes are added to blacklist which will not be considered for wikidata search")
-    logger.info(str(blacklist_nodes_set))
-    return blacklist_nodes_set
-
 
 class DownloadManager:
-    blacklist_nodes = fetch_blacklist_nodes()
+    @staticmethod
+    def fetch_blacklist_nodes():
+        query = """
+            SELECT ?item ?itemLabel 
+            WHERE 
+            {
+              ?item wdt:P31/wdt:P279* wd:Q12132.
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+            }
+        """
+        blacklist_nodes_set = set()
+        result = QueryCache().get_result(query)
+        for each_Q_node in result:
+            blacklist_nodes_set.add(each_Q_node['item']['value'].split("/")[-1])
+        logger.info("Following Q nodes are added to blacklist which will not be considered for wikidata search")
+        logger.info(str(blacklist_nodes_set))
+        return blacklist_nodes_set
+
     @staticmethod
     def fetch_fb_embeddings(q_nodes_list, target_q_node_column_name):
         # add vectors columns in wikifier_res

@@ -9,7 +9,7 @@ with open('requirements.txt', 'r') as f:
             install_requires.append(re)
 
 setup(name='datamart_isi',
-      version='2.1.5',
+      version='2.1.6.dev1',
       description='USC ISI implementation of D3M Datamart API',
       author='USC ISI',
       url='https://github.com/usc-isi-i2/datamart-userend/tree/d3m',

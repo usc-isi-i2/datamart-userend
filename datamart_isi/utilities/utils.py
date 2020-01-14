@@ -315,7 +315,8 @@ class Utils:
         _logger.info("Totally {} files.".format(str(len(files))))
 
         necessary_column_names = {"region_wikidata", "precision", "time"}
-        ignore_column_names = {"region_wikidata", "precision", "time", "variable_name", "variable", "region_Label", "calendar", "productLabel", "qualityLabel"}
+        ignore_column_names = {"region_wikidata", "precision", "time", "variable_name", "variable", "region_Label", "calendar",
+                               "productLabel", "qualityLabel"}
         loaded_dataframes = []
         for i, each in enumerate(files):
             if isinstance(each, str):
@@ -366,7 +367,9 @@ class Utils:
             right_needed_columns = right_join_columns + [possible_name[0]]
             print(str(right_needed_columns))
             right_join_df = each_loaded_df[right_needed_columns]
-            output_df = pd.merge(left=output_df, right=right_join_df, left_on=left_join_columns, right_on=right_join_columns, how=how)
+            output_df = pd.merge(left=output_df, right=right_join_df,
+                                 left_on=left_join_columns, right_on=right_join_columns,
+                                 how=how)
             if len(output_df) == 0:
                 _logger.error("Get 0 rows after join with No.{} DataFrame".format(str(i + 1)))
         return output_df
