@@ -332,6 +332,7 @@ class Utils:
                 _logger.warning("Unsupported format '{}' on No.{} input, will ignore.".format(str(type(each)), str(i)))
                 continue
 
+            temp_loaded_df = temp_loaded_df.dropna(subset=['region_wikidata'], inplace=False)
             if len(set(temp_loaded_df.columns.tolist()).intersection(necessary_column_names)) != len(necessary_column_names):
                 _logger.error("Following columns {} are necessary to be exists".format(str(necessary_column_names)))
                 raise ValueError("Not all columns found on given No.{} datasets.")

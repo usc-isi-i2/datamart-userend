@@ -12,11 +12,12 @@ import pandas as pd
 _logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+
 def time_granularity_value_to_stringfy_time_format(granularity_int: int) -> str:
     try:
         granularity_int = int(granularity_int)
     except ValueError:
-        raise ValueError("The given granulairty is not int format!")
+        raise ValueError("The given granularity is not int format!")
 
     granularity_dict = {
         14: "%Y-%m-%d %H:%M:%S",
@@ -111,22 +112,32 @@ def join_datasets_by_files(files: typing.List[typing.Union[str, pd.DataFrame]], 
 
         if len(set(temp_loaded_df.columns.tolist()).intersection(necessary_column_names)) != len(necessary_column_names):
             _logger.error("Following columns {} are necessary to be exists".format(str(necessary_column_names)))
-            raise ValueError("Not all columns found on given No.{} datasets.")
+            raise ValueError("Not all columns found on given No.{} datasets {}.".format(str(i), each))
         loaded_dataframes.append(temp_loaded_df)
         loaded_filenames.append(each)
 
     # use first input df as base df
     output_df = copy.deepcopy(loaded_dataframes[0])
-    drop_columns = []
-    for col_name in ["productLabel", "qualityLabel"]:
-        if col_name in output_df:
-            drop_columns.append(col_name)
-    if drop_columns:
-        output_df = output_df.drop(drop_columns, axis=1)
+    # drop_columns = []
+    # for col_name in ["productLabel", "qualityLabel"]:
+    #     if col_name in output_df:
+    #         drop_columns.append(col_name)
+    # if drop_columns:
+    #     output_df = output_df.drop(drop_columns, axis=1)
+    possible_name = []
+    for each_col_name in output_df.columns:
+        if each_col_name not in ignore_column_names and "label" not in each_col_name.lower():
+            possible_name.append(each_col_name)
+    if len(possible_name) != 1:
+        _logger.error("get multiple possible name???")
+        _logger.error(str(output_df.columns))
+
+    source_precision = output_df['precision'].iloc[0]
+    output_df = output_df[["region_wikidata", "time", possible_name[0]]]
     output_df = output_df.dropna()
     output_df = output_df.drop_duplicates()
     
-    source_precision = output_df['precision'].iloc[0]
+
     # transfer the datetime format to ensure format match
     time_stringfy_format = time_granularity_value_to_stringfy_time_format(source_precision)
     output_df['time'] = pd.to_datetime(output_df['time']).dt.strftime(
@@ -159,11 +170,12 @@ def join_datasets_by_files(files: typing.List[typing.Union[str, pd.DataFrame]], 
         right_join_df = each_loaded_df[right_needed_columns]
         _logger.debug('left shape: %s', output_df.shape)
         _logger.debug('right shape: %s', right_join_df.shape)
+
         output_df = pd.merge(left=output_df, right=right_join_df,
                              left_on=left_join_columns, right_on=right_join_columns,
                              how=how)
         output_df = output_df.drop_duplicates()
-        output_df.to_csv(f'partial_{i}.csv', index=False)
+        # output_df.to_csv(f'partial_{i}.csv', index=False)
         if len(output_df) == 0:
             _logger.error("Get 0 rows after join with No.{} DataFrame".format(str(i + 1)))
     return output_df
