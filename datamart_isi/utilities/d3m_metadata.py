@@ -463,11 +463,11 @@ class MetadataGenerator:
         :return: a pandas DataFrame
         """
         if self.search_type == "wikidata":
-            column_names = []
+            column_names = ["itemLabel"]
             for each in self.search_result["p_nodes_needed"]:
                 each_name = self.get_node_name(each)
                 column_names.append(each_name)
-            column_names.append("q_node")
+
             column_names = ", ".join(column_names)
             required_variable = list()
             required_variable.append(self.search_result["target_q_node_column_name"])
