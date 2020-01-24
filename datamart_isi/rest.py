@@ -1,5 +1,6 @@
 from copy import deepcopy
 from d3m import container
+from d3m.base import utils as d3m_utils
 import d3m.metadata.base as metadata_base
 import io
 import json
@@ -88,15 +89,27 @@ class RESTQueryCursor(datamart.DatamartQueryCursor):
             query: dict,
             data: bytes = None,
             data_id: str = None,
-            data_resource_id: str = None
+            data_resource_id: str = None,
+            **kwargs
         ) -> None:
-        self._args = url, query, data
+        
         self._mutex = threading.RLock()
         self._sent = False
         self._done = threading.Condition(self._mutex)
         self._results = None
         self._supplied_data_id = data_id
         self._supplied_resource_id = data_resource_id
+        self._parameter_choices = []
+        if len(kwargs) > 0:
+            for k, v in kwargs.items():
+                logger.info("Set parameter {} as {}".format(str(k), str(v)))
+                self._parameter_choices.append(k + "=" + str(v).lower())
+            url += "?" + "&".join(self._parameter_choices)
+        if "run_wikifier=false" in self._parameter_choices and "consider_wikifier_columns_only=true" in self._parameter_choices:
+            logger.warning("There will be no results found if run wikifier is set to false while require consider wikifier columns only!")
+        if "consider_time=" in self._parameter_choices and "augment_with_time=true" in self._parameter_choices:
+            logger.warning("Received augment_with_time set to be true, setting consider time will be useless!")
+        self._args = url, query, data
 
     def _query(self, timeout: int = None) -> None:
         url, query, data = self._args
@@ -189,36 +202,43 @@ class RESTDatamart(datamart.Datamart):
 
     def search_with_data(self, query: datamart.DatamartQuery,
                          supplied_data: container.Dataset,
+                         **kwargs
                          ) -> datamart.DatamartQueryCursor:
-        return self._search_stream(query, supplied_data, None)
+        return self._search_stream(query=query, supplied_data=supplied_data, data_constraints=None, **kwargs)
 
     def search_with_data_columns(
             self, query: datamart.DatamartQuery,
             supplied_data: container.Dataset,
-            data_constraints: typing.List[datamart.TabularVariable],
+            data_constraints: typing.List[datamart.TabularVariable], **kwargs,
     ) -> datamart.DatamartQueryCursor:
-        return self._search_stream(query, supplied_data, data_constraints)
+        return self._search_stream(query, supplied_data, data_constraints, kwargs)
 
     def _search_rest(
             self, query: datamart.DatamartQuery,
             supplied_data: typing.Optional[container.Dataset],
             data_constraints: typing.Optional[
                 typing.List[datamart.TabularVariable]
-            ]) -> datamart.DatamartQueryCursor:
+            ],
+            **kwargs
+            ) -> datamart.DatamartQueryCursor:
         return RESTQueryCursor(
             self.url + '/search',
             query_to_json(query, data_constraints),
             get_dataset_bytes(supplied_data),
             get_dataset_id(supplied_data),
-            get_resource_id(supplied_data)
+            get_resource_id(supplied_data),
+            **kwargs
         )
 
     def _search_stream(
-            self, query: datamart.DatamartQuery,
+            self, 
+            query: datamart.DatamartQuery,
             supplied_data: typing.Optional[container.Dataset],
             data_constraints: typing.Optional[
                 typing.List[datamart.TabularVariable]
-            ]) -> datamart.DatamartQueryCursor:
+            ],
+            **kwargs
+            ) -> datamart.DatamartQueryCursor:
         # TODO: handle datasets with more than 1 resource
         if supplied_data and len(supplied_data.keys()) > 1:
             raise Exception("Datasets with multiple resources are"
@@ -236,7 +256,7 @@ class RESTDatamart(datamart.Datamart):
             ws = websocket.create_connection(ws_url)
         except (IOError, websocket.WebSocketException):
             # Use HTTP
-            return self._search_rest(query, supplied_data, data_constraints)
+            return self._search_rest(query, supplied_data, data_constraints, **kwargs)
 
         # Send query
         logger.info("Connected to %s, sending query...", ws_url)
@@ -476,17 +496,38 @@ class RESTSearchResult(datamart.DatamartSearchResult):
             stream=True
         )
 
-        if res.status_code != 200:
-            msg = "Error from DataMart: %s %s" % (
-                res.status_code, res.reason
-            )
-            logger.warning(msg)
-            raise Exception(msg)
+        try:
+            response = json.loads(res.content)
+            if response['code'] != 200 or res.code != 200:
+                msg = "Error from DataMart: %s %s" % (
+                    response['code'], response['message']
+                )
+                logger.warning(msg)
+                raise Exception(msg)
+        except:
+            pass
 
         dataset = download_dataset(res)
+
         if dataset:
             dataset = fix_metadata(dataset, supplied_data)
-            return dataset
+            _, augmented_df = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+            augmented_df_columns = augmented_df.columns.tolist()
+            _, original_df = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+            original_df_columns = original_df.columns.tolist()
+
+            useless_augment = False
+            if len(original_df_columns) == len(augmented_df_columns):
+                useless_augment = True
+            else:
+                added_columns = set(augmented_df_columns) - set(original_df_columns)
+                if all((each_column.endswith("_wikidata") and each_column[:-9] in original_df_columns for each_column in added_columns)):
+                    useless_augment = True
+
+            if useless_augment:
+                raise Exception("This augment do not augment any extra columns!")
+            else:
+                return dataset
         raise Exception("Error while reading the HTTP response.")
 
 
@@ -614,3 +655,23 @@ def fix_metadata(
     dataset.metadata = new_metadata
 
     return dataset
+
+def pretty_print_search_results(search_results, to_std=False):
+    for i, each_search_result in enumerate(search_results):
+        each_search_res_json = each_search_result.get_json_metadata()
+        print_sentence = "------------ Search result No.{} ------------".format(str(i))
+        if to_std:
+            print(print_sentence)
+        logger.info(print_sentence)
+        logger.info(each_search_res_json['augmentation'])
+        if to_std:
+            print(each_search_res_json['augmentation'])
+        summary = each_search_res_json['summary'].copy()
+        if "Columns" in summary:
+            summary.pop("Columns")
+        if to_std:
+            print(summary)
+            print("-"*100)
+        logger.info(summary)
+        logger.info("-"*100)
+

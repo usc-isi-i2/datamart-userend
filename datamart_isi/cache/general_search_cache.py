@@ -10,12 +10,14 @@ import os
 import json
 from datamart_isi import config
 from datamart_isi.utilities import connection
+from datamart_isi.utilities.singleton import singleton
 from d3m.container import DataFrame as d3m_DataFrame
 from pandas.util import hash_pandas_object
 
 MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
+@singleton
 class GeneralSearchCache(object):
     def __init__(self, *,  memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)

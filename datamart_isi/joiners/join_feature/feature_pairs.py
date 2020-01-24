@@ -68,11 +68,11 @@ class FeaturePairs:
         return self._pairs
 
     def get_rltk_block(self) -> typing.Optional[rltk.Block]:
-        str_key_l = []
-        str_key_r = []
+        # str_key_l = []
+        # str_key_r = []
         for f1, f2 in self.pairs:
-            str_key_l.append(f1.name)
-            str_key_r.append(f2.name)
+            str_key_l = f1
+            str_key_r = f2
 
         try:
             bg = rltk.HashBlockGenerator()
@@ -92,9 +92,16 @@ class FeaturePairs:
         return self._length
 
     def _init_pairs(self):
-        return [(FeatureFactory.create(self._left_df, self._left_columns[i], self._left_metadata),
-                 FeatureFactory.create(self._right_df, self._right_columns[i], self._right_metadata))
-                for i in range(self._length)]
+        pairs = []
+        for i in range(self._length):
+            each_left = self._left_df.columns[self._left_columns[i]].tolist()
+            each_right = self._right_df.columns[self._right_columns[i]].tolist()
+            each_pair = (each_left, each_right)
+            pairs.append(each_pair)
+        return pairs
+        # return [(FeatureFactory.create(self._left_df, self._left_columns[i], self._left_metadata),
+        #          FeatureFactory.create(self._right_df, self._right_columns[i], self._right_metadata))
+        #         for i in range(self._length)]
 
     @staticmethod
     def _init_rltk_dataset(df, record_class):

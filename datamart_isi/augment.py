@@ -1,50 +1,43 @@
-from datamart_isi.profiler import Profiler
 import pandas as pd
 import typing
-import warnings
 import traceback
 import logging
 from d3m.base import utils as d3m_utils
-from datetime import datetime
 from datamart_isi.utilities.utils import Utils
-from datamart_isi.joiners.joiner_base import JoinerPrepare, JoinerType
-from datamart_isi.joiners.join_result import JoinResult
+from d3m.container import Dataset as d3m_Dataset
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
-from itertools import chain
+from wikifier.utils import remove_punctuation
 from datamart_isi.utilities.geospatial_related import GeospatialRelated
+from datamart_isi.utilities.singleton import singleton
 from datamart_isi.cache.wikidata_cache import QueryCache
+from datamart_isi import config
 
 
+@singleton
 class Augment(object):
-
     def __init__(self) -> None:
-        """Init method of QuerySystem, set up connection to elastic search.
-
-        Returns:
-
-        """
-
         self.qm = SPARQLWrapper(connection.get_general_search_server_url())
         self.qm.setReturnFormat(JSON)
         self.qm.setMethod(POST)
         self.qm.setRequestMethod(URLENCODED)
-        self.profiler = Profiler()
         self.logger = logging.getLogger(__name__)
         self.wikidata_cache_manager = QueryCache()
 
-    def query_by_sparql(self, query: dict, dataset: pd.DataFrame = None) -> typing.Optional[typing.List[dict]]:
+    def query_by_sparql(self, query: dict, dataset: d3m_Dataset = None, **kwargs) -> typing.Optional[typing.List[dict]]:
         """
         Args:
             query: a dictnary format query
-            dataset:
-            **kwargs:
+            dataset: a d3m format dataset for reference
+            **kwargs: some extra parameters may get
 
         Returns:
 
         """
         if query:
-            query_body = self.parse_sparql_query(query, dataset)
+            query_body = self.parse_sparql_query(query, dataset, **kwargs)
+            self.logger.debug("Query sent to datamart blazegraph is:")
+            self.logger.debug(query_body)
             try:
                 self.qm.setQuery(query_body)
                 results = self.qm.query().convert()['results']['bindings']
@@ -57,21 +50,13 @@ class Augment(object):
             self.logger.error("No query given, query failed!")
             return []
 
-    def parse_sparql_query(self, json_query, dataset) -> str:
+    def parse_sparql_query(self, json_query, dataset, **kwargs) -> str:
         """
         parse the json query to a spaqrl query format
         :param json_query:
         :param dataset: supplied dataset
         :return: a string indicate the sparql query
         """
-        def qgram_tokenizer(x, _q):
-            if len(x) < _q:
-                return [x]
-            return [x[i:i + _q] + "*" for i in range(len(x) - _q + 1)]
-
-        def trigram_tokenizer(x):
-            return qgram_tokenizer(x, 3)
-
         # example of query variables: Chaves Los Angeles Sacramento
         PREFIX = '''
             prefix ps: <http://www.wikidata.org/prop/statement/>
@@ -94,9 +79,6 @@ class Augment(object):
                 ?dataset p:C2004 ?keywords_url.
                 ?keywords_url ps:C2004 ?keywords.
         '''
-        bind = ""
-        ORDER = "ORDER BY DESC(?score)"
-        LIMIT = "LIMIT 10"
         spaqrl_query = PREFIX + SELECTION + STRUCTURE
         need_keywords_search = "keywords_search" in json_query.keys() and json_query["keywords_search"] != []
         need_variables_search = "variables" in json_query.keys() and json_query["variables"] != {}
@@ -104,6 +86,12 @@ class Augment(object):
                                "temporal_variable" in json_query["variables_search"].keys()
         need_geospatial_search = "variables_search" in json_query.keys() and \
                                  "geospatial_variable" in json_query["variables_search"].keys()
+        need_consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
+        need_augment_with_time = kwargs.get("augment_with_time", False)
+        limit_amount = kwargs.get("limit_amount", config.default_search_limit)
+        bind = ""
+        ORDER = "ORDER BY DESC(?score) ?title"
+        LIMIT = "LIMIT " + str(limit_amount)
 
         if need_variables_search:
             query_variables = json_query['variables']
@@ -117,26 +105,33 @@ class Augment(object):
             bind = "?score_var" if bind == "" else bind + "+ ?score_var"
 
         if need_keywords_search:
+            query_keywords = json_query["keywords_search"]
+            # update v2019.12.13: use keywords augmentation
+            query_keywords = Utils.keywords_augmentation(query_keywords)
+
             # updated v2019.11.1, for search_without_data, we should remove duplicates
             if dataset is None:
                 SELECTION = '''
                             SELECT DISTINCT ?dataset ?datasetLabel ?score ?rank ?url ?file_type ?title ?keywords ?extra_information
                             '''
                 spaqrl_query = PREFIX + SELECTION + STRUCTURE
-                LIMIT = "LIMIT 20"
+            else:
+                # updated v2019.11.1, now use fuzzy search
+                _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+                # column_names_list = supplied_dataframe.columns.tolist()
+                # for each_col_name in supplied_dataframe.columns:
+                #     query_keywords.extend(remove_punctuation(each_col_name, "list"))
 
-            # updated v2019.11.1, now use fuzzy search
-            _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+            # trigram_keywords = []
+            # for each_keyword in query_keywords:
+                # trigram_keywords.extend(Utils.trigram_tokenizer(each_keyword))
 
-            query_keywords = json_query["keywords_search"]
-            query_keywords.extend(supplied_dataframe.columns.tolist())
-
-            trigram_keywords = []
+            query_keywords_filtered = set()
             for each_keyword in query_keywords:
-                trigram_keywords.extend(trigram_tokenizer(each_keyword))
+                query_keywords_filtered.add(each_keyword.lower())
 
-            # update v2019.11.4: trying to check difference IF NOT USE TRIGRAM
-            query_part = " ".join(query_keywords)
+            query_part = " ".join(list(query_keywords_filtered))
+
             spaqrl_query += '''
                 optional {
                 ?keywords_url ps:C2004 [
@@ -159,17 +154,16 @@ class Augment(object):
 
         if need_temporal_search:
             tv = json_query["variables_search"]["temporal_variable"]
-            temporal_granularity = {'second': 14, 'minute': 13, 'hour': 12, 'day': 11, 'month': 10, 'year': 9}
-
             start_date = pd.to_datetime(tv["start"]).isoformat()
             end_date = pd.to_datetime(tv["end"]).isoformat()
-            granularity = temporal_granularity[tv["granularity"]]
+            granularity = Utils.map_granularity_to_value(tv["granularity"])
             spaqrl_query += '''
                 ?variable pq:C2013 ?time_granularity .
                 ?variable pq:C2011 ?start_time .
                 ?variable pq:C2012 ?end_time .
                 FILTER(?time_granularity >= ''' + str(granularity) + ''')
-                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + start_date + '''"^^xsd:dateTime)))
+                FILTER(!((?start_time > "''' + end_date + '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            start_date + '''"^^xsd:dateTime)))
                 '''
 
         if need_geospatial_search:
@@ -204,6 +198,20 @@ class Augment(object):
                 BIND((IF(BOUND(?score_key1), ?score_key1, 0) + IF(BOUND(?score_key2), ?score_key2, 0)) AS ?score_keywords)
                 filter (?score_keywords != 0)
                 """
+
+        if need_augment_with_time:
+            time_info = json_query["variables_time"]
+            spaqrl_query += '''
+                ?dataset p:C2005 ?variable2.
+                ?variable2 pq:C2011 ?start_time.
+                ?variable2 pq:C2012 ?end_time.
+                ?variable2 pq:C2013 ?time_granularity.
+                FILTER(?time_granularity >= ''' + str(time_info['granularity']) + ''')
+                FILTER(!((?start_time > "''' + \
+                            time_info['start'] + \
+                            '''"^^xsd:dateTime) || (?end_time < "''' + \
+                            time_info['end'] + '''"^^xsd:dateTime)))
+            '''
 
         spaqrl_query += "\n }" + "\n" + ORDER + "\n" + LIMIT
 
@@ -242,133 +250,28 @@ class Augment(object):
 
         return qnodes
 
-    #
-    # def query(self,
-    #           col: pd.Series = None,
-    #           minimum_should_match_ratio_for_col: float = None,
-    #           query_string: str = None,
-    #           temporal_coverage_start: str = None,
-    #           temporal_coverage_end: str = None,
-    #           global_datamart_id: int = None,
-    #           variable_datamart_id: int = None,
-    #           key_value_pairs: typing.List[tuple] = None,
-    #           **kwargs
-    #           ) -> typing.Optional[typing.List[dict]]:
-    #
-    #     """Query metadata by a pandas Dataframe column
-    #
-    #     Args:
-    #         col: pandas Dataframe column.
-    #         minimum_should_match_ratio_for_col: An float ranges from 0 to 1
-    #             indicating the ratio of unique value of the column to be matched
-    #         query_string: string to query any field in metadata
-    #         temporal_coverage_start: start of a temporal coverage
-    #         temporal_coverage_end: end of a temporal coverage
-    #         global_datamart_id: match a global metadata id
-    #         variable_datamart_id: match a variable metadata id
-    #         key_value_pairs: match key value pairs
-    #
-    #     Returns:
-    #         matching docs of metadata
-    #     """
-    #
-    #     queries = list()
-    #
-    #     if query_string:
-    #         queries.append(
-    #             self.qm.match_any(query_string=query_string)
-    #         )
-    #
-    #     if temporal_coverage_start or temporal_coverage_end:
-    #         queries.append(
-    #             self.qm.match_temporal_coverage(start=temporal_coverage_start, end=temporal_coverage_end)
-    #         )
-    #
-    #     if global_datamart_id:
-    #         queries.append(
-    #             self.qm.match_global_datamart_id(datamart_id=global_datamart_id)
-    #         )
-    #
-    #     if variable_datamart_id:
-    #         queries.append(
-    #             self.qm.match_variable_datamart_id(datamart_id=variable_datamart_id)
-    #         )
-    #
-    #     if key_value_pairs:
-    #         queries.append(
-    #             self.qm.match_key_value_pairs(key_value_pairs=key_value_pairs)
-    #         )
-    #
-    #     if col is not None:
-    #         queries.append(
-    #             self.qm.match_some_terms_from_variables_array(terms=col.unique().tolist(),
-    #                                                           minimum_should_match=minimum_should_match_ratio_for_col)
-    #         )
-    #
-    #     if not queries:
-    #         return self._query_all()
-    #
-    #     return self.qm.search(body=self.qm.form_conjunction_query(queries), **kwargs)
-    #
-    # def join(self,
-    #          left_df: pd.DataFrame,
-    #          right_df: pd.DataFrame,
-    #          left_columns: typing.List[typing.List[int]],
-    #          right_columns: typing.List[typing.List[int]],
-    #          left_metadata: dict = None,
-    #          right_metadata: dict = None,
-    #          joiner: JoinerType = JoinerType.DEFAULT
-    #          ) -> JoinResult:
-    #
-    #     """Join two dataframes based on different joiner.
-    #
-    #       Args:
-    #           left_df: pandas Dataframe
-    #           right_df: pandas Dataframe
-    #           left_metadata: metadata of left dataframe
-    #           right_metadata: metadata of right dataframe
-    #           left_columns: list of integers from left df for join
-    #           right_columns: list of integers from right df for join
-    #           joiner: string of joiner, default to be "default"
-    #
-    #       Returns:
-    #            JoinResult
-    #       """
-    #
-    #     if joiner not in self.joiners:
-    #         self.joiners[joiner] = JoinerPrepare.prepare_joiner(joiner=joiner)
-    #
-    #     if not self.joiners[joiner]:
-    #         warnings.warn("No suitable joiner, return original dataframe")
-    #         return JoinResult(left_df, [])
-    #
-    #     print(" - start profiling")
-    #     if not (left_metadata and left_metadata.get("variables")):
-    #         # Left df is the user provided one.
-    #         # We will generate metadata just based on the data itself, profiling and so on
-    #         left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=left_metadata)
-    #
-    #     if not right_metadata:
-    #         right_metadata = Utils.generate_metadata_from_dataframe(data=right_df)
-    #
-    #     # Only profile the joining columns, otherwise it will be too slow:
-    #     left_metadata = Utils.calculate_dsbox_features(data=left_df, metadata=left_metadata,
-    #                                                    selected_columns=set(chain.from_iterable(left_columns)))
-    #
-    #     right_metadata = Utils.calculate_dsbox_features(data=right_df, metadata=right_metadata,
-    #                                                     selected_columns=set(chain.from_iterable(right_columns)))
-    #
-    #     # update with implicit_variable on the user supplied dataset
-    #     if left_metadata.get('implicit_variables'):
-    #         Utils.append_columns_for_implicit_variables_and_add_meta(left_metadata, left_df)
-    #
-    #     print(" - start joining tables")
-    #     res = self.joiners[joiner].join(left_df=left_df,
-    #                                     right_df=right_df,
-    #                                     left_columns=left_columns,
-    #                                     right_columns=right_columns,
-    #                                     left_metadata=left_metadata,
-    #                                     right_metadata=right_metadata,
-    #                                     )
-    #
-    #     return res
+    def get_dataset_time_information(self, dataset_id: str):
+
+        query_body = """
+        prefix ps: <http://www.wikidata.org/prop/statement/>
+        prefix pq: <http://www.wikidata.org/prop/qualifier/>
+        prefix p: <http://www.wikidata.org/prop/>
+        
+        SELECT ?dataset ?score ?title ?start_time ?end_time ?time_granularity
+        
+        WHERE {
+            values ?dataset { <http://www.wikidata.org/entity/""" + dataset_id + """> }
+        
+          ?dataset p:C2005 ?variable.
+          ?variable pq:C2013 ?time_granularity .
+          ?variable pq:C2011 ?start_time .
+          ?variable pq:C2012 ?end_time .
+        }"""
+        try:
+            self.qm.setQuery(query_body)
+            results = self.qm.query().convert()['results']['bindings']
+        except Exception as e:
+            self.logger.error(e, exc_info=True)
+            traceback.print_exc()
+            return []
+        return results

@@ -19,15 +19,23 @@ cache_expire_time = 3600*24
 
 # following are datamart detail configs, usually these should not be changed
 augmented_column_semantic_type = "https://metadata.datadrivendiscovery.org/types/Datamart_augmented_column"
+attribute_semantic_type = "https://metadata.datadrivendiscovery.org/types/Attribute"
+time_semantic_type = 'http://schema.org/DateTime'
+q_node_semantic_type = "http://wikidata.org/qnode"
+text_semantic_type = "http://schema.org/Text"
+
 augmented_resource_id = "learningData"
 d3m_container_version = "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
 p_nodes_ignore_list = {"P1549"}
-q_node_semantic_type = "http://wikidata.org/qnode"
+
 # this is used to add some speical part in query to constrain p nodes search results
 special_request_for_p_nodes = {"P1813": "FILTER(strlen(str(?P1813)) = 2)"}
 time_column_mark = "%^&*SPECIAL_TIME_TYPE%^&*"
 wikifier_column_mark = "%^$#@wikifier@%^$#"
+upload_special_requirement_mark = "*&#"
 max_entities_length = 10000
+max_q_node_query_size = 100
+min_q_node_query_size_percent = 0.01
 
 need_wikifier_column_type_list = {"https://metadata.datadrivendiscovery.org/types/CategoricalData",
                                   "http://schema.org/Text"
@@ -60,4 +68,5 @@ max_latitude_val = 90
 min_latitude_val = -90
 
 maximum_accept_wikifier_size = 2000000
+default_search_limit = 20
 use_cache = True

@@ -19,6 +19,10 @@ def get_wikifier_identifier_server_url() -> str:
     return config_services.get_service_url('wikifier_identifier')
 
 
+def get_keywords_augmentation_server_url() -> str:
+    return config_services.get_service_url('keywords_augmentation')
+
+
 def get_wikifier_knowledge_graph_server_url() -> str:
     return config_services.get_service_url('wikifier_knowledge_graph')
 
@@ -28,7 +32,7 @@ def get_es_fb_embedding_server_url() -> str:
 
 
 def get_general_search_test_server_url() -> str:
-    return config_services.get_service_url('general_search')
+    return config_services.get_service_url('general_search_test')
 
 
 def get_redis_host_port() -> typing.Tuple[str, int]:

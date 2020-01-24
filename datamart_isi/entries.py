@@ -7,6 +7,7 @@ import collections
 import typing
 import logging
 import json
+import re
 import string
 import time
 import cgitb
@@ -29,28 +30,36 @@ from datamart_isi.joiners.rltk_joiner import RLTKJoinerGeneral
 from datamart_isi.joiners.rltk_joiner import RLTKJoinerWikidata
 from datamart_isi.utilities.utils import Utils
 from datamart_isi.utilities.timeout import timeout_call
+from datamart_isi.utilities.singleton import singleton
 from datamart_isi.utilities import d3m_wikifier
 from datamart_isi.utilities.d3m_metadata import MetadataGenerator
 from datamart_isi.utilities.download_manager import DownloadManager
 from datamart_isi.cache.wikidata_cache import QueryCache
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.cache.metadata_cache import MetadataCache
+from datamart_isi.cache.materializer_cache import MaterializerCache
+
 # from datamart_isi.joiners.join_result import JoinResult
 # from datamart_isi.joiners.joiner_base import JoinerType
 
 
 __all__ = ('DatamartQueryCursor', 'Datamart', 'DatasetColumn', 'DatamartSearchResult', 'AugmentSpec',
            'TabularJoinSpec', 'TemporalGranularity', 'ColumnRelationship', 'DatamartQuery',
-           'VariableConstraint',  'TabularVariable', 'VariableConstraint')
+           'VariableConstraint', 'TabularVariable', 'VariableConstraint')
 
 Q_NODE_SEMANTIC_TYPE = config.q_node_semantic_type
+TEXT_SEMANTIC_TYPE = config.text_semantic_type
+ATTRIBUTE_SEMANTIC_TYPE = config.attribute_semantic_type
 AUGMENTED_COLUMN_SEMANTIC_TYPE = config.augmented_column_semantic_type
+TIME_SEMANTIC_TYPE = config.time_semantic_type
+
 MAX_ENTITIES_LENGTH = config.max_entities_length
 P_NODE_IGNORE_LIST = config.p_nodes_ignore_list
 SPECIAL_REQUEST_FOR_P_NODE = config.special_request_for_p_nodes
 AUGMENT_RESOURCE_ID = config.augmented_resource_id
 DEFAULT_DATAMART_URL = config.default_datamart_url
 TIME_COLUMN_MARK = config.time_column_mark
+random.seed(42)
 
 
 class DatamartQueryCursor(object):
@@ -58,7 +67,7 @@ class DatamartQueryCursor(object):
     Cursor to iterate through Datamarts search results.
     """
 
-    def __init__(self, augmenter, search_query, supplied_data, need_run_wikifier=None, connection_url=None):
+    def __init__(self, augmenter, search_query, supplied_data, need_run_wikifier=None, connection_url=None, **kwargs):
         """
         :param augmenter: The manager used to parse query and search on datamart general part(blaze graph),
                           because it search quick and need instance update, we should not cache this part
@@ -73,21 +82,32 @@ class DatamartQueryCursor(object):
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
+        self.supplied_data = supplied_data
+        if type(self.supplied_data) is d3m_Dataset:
+            self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
+        else:
+            self.supplied_dataframe = self.supplied_data
+
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
         self.augmenter = augmenter
         self.search_query = search_query
-        self.supplied_data = supplied_data
         self.current_searching_query_index = 0
         self.remained_part = None
         self.wikidata_cache_manager = QueryCache()
+        self.q_nodes_columns = list()
+        self.q_node_column_names = set()
         if need_run_wikifier is None:
             self.need_run_wikifier = self._check_need_wikifier_or_not()
         else:
             self.need_run_wikifier = need_run_wikifier
-        self.q_nodes_columns = list()
+        self.consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
+        self.augment_with_time = kwargs.get("augment_with_time", False)
+        self.consider_time = kwargs.get("consider_time", True)
+        if self.consider_wikifier_columns_only:
+            self._find_q_node_columns()
+        self.search_limit_amount = 20
 
     def get_next_page(self, *, limit: typing.Optional[int] = 20, timeout: int = None) \
             -> typing.Optional[typing.Sequence['DatamartSearchResult']]:
@@ -114,6 +134,9 @@ class DatamartQueryCursor(object):
             timeout = 1800
         self._logger.info("Set time limit to be " + str(timeout) + " seconds.")
 
+        if limit is not None:
+            self.search_limit_amount = limit
+
         # if need to run wikifier, run it before any search
         if self.current_searching_query_index == 0 and self.need_run_wikifier:
             self.supplied_data = self.run_wikifier(self.supplied_data)
@@ -126,7 +149,7 @@ class DatamartQueryCursor(object):
             return current_result
 
         # start searching
-        while self.current_searching_query_index < len(self.search_query) and len(current_result) < limit:
+        while self.current_searching_query_index < len(self.search_query):
             time_start = time.time()
             self._logger.debug("Start searching on query No." + str(self.current_searching_query_index))
 
@@ -164,6 +187,7 @@ class DatamartQueryCursor(object):
             self._logger.warning("No search results found!")
             return None
         else:
+            current_result = sorted(current_result, key=lambda x: x.score(), reverse=True)
             if len(current_result) > limit:
                 self.remained_part = current_result[limit:]
                 current_result = current_result[:limit]
@@ -180,33 +204,61 @@ class DatamartQueryCursor(object):
         need_wikifier_or_not, self.supplied_data = d3m_wikifier.check_and_correct_q_nodes_semantic_type(self.supplied_data)
         if not need_wikifier_or_not:
             # if not need to run wikifier, we can find q node columns now
-            self.q_nodes_columns = self._find_q_node_columns()
+            self._find_q_node_columns()
         return need_wikifier_or_not
 
-    def _find_q_node_columns(self) -> typing.List[int]:
+    def _find_q_node_columns(self) -> None:
         """
         Inner function used to find q node columns by semantic type
-        :return: a list of int which indcate the q node columns
+        :return: None
         """
-        q_nodes_columns = list()
+        if len(self.q_nodes_columns) > 0 or len(self.q_node_column_names) > 0:
+            self._logger.warning("Q node columns has already been found once! Should not run again")
+            self.q_node_column_names = set()
+            self.q_nodes_columns = list()
+
         if type(self.supplied_data) is d3m_Dataset:
-            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
             selector_base_type = "ds"
         else:
-            supplied_dataframe = self.supplied_data
             selector_base_type = "df"
 
         # check whether Qnode is given in the inputs, if given, use this to search
         metadata_input = self.supplied_data.metadata
-        for i in range(supplied_dataframe.shape[1]):
+        for i in range(self.supplied_dataframe.shape[1]):
             if selector_base_type == "ds":
-                metadata_selector = (res_id, ALL_ELEMENTS, i)
+                metadata_selector = (self.res_id, ALL_ELEMENTS, i)
             else:
                 metadata_selector = (ALL_ELEMENTS, i)
             if Q_NODE_SEMANTIC_TYPE in metadata_input.query(metadata_selector)["semantic_types"]:
                 # if no required variables given, attach any Q nodes found
-                q_nodes_columns.append(i)
-        return q_nodes_columns
+                self.q_nodes_columns.append(i)
+                self.q_node_column_names.add(self.supplied_dataframe.columns[i])
+
+    def _find_time_ranges(self) -> dict:
+        """
+        inner function that used to find the time information from search queries
+        :return: a dict with start time, end time and time granularity
+        """
+        info = defaultdict(list)
+        for i, each_search_query in enumerate(self.search_query):
+            if each_search_query.search_type == "general":
+                for each_variable in each_search_query.variables:
+                    if each_variable.key.startswith(TIME_COLUMN_MARK):
+                        start_time, end_time, granularity = each_variable.values.split("____")
+                        info["start"].append(pd.to_datetime(start_time).isoformat())
+                        info["end"].append(pd.to_datetime(end_time).isoformat())
+                        info["granularity"].append(Utils.map_granularity_to_value(granularity))
+
+        # if no time information found
+        if len(info) == 0:
+            return {}
+
+        time_column_info = {
+            "start": min(info["start"]),
+            "end": max(info["end"]),
+            "granularity": min(info["granularity"]),
+        }
+        return time_column_info
 
     def run_wikifier(self, input_data: d3m_Dataset) -> d3m_Dataset:
         """
@@ -218,7 +270,7 @@ class DatamartQueryCursor(object):
         results = d3m_wikifier.run_wikifier(supplied_data=input_data)
         self._logger.info("Wikifier running finished.")
         self.need_run_wikifier = False
-        self.q_nodes_columns = self._find_q_node_columns()
+        self._find_q_node_columns()
         return results
 
     def _search_wikidata(self, query=None, supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset] = None,
@@ -236,11 +288,6 @@ class DatamartQueryCursor(object):
 
         wikidata_results = []
         try:
-            if type(supplied_data) is d3m_Dataset:
-                res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
-            else:
-                supplied_dataframe = supplied_data
-
             if len(self.q_nodes_columns) == 0:
                 self._logger.warning("No wikidata Q nodes detected on corresponding required_variables!")
                 self._logger.warning("Will skip wikidata search part")
@@ -253,7 +300,7 @@ class DatamartQueryCursor(object):
                 # do a wikidata search for each Q nodes column
                 for each_column in self.q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
-                    q_nodes_list = supplied_dataframe.iloc[:, each_column].tolist()
+                    q_nodes_list = self.supplied_dataframe.iloc[:, each_column].tolist()
                     p_count = collections.defaultdict(int)
                     p_nodes_needed = []
                     # old method, the generated results are not very good
@@ -273,8 +320,16 @@ class DatamartQueryCursor(object):
                     q_node_query_part = ""
                     # ensure every time we get same order of q nodes so the hash tag will be same
                     unique_qnodes = set(q_nodes_list)
+                    # updated v2020.1.7, use blacklist to filter q nodes
+                    unique_qnodes = unique_qnodes - DownloadManager.fetch_blacklist_nodes()
                     unique_qnodes = list(unique_qnodes)
                     unique_qnodes.sort()
+                    # updated v2020.1.6, not skip if unique Q nodes are too few
+                    if len(unique_qnodes) == 0:
+                        self._logger.warning("No Q nodes detected on column No.{} need to search, skip.".format(str(each_column)))
+                        continue
+                    if len(unique_qnodes) > config.max_q_node_query_size:
+                        unique_qnodes = random.sample(unique_qnodes, config.max_q_node_query_size)
 
                     for each in unique_qnodes:
                         if len(each) > 0:
@@ -290,21 +345,25 @@ class DatamartQueryCursor(object):
                     if results is None:
                         # if response none, it means get wikidata query results failed
                         self._logger.error("Can't get wikidata search results for column No." + str(each_column) + "(" +
-                                           supplied_dataframe.columns[each_column] + ")")
+                                           self.supplied_dataframe.columns[each_column] + ")")
                         continue
 
                     self._logger.debug("Response from server for column No." + str(each_column) + "(" +
-                                       supplied_dataframe.columns[each_column] + ")" +
+                                       self.supplied_dataframe.columns[each_column] + ")" +
                                        " received, start parsing the returned data from server.")
                     # count the appeared times and find the p nodes appeared  rate that higher than threshold
                     for each in results:
+                        if "property" not in each:
+                            self._logger.error("Wikidata query returned wrong results!!! Please check!!!")
+                            raise ValueError("Wikidata query returned wrong results!!! Please check!!!")
+
                         p_count[each['property']['value'].split("/")[-1]] += 1
 
                     for key, val in p_count.items():
                         if float(val) / len(unique_qnodes) >= search_threshold:
                             p_nodes_needed.append(key)
                     wikidata_search_result = {"p_nodes_needed": p_nodes_needed,
-                                              "target_q_node_column_name": supplied_dataframe.columns[each_column]}
+                                              "target_q_node_column_name": self.supplied_dataframe.columns[each_column]}
                     wikidata_results.append(DatamartSearchResult(search_result=wikidata_search_result,
                                                                  supplied_data=supplied_data,
                                                                  query_json=query,
@@ -333,17 +392,38 @@ class DatamartQueryCursor(object):
         # COMMENT: title does not used, may delete later
         variables, title = dict(), dict()
         variables_temp = dict()  # this temp is specially used to store variable for time query
+        if self.augment_with_time:
+            time_information = self._find_time_ranges()
+            if len(time_information) == 0:
+                self._logger.warning("Required to search with time but no time column found from supplied data!")
+                return []
+
         for each_variable in self.search_query[self.current_searching_query_index].variables:
+            # updated v2019.12.11, now we only search "time column only" if augment_with_time is set to false
             if each_variable.key.startswith(TIME_COLUMN_MARK):
-                variables_temp[each_variable.key.split("____")[1]] = each_variable.values
-                start_time, end_time, granularity = each_variable.values.split("____")
-                variables_search = {"temporal_variable": {
-                                         "start": start_time,
-                                         "end": end_time,
-                                         "granularity": granularity
-                                         }
-                                    }
+                if self.augment_with_time:
+                    self._logger.warning("Not search with time only if augment_with_time is set to True")
+                    return []
+                elif self.consider_time is False:
+                    self._logger.warning("Not search with time only if consider_time is set to False")
+                    return []
+                else:
+                    variables_temp[each_variable.key.split("____")[1]] = each_variable.values
+                    start_time, end_time, granularity = each_variable.values.split("____")
+                    variables_search = {
+                        "temporal_variable":
+                            {
+                                "start": start_time,
+                                "end": end_time,
+                                "granularity": granularity
+                            }
+                    }
             else:
+                # updated v2019.12.18: if consider wikifier columns only, not search on other columns
+                if self.consider_wikifier_columns_only and each_variable.key not in self.q_node_column_names:
+                    self._logger.warning("Set to consider wikifier columns only, will not search for column {}".format(each_variable.key))
+                    return []
+
                 variables[each_variable.key] = each_variable.values
 
         query = {"keywords": self.search_query[self.current_searching_query_index].keywords,
@@ -352,18 +432,28 @@ class DatamartQueryCursor(object):
                  "variables_search": variables_search,
                  }
 
-        query_results = self.augmenter.query_by_sparql(query=query, dataset=self.supplied_data)
+        if self.augment_with_time:
+            query["variables_time"] = time_information
+
+        query_results = self.augmenter.query_by_sparql(query=query,
+                                                       dataset=self.supplied_data,
+                                                       consider_wikifier_columns_only=self.consider_wikifier_columns_only,
+                                                       augment_with_time=self.augment_with_time,
+                                                       limit_amount=self.search_limit_amount)
 
         if len(variables_temp) != 0:
             query["variables"] = variables_temp
 
         for i, each_result in enumerate(query_results):
-            self._logger.debug("Get returned No." + str(i) + " query result as ")
-            self._logger.debug(str(each_result))
+            # self._logger.debug("Get returned No." + str(i) + " query result as ")
+            # self._logger.debug(str(each_result))
 
             # the special way to calculate the score of temporal variable search
             if "start_time" in each_result.keys() and "end_time" in each_result.keys():
-                tv = query["variables_search"]["temporal_variable"]
+                if self.augment_with_time:
+                    tv = time_information
+                else:
+                    tv = query["variables_search"]["temporal_variable"]
                 start_date = pd.to_datetime(tv["start"]).timestamp()
                 end_date = pd.to_datetime(tv["end"]).timestamp()  # query time
                 start_time = pd.to_datetime(each_result['start_time']['value']).timestamp()
@@ -387,7 +477,7 @@ class DatamartQueryCursor(object):
 
                 if time_score != 0.0 and 'score' in each_result.keys():
                     old_score = float(each_result['score']['value'])
-                    each_result['score']['value'] = (old_score + time_score) / 2
+                    each_result['score']['value'] = old_score + time_score
                 else:
                     each_result['score'] = {"value": time_score}
 
@@ -396,8 +486,12 @@ class DatamartQueryCursor(object):
             search_result.append(temp)
 
         search_result.sort(key=lambda x: x.score(), reverse=True)
-
         self._logger.debug("Searching on datamart finished.")
+
+        # need to add time on join pairs
+        if self.augment_with_time:
+            search_result = self._search_with_time_columns(search_result)
+
         return search_result
 
     def _search_vector(self) -> typing.List["DatamartSearchResult"]:
@@ -408,11 +502,6 @@ class DatamartQueryCursor(object):
         self._logger.debug("Start running search on Vectors...")
         vector_results = []
         try:
-            if type(self.supplied_data) is d3m_Dataset:
-                res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
-            else:
-                supplied_dataframe = self.supplied_data
-
             if len(self.q_nodes_columns) == 0:
                 self._logger.warning("No Wikidata Q nodes detected!")
                 self._logger.warning("Will skip vector search part")
@@ -424,18 +513,24 @@ class DatamartQueryCursor(object):
                 # do a vector search for each Q nodes column
                 for each_column in self.q_nodes_columns:
                     self._logger.debug("Start searching on column " + str(each_column))
-                    q_nodes_list = list(filter(None, supplied_dataframe.iloc[:, each_column].dropna().tolist()))
+                    q_nodes_list = list(filter(None, self.supplied_dataframe.iloc[:, each_column].dropna().tolist()))
                     unique_qnodes = list(set(q_nodes_list))
                     unique_qnodes.sort()
-
+                    # updated v2020.1.6, not skip if unique Q nodes are too few
+                    if len(unique_qnodes) < config.min_q_node_query_size_percent * len(q_nodes_list):
+                        self._logger.warning("Too few Q nodes (rate = {}/{}) found on column {}, will skip this column.".
+                                             format(str(len(unique_qnodes)),
+                                                    str(config.min_q_node_query_size_percent * len(q_nodes_list)),
+                                                    str(each_column)))
+                        continue
                     vector_search_result = {"number_of_vectors": str(len(unique_qnodes)),
-                                            "target_q_node_column_name": supplied_dataframe.columns[each_column],
+                                            "target_q_node_column_name": self.supplied_dataframe.columns[each_column],
                                             "q_nodes_list": unique_qnodes}
                     vector_results.append(DatamartSearchResult(search_result=vector_search_result,
                                                                supplied_data=self.supplied_data,
                                                                query_json=None,
                                                                search_type="vector")
-                                            )
+                                          )
 
                 self._logger.debug("Running search on vector finished.")
             return vector_results
@@ -454,23 +549,18 @@ class DatamartQueryCursor(object):
         self._logger.debug("Start searching geospatial data on wikidata and datamart...")
         search_results = []
 
-        if type(self.supplied_data) is d3m_Dataset:
-            res_id, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=self.supplied_data, resource_id=None)
-        else:
-            supplied_dataframe = self.supplied_data
-
         # try to find possible columns of latitude and longitude
         possible_longitude_or_latitude = []
-        for each in range(len(supplied_dataframe.columns)):
+        for each in range(len(self.supplied_dataframe.columns)):
             if type(self.supplied_data) is d3m_Dataset:
-                selector = (res_id, ALL_ELEMENTS, each)
+                selector = (self.res_id, ALL_ELEMENTS, each)
             else:
                 selector = (ALL_ELEMENTS, each)
             each_column_meta = self.supplied_data.metadata.query(selector)
 
             if "https://metadata.datadrivendiscovery.org/types/Location" in each_column_meta["semantic_types"]:
                 try:
-                    column_data = supplied_dataframe.iloc[:, each].astype(float).dropna()
+                    column_data = self.supplied_dataframe.iloc[:, each].astype(float).dropna()
                     if max(column_data) <= config.max_longitude_val and min(column_data) >= config.min_longitude_val:
                         possible_longitude_or_latitude.append(each)
                     elif max(column_data) <= config.max_latitude_val and min(column_data) >= config.min_latitude_val:
@@ -482,16 +572,17 @@ class DatamartQueryCursor(object):
             self._logger.debug("Supplied dataset does not have geospatial data!")
             return search_results
         else:
-            self._logger.debug("Finding columns:" + str(possible_longitude_or_latitude) + " which might be geospatial data columns...")
+            self._logger.debug(
+                "Finding columns:" + str(possible_longitude_or_latitude) + " which might be geospatial data columns...")
 
         possible_la_or_long_comb = list(combinations(possible_longitude_or_latitude, 2))
         for column_index_comb in possible_la_or_long_comb:
-            latitude_index, longitude_index = -1 , -1
+            latitude_index, longitude_index = -1, -1
             # try to get the correct latitude and longitude pairs
             for each_column_index in column_index_comb:
                 try:
-                    column_data = supplied_dataframe.iloc[:, each_column_index].astype(float).dropna()
-                    column_name = supplied_dataframe.columns[each_column_index]
+                    column_data = self.supplied_dataframe.iloc[:, each_column_index].astype(float).dropna()
+                    column_name = self.supplied_dataframe.columns[each_column_index]
 
                     # must be longitude when its min is in [-180, -90), or max is in (90, 180]
                     if config.max_latitude_val < max(column_data) <= config.max_longitude_val \
@@ -507,11 +598,12 @@ class DatamartQueryCursor(object):
                 except Exception as e:
                     self._logger.debug(e, exc_info=True)
                     self._logger.error("Can't parse location information for column No." + str(each_column_index)
-                                           + " with column name " + column_name)
+                                       + " with column name " + column_name)
 
             # search on datamart and wikidata by city qnodes
             if latitude_index != -1 and longitude_index != -1:
-                self._logger.info("Latitude column is: " + str(latitude_index) + " and longitude is: " + str(longitude_index) + "...")
+                self._logger.info(
+                    "Latitude column is: " + str(latitude_index) + " and longitude is: " + str(longitude_index) + "...")
                 granularity = {'city'}
                 radius = 100
 
@@ -526,13 +618,14 @@ class DatamartQueryCursor(object):
                         'search_type': 'geospatial'
                     }}
                     # do wikidata query service to find city q-node columns
-                    return_ds = DownloadManager.query_geospatial_wikidata(self.supplied_data, search_variables, self.connection_url)
+                    return_ds = DownloadManager.query_geospatial_wikidata(self.supplied_data, search_variables,
+                                                                          self.connection_url)
                     _, return_df = d3m_utils.get_tabular_resource(dataset=return_ds, resource_id=None)
 
                     if return_df.columns[-1].startswith('Geo_') and return_df.columns[-1].endswith('_wikidata'):
                         qnodes = return_df.iloc[:, -1]
                         qnodes_set = list(set(qnodes))
-                        coverage_score = len(qnodes_set)/len(qnodes)
+                        coverage_score = len(qnodes_set) / len(qnodes)
 
                         # search on datamart
                         qnodes_str = " ".join(qnodes_set)
@@ -563,20 +656,158 @@ class DatamartQueryCursor(object):
         self._logger.debug("Running search on geospatial data finished.")
         return search_results
 
+    def _search_with_time_columns(self, search_results: typing.List["DatamartSearchResult"]) \
+            -> typing.List["DatamartSearchResult"]:
+        """
+        function used to update the search results from join with one column to join with both this column and time column
+        :param search_results: list of "DatamartSearchResult"
+        :return: list of "DatamartSearchResult"
+        :return:
+        """
+        # find time columns first
+        # get time ranges on supplied data
+        time_columns_left = list()
+        for i in range(self.supplied_dataframe.shape[1]):
+            if type(self.supplied_data) is d3m_Dataset:
+                each_selector = (self.res_id, ALL_ELEMENTS, i)
+            else:
+                each_selector = (ALL_ELEMENTS, i)
+            each_column_metadata = self.supplied_data.metadata.query(each_selector)
+            if "semantic_types" not in each_column_metadata:
+                self._logger.warning("column No.{} {} do not have semantic type on metadata!".
+                                     format(str(i), str(self.supplied_dataframe.columns[i])))
+                continue
 
+            if TIME_SEMANTIC_TYPE in each_column_metadata['semantic_types']:
+                # if we got original time granularity from metadata, use it directly
+                time_column = self.supplied_dataframe.iloc[:, i]
+                if 'time_granularity' in each_column_metadata.keys():
+                    granularity_d3m_format = each_column_metadata['time_granularity']
+                    granularity = Utils.map_d3m_granularity_to_value(granularity_d3m_format['unit'])
+                else:
+                    try:
+                        granularity_datamart_format = Utils.get_time_granularity(time_column)
+                        granularity = Utils.map_granularity_to_value(granularity_datamart_format)
+                    except ValueError:
+                        self._logger.error("Can't continue because unable to get the time granularity on column No.{} {}".
+                                           format(str(i), str(self.supplied_dataframe.columns[i])))
+                        continue
+                    self._logger.info("Get the time granularity of column No.{} {} as {}".
+                                      format(str(i), str(self.supplied_dataframe.columns[i]), str(granularity)))
+                if "datetime" not in time_column.dtype.name:
+                    time_column = pd.to_datetime(time_column)
+                time_columns_left.append({
+                    "granularity": granularity,
+                    "start_time": min(time_column),
+                    "end_time": max(time_column),
+                    "column_number": i,
+                })
+
+        # get time ranges on search results
+        time_columns_right = list()
+        for each_search_result in search_results:
+            if each_search_result.search_type == "general":
+                for i in range(each_search_result.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']):
+                    each_column_metadata = each_search_result.d3m_metadata.query((ALL_ELEMENTS, i))
+                    # TODO: it seems our current system can't handle multiple time data's condition
+                    if TIME_SEMANTIC_TYPE in each_column_metadata['semantic_types']:
+                        time_information_query = self.augmenter.get_dataset_time_information(each_search_result.id())
+                        if len(time_information_query) == 0:
+                            self._logger.warning("Detect timestamp on dataset {} {} but no time information was found!"
+                                                 .format(each_search_result.id(),
+                                                         each_search_result.search_result['title']['value']))
+                            continue
+
+                        time_columns_right.append({
+                            "granularity": int(time_information_query[0]['time_granularity']['value']),
+                            "start_time": pd.Timestamp(time_information_query[0]['start_time']['value']),
+                            "end_time": pd.Timestamp(time_information_query[0]['end_time']['value']),
+                            "column_number": i,
+                            "dataset_id": each_search_result.id()
+                        })
+
+        # only keep the datasets that has overlaped time range and same time granularity
+        can_consider_datasets = defaultdict(list)
+        for left_time_info in time_columns_left:
+            for right_time_info in time_columns_right:
+                left_range = [left_time_info['start_time'], left_time_info['end_time']]
+                right_range = [right_time_info['start_time'], right_time_info['end_time']]
+                # ensure the format are correct
+                for i in range(len(left_range)):
+                    if isinstance(left_range[i], pd.Timestamp):
+                        left_range[i] = left_range[i].tz_localize('UTC')
+                    elif isinstance(left_range[i], str):
+                        left_range[i] = pd.Timestamp(left_range[i])
+
+                # TODO: if time granularity different but time range overlap? should we consider it or not
+                if left_time_info['granularity'] >= right_time_info['granularity'] and Utils.overlap(left_range, right_range):
+                    can_consider_datasets[right_time_info['dataset_id']].append(
+                        {
+                            "left_column_number": left_time_info["column_number"],
+                            "right_dataset_id": right_time_info['dataset_id'],
+                            "right_join_column_number": right_time_info['column_number'],
+                            "right_join_start_time": right_time_info['start_time'],
+                            "right_join_end_time": right_time_info['end_time'],
+                            "right_join_time_granularity": right_time_info['granularity']
+                        })
+
+        filtered_search_result = []
+        for each_search_result in search_results:
+            if each_search_result.search_type == "general":
+                if each_search_result.id() in can_consider_datasets:
+                    for each_combine in can_consider_datasets[each_search_result.id()]:
+                        each_search_result_copied = copy.copy(each_search_result)
+                        # update join pairs information
+                        right_index = None
+                        right_join_column_name = each_search_result.search_result['variableName']['value']
+                        for i in range(each_search_result.d3m_metadata.query((ALL_ELEMENTS,))['dimension']['length']):
+                            each_column_metadata = each_search_result.d3m_metadata.query((ALL_ELEMENTS, i))
+                            if each_column_metadata['name'] == right_join_column_name:
+                                right_index = i
+                                break
+
+                        if len(each_search_result.query_json['variables'].keys()) > 1:
+                            self._logger.warning("Mutiple variables join results update for time related not supported yet!")
+                        left_join_column_name = list(each_search_result.query_json['variables'].keys())[0]
+                        left_index = self.supplied_dataframe.columns.tolist().index(left_join_column_name)
+                        # right_index = right_df.columns.tolist().index(right_join_column_name)
+                        original_left_index_column = DatasetColumn(resource_id=self.res_id, column_index=left_index)
+                        original_right_index_column = DatasetColumn(resource_id=None, column_index=right_index)
+                        left_columns = [
+                            DatasetColumn(resource_id=self.res_id, column_index=each_combine["left_column_number"]),
+                            original_left_index_column
+                        ]
+                        right_columns = [
+                            DatasetColumn(resource_id=None, column_index=each_combine["right_join_column_number"]),
+                            original_right_index_column
+                        ]
+                        updated_join_pairs = [TabularJoinSpec(left_columns=[left_columns], right_columns=[right_columns])]
+                        each_search_result_copied.set_join_pairs(updated_join_pairs)
+                        # update the search result with time information
+                        time_search_keyword = TIME_COLUMN_MARK + "____" + right_join_column_name
+                        each_search_result_copied.query_json['keywords'].append(time_search_keyword)
+                        each_search_result_copied.search_result['start_time'] = str(each_combine["right_join_start_time"])
+                        each_search_result_copied.search_result['end_time'] = str(each_combine["right_join_end_time"])
+                        each_search_result_copied.search_result['time_granularity'] = str(
+                            each_combine["right_join_time_granularity"])
+                        filtered_search_result.append(each_search_result_copied)
+
+        return filtered_search_result
+
+
+@singleton
 class Datamart(object):
     """
     ISI implement of datamart
     """
 
-    def __init__(self, connection_url: str=None) -> None:
+    def __init__(self, connection_url: str = None) -> None:
         self._logger = logging.getLogger(__name__)
         if connection_url:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self._logger.debug("Current datamart connection url is: " + self.connection_url)
@@ -602,9 +833,9 @@ class Datamart(object):
         """
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=[query], supplied_data=None,
-                                   connection_url=self.connection_url, need_run_wikifier = False)
+                                   connection_url=self.connection_url, need_run_wikifier=False)
 
-    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, need_wikidata=True) \
+    def search_with_data(self, query: 'DatamartQuery', supplied_data: container.Dataset, **kwargs) \
             -> DatamartQueryCursor:
         """
         Search using on a query and a supplied dataset.
@@ -624,6 +855,16 @@ class Datamart(object):
             Query specification
         supplied_data : container.Dataset
             The data you are trying to augment.
+        kwargs : dict
+            Some extra control parameters. For example:
+            need_wikidata: (Default is True) If set to Ture, the program will run wikifier on supplied data and find possible
+                Q nodes, then search for possible attributes with those Q nodes and search for vectors
+            augment_with_time: (Default is False) If set to True, a pair with two columns will be searched, only data with
+                both join columns like [time, key] will be considered
+            consider_time: (Default is True) If set to True, no time columns on datamart will be considered as candidates.
+                This control parameter will be useless if augment_with_time was True
+            consider_wikifier_columns_only: (Default is False) If set to True, only columns with Q nodes will be considered
+                as join candiadates
 
         Returns
         -------
@@ -639,6 +880,13 @@ class Datamart(object):
                 query_keywords.extend(words_processed)
         else:
             query_keywords = None
+
+        need_wikidata = kwargs.get("need_wikidata", True)
+        consider_wikifier_columns_only = kwargs.get("consider_wikifier_columns_only", False)
+        augment_with_time = kwargs.get("augment_with_time", False)
+        consider_time = kwargs.get("consider_time", True)
+        if consider_time is False and augment_with_time is True:
+            self._logger.warning("Augment with time is set to be true! consider_time parameter will be useless.")
 
         # add some special search query in the first search queries
         if not need_wikidata:
@@ -672,14 +920,13 @@ class Datamart(object):
             # try to parse each column to DateTime type. If success, add new semantic type, otherwise do nothing
             try:
                 pd.to_datetime(self.supplied_dataframe.iloc[:, each])
-                new_semantic_type = {"semantic_types": ("http://schema.org/DateTime",
-                                                        "https://metadata.datadrivendiscovery.org/types/Attribute")}
+                new_semantic_type = {"semantic_types": (TIME_SEMANTIC_TYPE, ATTRIBUTE_SEMANTIC_TYPE)}
                 supplied_data.metadata = supplied_data.metadata.update(selector, new_semantic_type)
             except:
                 pass
 
-            if 'http://schema.org/Text' in each_column_meta["semantic_types"] \
-                    or "http://schema.org/DateTime" in each_column_meta["semantic_types"]:
+            if TEXT_SEMANTIC_TYPE in each_column_meta["semantic_types"] \
+                    or TIME_SEMANTIC_TYPE in each_column_meta["semantic_types"]:
                 can_query_columns.append(each)
 
         if len(can_query_columns) == 0:
@@ -696,7 +943,10 @@ class Datamart(object):
             search_queries.append(each_search_query)
 
         return DatamartQueryCursor(augmenter=self.augmenter, search_query=search_queries, supplied_data=supplied_data,
-                                   need_run_wikifier=need_run_wikifier, connection_url=self.connection_url)
+                                   need_run_wikifier=need_run_wikifier, connection_url=self.connection_url,
+                                   consider_wikifier_columns_only=consider_wikifier_columns_only,
+                                   augment_with_time=augment_with_time,
+                                   consider_time=consider_time)
 
     def search_with_data_columns(self, query: 'DatamartQuery', supplied_data: container.Dataset,
                                  data_constraints: typing.List['TabularVariable']) -> DatamartQueryCursor:
@@ -757,28 +1007,13 @@ class Datamart(object):
                 all_value_str_set = set()
                 each_column_meta = supplied_data.metadata.query((each_column_res_id, ALL_ELEMENTS, each_column_index))
                 treat_as_a_text_column = False
-                if 'http://schema.org/DateTime' in each_column_meta["semantic_types"]:
+                if TIME_SEMANTIC_TYPE in each_column_meta["semantic_types"]:
                     try:
                         column_data = supplied_data[each_column_res_id].iloc[:, each_column_index]
                         column_data_datetime_format = pd.to_datetime(column_data)
                         start_date = min(column_data_datetime_format)
                         end_date = max(column_data_datetime_format)
-                        if any(column_data_datetime_format.dt.second != 0):
-                            time_granularity = 'second'
-                        elif any(column_data_datetime_format.dt.minute != 0):
-                            time_granularity = 'minute'
-                        elif any(column_data_datetime_format.dt.hour != 0):
-                            time_granularity = 'hour'
-                        elif any(column_data_datetime_format.dt.day != 0):
-                            time_granularity = 'day'
-                        elif any(column_data_datetime_format.dt.month != 0):
-                            time_granularity = 'month'
-                        elif any(column_data_datetime_format.dt.year != 0):
-                            time_granularity = 'year'
-                        else:
-                            self._logger.error("No usefully date information found for column No." + str(each_column_index))
-                            raise ValueError("No usefully date information found for column No." + str(each_column_index))
-
+                        time_granularity = Utils.get_time_granularity(column_data_datetime_format)
                         # for time type, we create a special type of keyword and variables
                         # so that we can detect it later in general search part
                         each_keyword = TIME_COLUMN_MARK + "____" + supplied_data[each_column_res_id].columns[each_column_index]
@@ -797,13 +1032,17 @@ class Datamart(object):
                 if 'http://schema.org/Text' in each_column_meta["semantic_types"] or treat_as_a_text_column:
                     column_values = supplied_data[each_column_res_id].iloc[:, each_column_index].astype(str)
                     query_column_entities = list(set(column_values.tolist()))
+                    random.seed(42)  # ensure always get the same random number
                     if len(query_column_entities) > MAX_ENTITIES_LENGTH:
                         query_column_entities = random.sample(query_column_entities, MAX_ENTITIES_LENGTH)
                     for each in query_column_entities:
                         words_processed = str(each).lower().translate(translator).split()
                         for word in words_processed:
                             all_value_str_set.add(word)
-                    all_value_str = " ".join(all_value_str_set)
+                    all_value_str_list = list(all_value_str_set)
+                    # ensure the order we get are always same
+                    all_value_str_list.sort()
+                    all_value_str = " ".join(all_value_str_list)
                     each_keyword = supplied_data[each_column_res_id].columns[each_column_index]
                     keywords.append(each_keyword)
 
@@ -839,17 +1078,18 @@ class DatamartSearchResult:
                                                                                   resource_id=None)
             self.selector_base_type = "ds"
         elif type(supplied_data) is d3m_DataFrame:
+            self.res_id = None
             self.supplied_dataframe = supplied_data
             self.selector_base_type = "df"
         else:
+            self.res_id = None
             self.supplied_dataframe = None
 
         if connection_url:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
 
         self.wikidata_cache_manager = QueryCache()
@@ -857,9 +1097,14 @@ class DatamartSearchResult:
         self.query_json = query_json
         self.search_type = search_type
         self.pairs = None
-        self._res_id = None  # only used for input is Dataset
         self.join_pairs = None
         self.right_df = None
+        extra_information = self.search_result.get('extra_information')
+        if extra_information is not None:
+            extra_information = json.loads(extra_information['value'])
+            self.special_requirement = extra_information.get("special_requirement")
+        else:
+            self.special_requirement = None
         self.metadata_manager = MetadataGenerator(supplied_data=self.supplied_data, search_result=self.search_result,
                                                   search_type=self.search_type, connection_url=self.connection_url,
                                                   wikidata_cache_manager=self.wikidata_cache_manager)
@@ -870,30 +1115,30 @@ class DatamartSearchResult:
         Inner function used to get first 10 rows of the search results
         :return:
         """
+        return_res = ""
         try:
             if self.search_type == "general":
                 return_res = json.loads(self.search_result['extra_information']['value'])['first_10_rows']
 
             elif self.search_type == "wikidata":
                 materialize_info = self.search_result
-                return_df = Utils.materialize(materialize_info, run_wikifier=False)
+                return_df = MaterializerCache.materialize(materialize_info, run_wikifier=False)
                 return_df = return_df[:10]
                 return_res = return_df.to_csv()
 
             elif self.search_type == "vector":
                 sample_q_nodes = self.search_result["q_nodes_list"][:10]
                 return_df = DownloadManager.fetch_fb_embeddings(sample_q_nodes, self.search_result["target_q_node_column_name"])
-                return_res = return_df.to_csv()
+                return_res = return_df.to_csv(index=False)
 
             else:
                 self._logger.error("unknown format of search result as {}!".format(str(self.search_type)))
 
         except Exception as e:
-            return_res = ""
             self._logger.error("failed on getting first ten rows of search results")
             self._logger.debug(e, exc_info=True)
-
-        return return_res
+        finally:
+            return return_res
 
     def display(self) -> pd.DataFrame:
         """
@@ -943,7 +1188,7 @@ class DatamartSearchResult:
                 self._logger.info("New connection url given from download part as " + self.connection_url)
 
         if type(supplied_data) is d3m_Dataset:
-            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
+            self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data, resource_id=None)
         elif type(supplied_data) is d3m_DataFrame:
             self.supplied_dataframe = supplied_data
         else:
@@ -991,17 +1236,17 @@ class DatamartSearchResult:
         # start finding pairs
         left_df = copy.deepcopy(self.supplied_dataframe)
         if self.right_df is None:
-            self.right_df = Utils.materialize(metadata=self.search_result, run_wikifier=run_wikifier)
+            self.right_df = MaterializerCache.materialize(metadata=self.search_result, run_wikifier=run_wikifier)
             right_df = self.right_df
         else:
             self._logger.info("Find downloaded data from previous time, will use that.")
             right_df = self.right_df
         self._logger.debug("Download finished, start finding pairs to join...")
-        left_metadata = Utils.generate_metadata_from_dataframe(data=left_df, original_meta=None)
-        right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
+        # left_metadata = Utils.generate_metadata_from_damax_entities_lengthtaframe(data=left_df, original_meta=None)
+        # right_metadata = Utils.generate_metadata_from_dataframe(data=right_df, original_meta=None)
 
         if self.join_pairs is None:
-            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=self._res_id)
+            candidate_join_column_pairs = self.get_join_hints(left_df=left_df, right_df=right_df, left_df_src_id=self.res_id)
         else:
             candidate_join_column_pairs = self.join_pairs
         if len(candidate_join_column_pairs) > 1:
@@ -1017,10 +1262,63 @@ class DatamartSearchResult:
                     break
 
         if is_time_query:
-            # if it is the dataset fond with time query, we should transform that time column to same format
+            # if it is the dataset fond with time query, we should transform time column to same format and same granularity
             # then we can run RLTK with exact join same as str join
-            right_join_column_name = self.search_result['variableName']['value']
-            right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
+            time_granularity = self.search_result.get("time_granularity")
+            if isinstance(time_granularity, str) or isinstance(time_granularity, int):
+                time_granularity = int(time_granularity)
+            elif isinstance(time_granularity, dict) and "value" in time_granularity:
+                time_granularity = int(time_granularity["value"])
+            elif time_granularity is None:
+                # if not get time granularity, set as unknown, then try to get the real value
+                self._logger.info("Unable to get time granularity! Will try to guess.")
+                time_granularity = 8
+            else:
+                raise ValueError("Can't parse time granularity from {}".format(str(time_granularity)))
+
+            if self.join_pairs is None:
+                right_join_column_name = self.search_result['variableName']['value']
+                right_df[right_join_column_name] = pd.to_datetime(right_df[right_join_column_name])
+            else:
+                join_pairs_numbers = self.join_pairs[0].get_column_number_pairs()
+                time_stringfy_format = Utils.time_granularity_value_to_stringfy_time_format(time_granularity)
+                if time_granularity == 8:
+                    possible_granularity = {}
+                for each_join_pair_left, each_join_pair_right in join_pairs_numbers:
+                    for each_col in each_join_pair_left:
+                        try:
+                            left_df.iloc[:, each_col] = pd.to_datetime(left_df.iloc[:, each_col]) \
+                                .dt.strftime(time_stringfy_format)
+                            if time_granularity == 8:
+                                possible_granularity[("left", each_col)] = \
+                                    Utils.map_d3m_granularity_to_value(Utils.get_time_granularity(left_df.iloc[:, each_col]))
+                        except:
+                            self._logger.warning("Column No.{} {} on left_df(supplied_data) is not time column!".format(
+                                str(each_col), left_df.columns[each_col]))
+
+                    for each_col in each_join_pair_right:
+                        try:
+                            right_df.iloc[:, each_col] = pd.to_datetime(right_df.iloc[:, each_col]). \
+                                dt.strftime(time_stringfy_format)
+                            if time_granularity == 8:
+                                possible_granularity[("right", each_col)] = \
+                                    Utils.map_d3m_granularity_to_value(Utils.get_time_granularity(right_df.iloc[:, each_col]))
+                        except:
+                            self._logger.warning("Column No.{} {} on right_df is not time column!".format(
+                                str(each_col), right_df.columns[each_col]))
+
+                    # update with new time granularity
+                    if time_granularity == "8":
+                        time_granularity = min(possible_granularity.values())
+                        self._logger.info("Get new granularity value as {}".format(str(time_granularity)))
+                        time_stringfy_format = Utils.time_granularity_value_to_stringfy_time_format(time_granularity)
+                        for k, v in possible_granularity.keys():
+                            if k[0] == "left":
+                                left_df.iloc[:, k[1]] = pd.to_datetime(left_df.iloc[:, k[1]]). \
+                                    dt.strftime(time_stringfy_format)
+                            elif k[0] == "right":
+                                right_df.iloc[:, k[1]] = pd.to_datetime(right_df.iloc[:, k[1]]). \
+                                    dt.strftime(time_stringfy_format)
 
         pairs = candidate_join_column_pairs[0].get_column_number_pairs()
         # generate the pairs for each join_column_pairs
@@ -1029,11 +1327,11 @@ class DatamartSearchResult:
             right_columns = each_pair[1]
             try:
                 # Only profile the joining columns, otherwise it will be too slow:
-                left_metadata = Utils.calculate_dsbox_features(data=left_df, metadata=left_metadata,
-                                                               selected_columns=set(left_columns))
-
-                right_metadata = Utils.calculate_dsbox_features(data=right_df, metadata=right_metadata,
-                                                                selected_columns=set(right_columns))
+                # left_metadata = Utils.calculate_dsbox_features(data=left_df, metadata=left_metadata,
+                #                                                selected_columns=set(left_columns))
+                #
+                # right_metadata = Utils.calculate_dsbox_features(data=right_df, metadata=right_metadata,
+                #                                                 selected_columns=set(right_columns))
 
                 self._logger.info(" - start getting pairs for " + str(each_pair))
                 right_df_copy = copy.deepcopy(right_df)
@@ -1041,8 +1339,8 @@ class DatamartSearchResult:
                 result, self.pairs = RLTKJoinerGeneral.find_pair(left_df=left_df, right_df=right_df_copy,
                                                                  left_columns=[left_columns],
                                                                  right_columns=[right_columns],
-                                                                 left_metadata=left_metadata,
-                                                                 right_metadata=right_metadata)
+                                                                 left_metadata=None,
+                                                                 right_metadata=None)
 
                 join_pairs_result.append(result)
                 # TODO: figure out some way to compute the joining quality
@@ -1255,7 +1553,9 @@ class DatamartSearchResult:
         The augmented dataframe's resource id in return dataset
         """
         augment_resource_id = kwargs.get("augment_resource_id", AUGMENT_RESOURCE_ID)
-        use_cache = kwargs.get("use_cache", config.use_cache)
+        use_cache = kwargs.get("use_cache")
+        if use_cache is None:
+            use_cache = config.use_cache
 
         if type(supplied_data) is d3m_Dataset:
             # try to update with more correct metadata if possible
@@ -1263,9 +1563,9 @@ class DatamartSearchResult:
             if updated_result[0]:  # [0] store whether it success find the metadata
                 supplied_data = updated_result[1]
             self.supplied_data = supplied_data
-            self._res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
-                                                                                   resource_id=None,
-                                                                                   has_hyperparameter=False)
+            self.res_id, self.supplied_dataframe = d3m_utils.get_tabular_resource(dataset=supplied_data,
+                                                                                  resource_id=None,
+                                                                                  has_hyperparameter=False)
 
         else:
             self.supplied_dataframe = supplied_data
@@ -1274,19 +1574,23 @@ class DatamartSearchResult:
             self._logger.info("Using user-defined connection url as " + connection_url)
             self.connection_url = connection_url
         else:
-            # TODO: currently temporary add also to get nyu's datamart url here, should set to use isi's in the future
-            connection_url = os.getenv('DATAMART_URL_NYU', DEFAULT_DATAMART_URL)
+            connection_url = os.getenv('DATAMART_URL_ISI', DEFAULT_DATAMART_URL)
             self.connection_url = connection_url
+
+        # ensure this supplied dataframe will not changed afterwards
+        supplied_dataframe_original = copy.copy(self.supplied_dataframe)
 
         if use_cache:
             try:
-                cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=self.supplied_dataframe,
+                cache_key = self.general_search_cache_manager.get_hash_key(supplied_dataframe=supplied_dataframe_original,
                                                                            search_result_serialized=self.serialize())
+
                 cache_result = self.general_search_cache_manager.get_cache_results(cache_key)
                 if cache_result is not None:
                     if type(cache_result) is string:
                         self._logger.warning("This augment was failed last time!")
-                        raise ValueError("Augment appeared to be failed during last execution with messsage \n" + str(cache_result))
+                        raise ValueError(
+                            "Augment appeared to be failed during last execution with messsage \n" + str(cache_result))
                     else:
                         self._logger.info("Using caching results")
                         return cache_result
@@ -1336,7 +1640,7 @@ class DatamartSearchResult:
         # and we don't know if the wikifier success or not here
         if use_cache and cache_key and self.search_type != "wikifier":
             # FIXME: should we cache failed results here?
-            response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=self.supplied_dataframe,
+            response = self.general_search_cache_manager.add_to_memcache(supplied_dataframe=supplied_dataframe_original,
                                                                          search_result_serialized=self.serialize(),
                                                                          augment_results=res,
                                                                          hash_key=cache_key
@@ -1364,53 +1668,65 @@ class DatamartSearchResult:
             raise ValueError("Unknown return format as" + str(return_format))
 
         if type(supplied_data) is d3m_Dataset:
-            supplied_data_df = supplied_data[self._res_id]
+            supplied_data_df = copy.copy(supplied_data[self.res_id])
         elif type(supplied_data) is d3m_DataFrame:
-            supplied_data_df = supplied_data
+            supplied_data_df = copy.copy(supplied_data)
         else:
-            supplied_data_df = self.supplied_dataframe
+            supplied_data_df = copy.copy(self.supplied_dataframe)
 
         if supplied_data_df is None:
             raise ValueError("Can't find supplied data!")
 
         download_result = self.download(supplied_data=supplied_data_df, generate_metadata=False, return_format="df")
+
+        join_pair_column = download_result['joining_pairs']
         download_result = download_result.drop(columns=['joining_pairs'])
-
-        column_names_to_join = None
-        r1_paired = set()
-        i = 0
-
-        df_dict = dict()
+        left_pairs_oversize = False
+        right_pairs_oversize = False
         start = time.time()
-        columns_new = None
-        left_pairs = defaultdict(list)
-        right_pairs = defaultdict(list)
 
-        for r1, r2 in self.pairs:
-            left_pairs[int(r1)].append(int(r2))
-            right_pairs[int(r2)].append(int(r1))
+        # only need to check duplicate for general search's join
+        if self.search_type == "general":
+            maximum_accept_duplicate_amount = self.supplied_dataframe.shape[0] / 20
+            self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
+            for each_row in join_pair_column:
+                if len(each_row) >= maximum_accept_duplicate_amount:
+                    raise ValueError("Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
 
-        max_v1 = 0
-        max_v2 = 0
-        for k, v in left_pairs.items():
-            if len(v) > max_v1:
-                max_v1 = len(v)
+            left_pairs = defaultdict(list)
+            right_pairs = defaultdict(list)
 
-        for k, v in right_pairs.items():
-            if len(v) > max_v2:
-                max_v2 = len(v)
+            for r1, r2 in self.pairs:
+                if left_pairs_oversize and right_pairs_oversize:
+                    raise ValueError("Should not augment for n-m relationship.")
+                # otherwise continue counting
+                if len(left_pairs[int(r1)]) >= maximum_accept_duplicate_amount:
+                    left_pairs_oversize = True
+                    left_pairs[int(r1)].append(int(r2))
+                if len(right_pairs[int(r2)]) >= maximum_accept_duplicate_amount:
+                    right_pairs_oversize = True
+                elif not right_pairs_oversize:
+                    right_pairs[int(r2)].append(int(r1))
 
-        maximum_accept_duplicate_amount = self.supplied_data['learningData'].shape[0] / 20
-        self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
-        self._logger.info("duplicate amount for left is: " + str(max_v1))
-        self._logger.info("duplicate amount for right is: " + str(max_v2))
-
-        if max_v1 >= maximum_accept_duplicate_amount and max_v2 >= maximum_accept_duplicate_amount:
+        if left_pairs_oversize and right_pairs_oversize:
             # if n_to_m_condition
             raise ValueError("Should not augment for n-m relationship.")
             # df_joined = supplied_data_df
 
         else:
+            # if we get special requirement from upload and not get from user side, use upload's
+            if self.special_requirement and self.special_requirement.get("display_columns") and len(augment_columns) == 0:
+                for each_col in self.special_requirement["display_columns"]:
+                    augment_columns.append(DatasetColumn(resource_id=None, column_index=each_col))
+
+            # add extra index column to ensure they follow the original order
+            supplied_data_df['**original_index**'] = supplied_data_df.index
+            # self.pairs = sorted(self.pairs, key=lambda x: int(x[0]))
+            i = 0
+            r1_paired = set()
+            df_dict = dict()
+            columns_new = None
+            column_names_to_join = None
             for r1, r2 in self.pairs:
                 i += 1
                 r1_int = int(r1)
@@ -1460,13 +1776,16 @@ class DatamartSearchResult:
 
             # if search with wikidata, we should remove duplicate Q node column
             self._logger.info("Join finished, totally take " + str(time.time() - start) + " seconds.")
+
+            # sort the joined dataframe with original index
+            df_joined = df_joined.sort_values(by='**original_index**')
+            df_joined = df_joined.drop(columns=['**original_index**'])
         # END augment part
 
         if 'q_node' in df_joined.columns:
             df_joined = df_joined.drop(columns=['q_node'])
 
         if 'id' in df_joined.columns:
-            df_joined = df_joined.sort_values(by=['id'])
             df_joined = df_joined.drop(columns=['id'])
 
         # start adding column metadata for dataset
@@ -1517,24 +1836,52 @@ class DatamartSearchResult:
         self._logger.debug("Start getting join hints.")
 
         if self.search_type == "general":
-            right_join_column_name = self.search_result['variableName']['value']
-            left_columns = []
-            right_columns = []
+            results = []
+            if left_df is None or right_df is None:
+                try:
+                    join_left_cols = []
+                    right_col_number = None
+                    for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
+                        if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
+                            right_col_number = int(each_key.split("_")[-1])
+                            break
+                    join_right_cols = [DatasetColumn(resource_id=None, column_index=right_col_number)]
+                    if self.supplied_dataframe is None:
+                        self._logger.error(
+                            "Can't get supplied dataframe information, failed to find the left join column number")
+                    else:
+                        for each in self.query_json['variables'].keys():
+                            left_col_number = self.supplied_dataframe.columns.tolist().index(each)
+                            join_left_cols.append(DatasetColumn(resource_id=self.res_id, column_index=left_col_number))
+                    results.append(TabularJoinSpec(left_columns=[join_left_cols], right_columns=[join_right_cols]))
+                    self._logger.debug("Get join hints finished, the join hints are:")
+                    self._logger.debug(str(left_col_number) + ", " + str(right_col_number))
+                except KeyError:
+                    self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+                except Exception as e:
+                    self._logger.error("Can't find join columns! Unknown error!")
+                    self._logger.debug(e, exc_info=True)
+                finally:
+                    return results
+            else:
+                right_join_column_name = self.search_result['variableName']['value']
+                left_columns = []
+                right_columns = []
 
-            for each in self.query_json['variables'].keys():
-                left_index = left_df.columns.tolist().index(each)
-                right_index = right_df.columns.tolist().index(right_join_column_name)
-                left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
-                right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
-                left_columns.append([left_index_column])
-                right_columns.append([right_index_column])
+                for each in self.query_json['variables'].keys():
+                    left_index = left_df.columns.tolist().index(each)
+                    right_index = right_df.columns.tolist().index(right_join_column_name)
+                    left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
+                    right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
+                    left_columns.append([left_index_column])
+                    right_columns.append([right_index_column])
 
-            results = TabularJoinSpec(left_columns=left_columns, right_columns=right_columns)
-            self._logger.debug("Get join hints finished, the join hints are:")
-            self._logger.debug(str(left_index) + ", " + str(right_index))
+                results.append(TabularJoinSpec(left_columns=left_columns, right_columns=right_columns))
+                self._logger.debug("Get join hints finished, the join hints are:")
+                self._logger.debug(str(left_index) + ", " + str(right_index))
         else:
             raise ValueError("Unsupport type to get join hints with type" + self.search_type)
-        return [results]
+        return results
 
     def serialize(self) -> str:
         """
@@ -1552,40 +1899,39 @@ class DatamartSearchResult:
         result['metadata']['search_type'] = self.search_type
         augmentation = dict()
         augmentation['properties'] = "join"
+
         if self.search_type == "general":
-            try:
-                left_col_number = []
-                right_col_number = None
-                for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
-                    if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
-                        right_col_number = int(each_key.split("_")[-1])
-                        break
-                augmentation['right_columns'] = [right_col_number]
-                if self.supplied_dataframe is None:
-                    self._logger.error(
-                        "Can't get supplied dataframe information, failed to find the left join column number")
-                else:
-                    for each in self.query_json['variables'].keys():
-                        left_col_number.append(self.supplied_dataframe.columns.tolist().index(each))
-                augmentation['left_columns'] = left_col_number
-            except KeyError:
-                self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
+            if not self.join_pairs:
+                self.join_pairs = self.get_join_hints(left_df=self.supplied_dataframe, right_df=self.right_df)
+
+            if len(self.join_pairs) == 0:
+                self._logger.error("Fail to get the join pairs!")
                 augmentation['left_columns'] = None
                 augmentation['right_columns'] = None
-            except Exception as e:
-                self._logger.error("Can't find join columns! Unknown error!")
-                self._logger.debug(e, exc_info=True)
+            else:
+                if len(self.join_pairs) > 1:
+                    self._logger.warning("Multiple join pairs serialization not support yet!")
+                join_pair = self.join_pairs[0]
+                join_pair_numbers = join_pair.get_column_number_pairs()
+                left_join_pair_numbers = []
+                right_join_pair_numbers = []
+                for each_join_pair_numbers in join_pair_numbers:
+                    left_join_pair_numbers.append(each_join_pair_numbers[0])
+                    right_join_pair_numbers.append(each_join_pair_numbers[1])
+                augmentation['left_columns'] = left_join_pair_numbers
+                augmentation['right_columns'] = right_join_pair_numbers
 
+        # otherwise try to guess from information
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
-            augmentation['left_columns'] = [left_col_number]
+            augmentation['left_columns'] = [[left_col_number]]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
-            augmentation['right_columns'] = [right_col_number]
+            augmentation['right_columns'] = [[right_col_number]]
         elif self.search_type == "vector":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
-            augmentation['left_columns'] = [left_col_number]
+            augmentation['left_columns'] = [[left_col_number]]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
-            augmentation['right_columns'] = [right_col_number]
+            augmentation['right_columns'] = [[right_col_number]]
 
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
@@ -1602,8 +1948,10 @@ class DatamartSearchResult:
         search_result = serialize_result['metadata']['search_result']
         query_json = serialize_result['metadata']['query_json']
         search_type = serialize_result['metadata']['search_type']
-        return DatamartSearchResult(search_result, supplied_data, query_json, search_type)
-
+        return_res = DatamartSearchResult(search_result, supplied_data, query_json, search_type)
+        if serialize_result.get('augmentation'):
+            return_res.set_join_pairs([TabularJoinSpec.from_column_number_pairs(serialize_result['augmentation'])])
+        return return_res
     # def __getstate__(self) -> typing.Dict:
     #     """
     #     This method is used by the pickler as the state of object.
@@ -1675,15 +2023,42 @@ class TabularJoinSpec(AugmentSpec):
             For example, it will return a join pair like ([1,2], [1])
         """
         all_pairs = []
-        for each in zip(self.left_columns, self.right_columns):
+        for each_left_col_pair, each_right_col_pair in zip(self.left_columns, self.right_columns):
             left = []
             right = []
-            for each_left_col in each[0]:
+            for each_left_col in each_left_col_pair:
                 left.append(each_left_col.column_index)
-            for each_right_col in each[1]:
+            for each_right_col in each_right_col_pair:
                 right.append(each_right_col.column_index)
             all_pairs.append((left, right))
         return all_pairs
+
+    @classmethod
+    def from_column_number_pairs(cls, col_number_pair: dict):
+        """
+        reconstruct the TabularJoinSpec base on the join pairs
+        :param col_number_pair:
+        :return:
+        """
+        left_columns = []
+        right_columns = []
+        left_pairs = col_number_pair['left_columns']
+        right_pairs = col_number_pair['right_columns']
+        if len(left_pairs) != len(right_pairs):
+            raise ValueError("The given join pairs length on left = {} right = {} are different.".format(
+                str(left_pairs), str(right_pairs)))
+
+        for each_left_pair in left_pairs:
+            left_pair_transferred = []
+            for each_left_column in each_left_pair:
+                left_pair_transferred.append(DatasetColumn(resource_id=None, column_index=each_left_column))
+            left_columns.append(left_pair_transferred)
+        for each_left_pair in right_pairs:
+            right_pair_transferred = []
+            for each_right_column in each_left_pair:
+                right_pair_transferred.append(DatasetColumn(resource_id=None, column_index=each_right_column))
+            right_columns.append(right_pair_transferred)
+        return TabularJoinSpec(left_columns, right_columns)
 
 
 class VariableConstraint(object):

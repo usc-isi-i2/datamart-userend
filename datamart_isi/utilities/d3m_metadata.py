@@ -43,7 +43,10 @@ class MetadataGenerator:
             
         if self.search_type == "general":
             self.id = self.search_result['datasetLabel']['value']
-            self.score = float(self.search_result['score']['value'])
+            if "score" in self.search_result:
+                self.score = float(self.search_result['score']['value'])
+            else:
+                self.score = 0.0
         elif self.search_type == "wikidata":
             self.id = "wikidata search on " + str(self.search_result['p_nodes_needed']) + " with column " + \
                        self.search_result['target_q_node_column_name']
@@ -460,10 +463,11 @@ class MetadataGenerator:
         :return: a pandas DataFrame
         """
         if self.search_type == "wikidata":
-            column_names = []
+            column_names = ["itemLabel"]
             for each in self.search_result["p_nodes_needed"]:
                 each_name = self.get_node_name(each)
                 column_names.append(each_name)
+
             column_names = ", ".join(column_names)
             required_variable = list()
             required_variable.append(self.search_result["target_q_node_column_name"])

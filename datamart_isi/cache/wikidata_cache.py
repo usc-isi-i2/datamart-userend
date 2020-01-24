@@ -7,10 +7,11 @@ import datetime
 import typing
 from datamart_isi import config
 from datamart_isi.utilities import connection
-
+from datamart_isi.utilities.singleton import singleton
 MEMCAHCE_MAX_VALUE_SIZE = config.memcache_max_value_size
 
 
+@singleton
 class QueryCache(object):
     def __init__(self, *, memcache_max_value_size=MEMCAHCE_MAX_VALUE_SIZE):
         self._logger = logging.getLogger(__name__)
@@ -78,7 +79,6 @@ class QueryCache(object):
             self._logger.error("Query for " + hash_tag + " failed!")
             self._logger.debug(e, exc_info=True)
             results = None
-
         return results
 
     def get_cache_result(self, hash_key) -> typing.Optional[bytes]:
