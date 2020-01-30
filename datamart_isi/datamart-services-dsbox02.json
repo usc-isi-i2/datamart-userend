@@ -6,7 +6,7 @@
     {
       "name": "isi_datamart",
       "host": "dsbox02.isi.edu",
-      "port": 9000,
+      "port": 9005,
       "path": ""
     },
     {
@@ -19,7 +19,7 @@
       "name": "wikifier_identifier",
       "host": "dsbox02.isi.edu",
       "host-test": "dsbox02.isi.edu",
-      "port": 9000,
+      "port": 9005,
       "path": "get_identifiers"
     },
     {
@@ -31,7 +31,7 @@
     {
       "name": "keywords_augmentation",
       "host": "dsbox02.isi.edu",
-      "port": 9000,
+      "port": 9005,
       "path": "keywords_augmentation"
     },
     {
