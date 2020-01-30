@@ -150,6 +150,8 @@ class MetadataGenerator:
                     sample_row_number += 1
                     q_node_sample = self.supplied_dataframe.iloc[sample_row_number, q_node_column_number]
                     semantic_types = self._get_wikidata_column_semantic_types(q_node_sample, each_p_node)
+                # semantic_types[0] is a bool value indicate whether success or not
+                semantic_types = semantic_types[1]
             except:
                 semantic_types = (
                     "http://schema.org/Text",

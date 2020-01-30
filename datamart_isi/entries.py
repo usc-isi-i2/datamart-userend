@@ -8,6 +8,7 @@ import typing
 import logging
 import json
 import re
+import io
 import string
 import time
 import cgitb
@@ -1901,10 +1902,13 @@ class DatamartSearchResult:
         augmentation['properties'] = "join"
 
         if self.search_type == "general":
+            # notice: after running serialize, the column name will be fixed and it is only use for reference,
+            # if serialize again on deserialized result from the serialized results,
+            # it will have error (cause no supplied dataframe is serialized)
             if not self.join_pairs:
                 self.join_pairs = self.get_join_hints(left_df=self.supplied_dataframe, right_df=self.right_df)
 
-            if len(self.join_pairs) == 0:
+            if len(self.join_pairs) == 0 or self.supplied_dataframe is None:
                 self._logger.error("Fail to get the join pairs!")
                 augmentation['left_columns'] = None
                 augmentation['right_columns'] = None
@@ -1915,23 +1919,48 @@ class DatamartSearchResult:
                 join_pair_numbers = join_pair.get_column_number_pairs()
                 left_join_pair_numbers = []
                 right_join_pair_numbers = []
+                left_join_pair_names = []
+                right_join_pair_names = []
+                temp_df = pd.read_csv(io.StringIO(json.loads(self.search_result['extra_information']['value'])["first_10_rows"]))
+                if 'Unnamed: 0' in temp_df.columns:
+                    temp_df = temp_df.drop(columns=['Unnamed: 0'])
                 for each_join_pair_numbers in join_pair_numbers:
                     left_join_pair_numbers.append(each_join_pair_numbers[0])
+                    if self.supplied_dataframe is not None:
+                        left_join_pair_names.append(self.supplied_dataframe.columns[each_join_pair_numbers[0]].tolist())
                     right_join_pair_numbers.append(each_join_pair_numbers[1])
+                    col_names = []
+                    for each_col in each_join_pair_numbers[1]:
+                        # if this col number larger than first 10 rows results, it must be a wikifiered column
+                        if each_col > temp_df.shape[1]:
+                            col_names.append(self.search_result['variableName']['value'])
+                        else:
+                            col_names.append(temp_df.columns[each_col])
+                    right_join_pair_names.append(col_names)
+
                 augmentation['left_columns'] = left_join_pair_numbers
                 augmentation['right_columns'] = right_join_pair_numbers
+                augmentation['left_columns_names'] = left_join_pair_names
+                augmentation['right_columns_names'] = right_join_pair_names
 
         # otherwise try to guess from information
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
+            left_col_name = self.search_result['target_q_node_column_name']
             augmentation['left_columns'] = [[left_col_number]]
+            augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
             augmentation['right_columns'] = [[right_col_number]]
+            augmentation['right_columns_names'] = [["q_node"]]
+
         elif self.search_type == "vector":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [[left_col_number]]
+            left_col_name = self.search_result['target_q_node_column_name']
+            augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [[right_col_number]]
+            augmentation['right_columns_names'] = [["q_node"]]
 
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
