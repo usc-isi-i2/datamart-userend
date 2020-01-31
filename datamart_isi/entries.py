@@ -422,7 +422,8 @@ class DatamartQueryCursor(object):
             else:
                 # updated v2019.12.18: if consider wikifier columns only, not search on other columns
                 if self.consider_wikifier_columns_only and each_variable.key not in self.q_node_column_names:
-                    self._logger.warning("Set to consider wikifier columns only, will not search for column {}".format(each_variable.key))
+                    self._logger.warning(
+                        "Set to consider wikifier columns only, will not search for column {}".format(each_variable.key))
                     return []
 
                 variables[each_variable.key] = each_variable.values
@@ -1070,7 +1071,9 @@ class DatamartSearchResult:
     Different datamarts will provide different implementations of this class.
     """
 
-    def __init__(self, search_result, supplied_data, query_json, search_type, connection_url=None):
+    def __init__(self, search_result: dict,
+                 supplied_data: typing.Union[d3m_DataFrame, d3m_Dataset, None],
+                 query_json: dict, search_type: str, connection_url: str = None):
         self._logger = logging.getLogger(__name__)
         self.search_result = search_result
         self.supplied_data = supplied_data
@@ -1163,18 +1166,18 @@ class DatamartSearchResult:
 
         Parameters
         ---------
-        supplied_data : container.Dataset
+        :param supplied_data : container.Dataset
             A D3M dataset containing the dataset that is the target for augmentation. Datamart will try to download data
             that augments the supplied data well.
-        connection_url : str
+        :param connection_url : str
             A connection string used to connect to a specific Datamart deployment. If not provided, the one provided to
             the `Datamart` constructor is used.
-        generate_metadata: bool
+        :param generate_metadata: bool
             Whether need to get the auto-generated metadata or not, only valid in isi datamart
-        return_format: str
+        :param return_format: str
             A control parameter to set which type of output should get, the default value is "ds" as dataset
             Optional choice is to get dataframe type output. Only valid in isi datamart
-        run_wikifier： str
+        :param run_wikifier： str
             A control parameter to set whether to run wikifier on this search result
         """
         if connection_url:
@@ -1692,7 +1695,8 @@ class DatamartSearchResult:
             self._logger.info("Maximum accept duplicate amount is: " + str(maximum_accept_duplicate_amount))
             for each_row in join_pair_column:
                 if len(each_row) >= maximum_accept_duplicate_amount:
-                    raise ValueError("Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
+                    raise ValueError(
+                        "Too much available join columns ({}) for pair {}".format(str(len(each_row)), self.join_pairs))
 
             left_pairs = defaultdict(list)
             right_pairs = defaultdict(list)
@@ -1902,9 +1906,6 @@ class DatamartSearchResult:
         augmentation['properties'] = "join"
 
         if self.search_type == "general":
-            # notice: after running serialize, the column name will be fixed and it is only use for reference,
-            # if serialize again on deserialized result from the serialized results,
-            # it will have error (cause no supplied dataframe is serialized)
             if not self.join_pairs:
                 self.join_pairs = self.get_join_hints(left_df=self.supplied_dataframe, right_df=self.right_df)
 
@@ -1919,15 +1920,11 @@ class DatamartSearchResult:
                 join_pair_numbers = join_pair.get_column_number_pairs()
                 left_join_pair_numbers = []
                 right_join_pair_numbers = []
-                left_join_pair_names = []
-                right_join_pair_names = []
                 temp_df = pd.read_csv(io.StringIO(json.loads(self.search_result['extra_information']['value'])["first_10_rows"]))
                 if 'Unnamed: 0' in temp_df.columns:
                     temp_df = temp_df.drop(columns=['Unnamed: 0'])
                 for each_join_pair_numbers in join_pair_numbers:
                     left_join_pair_numbers.append(each_join_pair_numbers[0])
-                    if self.supplied_dataframe is not None:
-                        left_join_pair_names.append(self.supplied_dataframe.columns[each_join_pair_numbers[0]].tolist())
                     right_join_pair_numbers.append(each_join_pair_numbers[1])
                     col_names = []
                     for each_col in each_join_pair_numbers[1]:
@@ -1936,32 +1933,42 @@ class DatamartSearchResult:
                             col_names.append(self.search_result['variableName']['value'])
                         else:
                             col_names.append(temp_df.columns[each_col])
-                    right_join_pair_names.append(col_names)
+                    # right_join_pair_names.append(col_names)
 
                 augmentation['left_columns'] = left_join_pair_numbers
                 augmentation['right_columns'] = right_join_pair_numbers
-                augmentation['left_columns_names'] = left_join_pair_names
-                augmentation['right_columns_names'] = right_join_pair_names
+                # augmentation['left_columns_names'] = left_join_pair_names
+                # augmentation['right_columns_names'] = right_join_pair_names
 
         # otherwise try to guess from information
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             left_col_name = self.search_result['target_q_node_column_name']
             augmentation['left_columns'] = [[left_col_number]]
-            augmentation['left_columns_names'] = [[left_col_name]]
+            # augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
             augmentation['right_columns'] = [[right_col_number]]
-            augmentation['right_columns_names'] = [["q_node"]]
+            # augmentation['right_columns_names'] = [["q_node"]]
 
         elif self.search_type == "vector":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [[left_col_number]]
             left_col_name = self.search_result['target_q_node_column_name']
-            augmentation['left_columns_names'] = [[left_col_name]]
+            # augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [[right_col_number]]
-            augmentation['right_columns_names'] = [["q_node"]]
+            # augmentation['right_columns_names'] = [["q_node"]]
 
+        if self.supplied_dataframe is not None:
+            left_join_pair_names = self.supplied_dataframe.columns.tolist()
+        else:
+            left_join_pair_names = []
+
+        right_join_pair_names = self.metadata_manager.get_column_names_from_metadata()
+        result['dataframe_column_names'] = {
+            "left_names": left_join_pair_names,
+            "right_names": right_join_pair_names
+        }
         result['augmentation'] = augmentation
         result['datamart_type'] = 'isi'
         result_str = json.dumps(result)
