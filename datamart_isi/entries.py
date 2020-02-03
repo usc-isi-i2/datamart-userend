@@ -182,6 +182,7 @@ class DatamartQueryCursor(object):
 
             self.current_searching_query_index += 1
             if search_res is not None:
+                self._logger.info("Totally {} results found.".format(str(len(search_res))))
                 current_result.extend(search_res)
 
         if len(current_result) == 0:
