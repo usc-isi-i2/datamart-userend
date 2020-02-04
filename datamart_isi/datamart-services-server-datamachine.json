@@ -16,12 +16,6 @@
             "port_org": 8888,
             "path": "bigdata/namespace/wdq/sparql"
         },
-    {
-      "name": "keywords_augmentation",
-      "host": "10.108.20.4",
-      "port": 9000,
-      "path": "keywords_augmentation"
-    },
         {
             "name": "wikifier_identifier",
             "host": "10.108.20.4",
