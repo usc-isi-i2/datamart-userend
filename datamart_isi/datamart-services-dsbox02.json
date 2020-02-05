@@ -24,7 +24,7 @@
     },
     {
       "name": "wikifier_knowledge_graph",
-      "host": "minds03.isi.edu",
+      "host": "dsbox02.isi.edu",
       "port": 8396,
       "path": "wikify"
     },
