@@ -656,6 +656,7 @@ def fix_metadata(
 
     return dataset
 
+
 def pretty_print_search_results(search_results, to_std=False):
     for i, each_search_result in enumerate(search_results):
         each_search_res_json = each_search_result.get_json_metadata()

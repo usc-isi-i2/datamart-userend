@@ -1061,7 +1061,7 @@ class DatasetColumn:
     Specify a column of a dataframe in a D3MDataset
     """
 
-    def __init__(self, resource_id: str, column_index: int) -> None:
+    def __init__(self, resource_id: typing.Optional[str], column_index: int) -> None:
         self.resource_id = resource_id
         self.column_index = column_index
 
@@ -1843,10 +1843,11 @@ class DatamartSearchResult:
 
         if self.search_type == "general":
             results = []
+            left_col_number = None
+            right_col_number = None
             if left_df is None or right_df is None:
                 try:
                     join_left_cols = []
-                    right_col_number = None
                     for each_key, each_value in literal_eval(self.search_result['extra_information']['value']).items():
                         if 'name' in each_value.keys() and each_value['name'] == self.search_result['variableName']['value']:
                             right_col_number = int(each_key.split("_")[-1])
@@ -1860,8 +1861,6 @@ class DatamartSearchResult:
                             left_col_number = self.supplied_dataframe.columns.tolist().index(each)
                             join_left_cols.append(DatasetColumn(resource_id=self.res_id, column_index=left_col_number))
                     results.append(TabularJoinSpec(left_columns=[join_left_cols], right_columns=[join_right_cols]))
-                    self._logger.debug("Get join hints finished, the join hints are:")
-                    self._logger.debug(str(left_col_number) + ", " + str(right_col_number))
                 except KeyError:
                     self._logger.warning("Can't find join columns! Maybe this search result is from search_without_data?")
                 except Exception as e:
@@ -1873,20 +1872,20 @@ class DatamartSearchResult:
                 right_join_column_name = self.search_result['variableName']['value']
                 left_columns = []
                 right_columns = []
-
                 for each in self.query_json['variables'].keys():
-                    left_index = left_df.columns.tolist().index(each)
-                    right_index = right_df.columns.tolist().index(right_join_column_name)
-                    left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_index)
-                    right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_index)
+                    left_col_number = left_df.columns.tolist().index(each)
+                    right_col_number = right_df.columns.tolist().index(right_join_column_name)
+                    left_index_column = DatasetColumn(resource_id=left_df_src_id, column_index=left_col_number)
+                    right_index_column = DatasetColumn(resource_id=right_src_id, column_index=right_col_number)
                     left_columns.append([left_index_column])
                     right_columns.append([right_index_column])
 
                 results.append(TabularJoinSpec(left_columns=left_columns, right_columns=right_columns))
-                self._logger.debug("Get join hints finished, the join hints are:")
-                self._logger.debug(str(left_index) + ", " + str(right_index))
         else:
-            raise ValueError("Unsupport type to get join hints with type" + self.search_type)
+            raise ValueError("Type {} is not supported to get join hints.".format(self.search_type))
+
+        self._logger.debug("Get join hints finished, the join hints are:")
+        self._logger.debug(str(left_col_number) + ", " + str(right_col_number))
         return results
 
     def serialize(self) -> str:
@@ -1944,7 +1943,7 @@ class DatamartSearchResult:
         # otherwise try to guess from information
         elif self.search_type == "wikidata":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
-            left_col_name = self.search_result['target_q_node_column_name']
+            # left_col_name = self.search_result['target_q_node_column_name']
             augmentation['left_columns'] = [[left_col_number]]
             # augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['p_nodes_needed']) + 1
@@ -1954,7 +1953,7 @@ class DatamartSearchResult:
         elif self.search_type == "vector":
             left_col_number = self.supplied_dataframe.columns.tolist().index(self.search_result['target_q_node_column_name'])
             augmentation['left_columns'] = [[left_col_number]]
-            left_col_name = self.search_result['target_q_node_column_name']
+            # left_col_name = self.search_result['target_q_node_column_name']
             # augmentation['left_columns_names'] = [[left_col_name]]
             right_col_number = len(self.search_result['number_of_vectors'])  # num of rows, not columns
             augmentation['right_columns'] = [[right_col_number]]
@@ -1989,34 +1988,6 @@ class DatamartSearchResult:
         if serialize_result.get('augmentation'):
             return_res.set_join_pairs([TabularJoinSpec.from_column_number_pairs(serialize_result['augmentation'])])
         return return_res
-    # def __getstate__(self) -> typing.Dict:
-    #     """
-    #     This method is used by the pickler as the state of object.
-    #     The object can be recovered through this state uniquely.
-    #     Returns:
-    #         state: Dict
-    #             dictionary of important attributes of the object
-    #     """
-    #     state = dict()
-    #     state["search_result"] = self.__dict__["search_result"]
-    #     state["query_json"] = self.__dict__["query_json"]
-    #     state["search_type"] = self.__dict__["search_type"]
-    #
-    #     return state
-    #
-    # def __setstate__(self, state: typing.Dict) -> None:
-    #     """
-    #     This method is used for unpickling the object. It takes a dictionary
-    #     of saved state of object and restores the object to that state.
-    #     Args:
-    #         state: typing.Dict
-    #             dictionary of the objects picklable state
-    #     Returns:
-    #     """
-    #     self = self.__init__(search_result=state['search_result'],
-    #                          supplied_data=None,
-    #                          query_json=state['query_json'],
-    #                          search_type=state['search_type'])
 
 
 class TabularJoinSpec(AugmentSpec):

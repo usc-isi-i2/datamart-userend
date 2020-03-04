@@ -90,6 +90,8 @@ class Utils:
         hyper2 = CleaningFeaturizerHyperparameter.defaults()
         clean_f = CleaningFeaturizer(hyperparams=hyper2)
         profiler = Profiler(hyperparams=hyper1)
+        profiler.set_training_data(inputs=data)
+        profiler.fit()
         profiled_df = profiler.produce(inputs=data).value
         clean_f.set_training_data(inputs=profiled_df)
         clean_f.fit()
