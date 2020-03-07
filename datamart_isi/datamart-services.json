@@ -65,6 +65,12 @@
       "path": ""
     },
     {
+      "name": "apache_tika",
+      "host": "dsbox02.isi.edu",
+      "port": 9007,
+      "path": ""
+    },
+    {
       "name": "elasticsearch_not_used",
       "host": "dsbox02.isi.edu",
       "port": 9200,
