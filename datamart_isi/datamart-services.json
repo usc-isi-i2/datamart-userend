@@ -26,6 +26,12 @@
       "path": "get_identifiers"
     },
     {
+      "name": "apache_tika",
+      "host": "dsbox02.isi.edu",
+      "port": 9007,
+      "path": ""
+    },
+    {
       "name": "wikifier_knowledge_graph",
       "host": "dsbox02.isi.edu",
       "port": 8396,
