@@ -227,25 +227,26 @@ class MetadataGenerator:
         """
         return_metadata = DataMetadata()
         metadata_dict = literal_eval(self.search_result['extra_information']['value'])
-        data_metadata = metadata_dict.pop('data_metadata')
-        metadata_all = {"structural_type": d3m_DataFrame,
-                        "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
-                        "dimension": {
-                            "name": "rows",
-                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
-                            "length": int(data_metadata['shape_0']),
-                        },
-                        "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
-                        }
-        return_metadata = return_metadata.update(selector=selector_base + (), metadata=metadata_all)
-        metadata_all_elements = {
-            "dimension": {
-                "name": "columns",
-                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
-                "length": int(data_metadata['shape_1']),
+        if "data_metadata" in metadata_dict:
+            data_metadata = metadata_dict.pop('data_metadata')
+            metadata_all = {"structural_type": d3m_DataFrame,
+                            "semantic_types": ["https://metadata.datadrivendiscovery.org/types/Table"],
+                            "dimension": {
+                                "name": "rows",
+                                "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularRow"],
+                                "length": int(data_metadata['shape_0']),
+                            },
+                            "schema": "https://metadata.datadrivendiscovery.org/schemas/v0/container.json"
+                            }
+            return_metadata = return_metadata.update(selector=selector_base + (), metadata=metadata_all)
+            metadata_all_elements = {
+                "dimension": {
+                    "name": "columns",
+                    "semantic_types": ["https://metadata.datadrivendiscovery.org/types/TabularColumn"],
+                    "length": int(data_metadata['shape_1']),
+                }
             }
-        }
-        return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS,), metadata=metadata_all_elements)
+            return_metadata = return_metadata.update(selector=selector_base + (ALL_ELEMENTS,), metadata=metadata_all_elements)
 
         for each_key, each_value in metadata_dict.items():
             if each_key[:12] == 'column_meta_':
