@@ -119,3 +119,6 @@ scripts/generate_schema/wikitables/datasets
 *~
 .\#*
 \#*\#
+
+# datamart config files, should not need to be pushed by hand
+datamart_isi/datamart-services*.json
