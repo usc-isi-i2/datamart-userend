@@ -3,7 +3,10 @@ import pandas as pd
 import os
 import requests
 import json
+import sys
+import argparse
 import logging
+import copy
 from functools import wraps
 from d3m.metadata.base import ALL_ELEMENTS
 from datamart_isi.config import cache_file_storage_base_loc
@@ -87,6 +90,8 @@ class Utils:
         hyper2 = CleaningFeaturizerHyperparameter.defaults()
         clean_f = CleaningFeaturizer(hyperparams=hyper2)
         profiler = Profiler(hyperparams=hyper1)
+        profiler.set_training_data(inputs=data)
+        profiler.fit()
         profiled_df = profiler.produce(inputs=data).value
         clean_f.set_training_data(inputs=profiled_df)
         clean_f.fit()
@@ -293,3 +298,117 @@ class Utils:
     def trigram_tokenizer(x):
         return Utils.qgram_tokenizer(x, 3)
 
+    @staticmethod
+    def join_datasets_by_files(files: typing.List[typing.Union[str, pd.DataFrame]], how: str = "left") -> pd.DataFrame:
+        """
+        :param how: the method to join the dataframe, {‘left’, ‘right’, ‘outer’, ‘inner’}, default ‘left’
+            How to handle the operation of the two objects.
+            left: use calling frame’s index (or column if on is specified)
+            right: use other’s index.
+            outer: form union of calling frame’s index (or column if on is specified) with other’s index, and sort it. lexicographically.
+            inner: form intersection of calling frame’s index (or column if on is specified) with other’s index, preserving the order of the calling’s one.
+        :param files: either a path to csv or a DataFrame directly
+        :return: a joined DataFrame object
+        """
+        if not isinstance(files, list):
+            raise ValueError("Input must be a list of files")
+        if len(files) < 2:
+            raise ValueError("Input files amount must be larger than 2")
+        _logger.info("Totally {} files.".format(str(len(files))))
+
+        necessary_column_names = {"region_wikidata", "precision", "time"}
+        ignore_column_names = {"region_wikidata", "precision", "time", "variable_name", "variable", "region_Label", "calendar",
+                               "productLabel", "qualityLabel"}
+        loaded_dataframes = []
+        for i, each in enumerate(files):
+            if isinstance(each, str):
+                try:
+                    temp_loaded_df = pd.read_csv(each)
+                except Exception as e:
+                    _logger.warning("Failed on loading dataframe No.{}".format(str(i)))
+                    _logger.error(str(e))
+                    continue
+            elif isinstance(each, pd.DataFrame):
+                temp_loaded_df = each
+            else:
+                _logger.warning("Unsupported format '{}' on No.{} input, will ignore.".format(str(type(each)), str(i)))
+                continue
+
+            temp_loaded_df = temp_loaded_df.dropna(subset=['region_wikidata'], inplace=False)
+            if len(set(temp_loaded_df.columns.tolist()).intersection(necessary_column_names)) != len(necessary_column_names):
+                _logger.error("Following columns {} are necessary to be exists".format(str(necessary_column_names)))
+                raise ValueError("Not all columns found on given No.{} datasets.")
+            loaded_dataframes.append(temp_loaded_df)
+
+        # use first input df as base df
+        output_df = copy.deepcopy(loaded_dataframes[0])
+        source_precision = output_df['precision'].iloc[0]
+        # transfer the datetime format to ensure format match
+        time_stringfy_format = Utils.time_granularity_value_to_stringfy_time_format(source_precision)
+        output_df['time'] = pd.to_datetime(output_df['time']).dt.strftime(
+            time_stringfy_format)
+
+        for i, each_loaded_df in enumerate(loaded_dataframes[1:]):
+            current_precision = each_loaded_df['precision'].iloc[0]
+            if source_precision != current_precision:
+                left_join_columns = ["region_wikidata"]
+                right_join_columns = ["region_wikidata"]
+            else:
+                left_join_columns = ["region_wikidata", "time"]
+                right_join_columns = ["region_wikidata", "time"]
+                each_loaded_df['time'] = pd.to_datetime(each_loaded_df['time']).dt.strftime(time_stringfy_format)
+            possible_name = []
+            for each_col_name in each_loaded_df.columns:
+                if each_col_name not in ignore_column_names and "label" not in each_col_name.lower():
+                    possible_name.append(each_col_name)
+            if len(possible_name) != 1:
+                _logger.error("get multiple possible name???")
+                _logger.error(str(each_loaded_df.columns))
+                _logger.error("???")
+                # import pdb
+                # pdb.set_trace()
+            right_needed_columns = right_join_columns + [possible_name[0]]
+            print(str(right_needed_columns))
+            right_join_df = each_loaded_df[right_needed_columns]
+            output_df = pd.merge(left=output_df, right=right_join_df,
+                                 left_on=left_join_columns, right_on=right_join_columns,
+                                 how=how)
+            if len(output_df) == 0:
+                _logger.error("Get 0 rows after join with No.{} DataFrame".format(str(i + 1)))
+        return output_df
+
+
+def main(argv: typing.Sequence) -> None:
+    parser = argparse.ArgumentParser(prog='datamart_isi', description="Run ISI datamart utils command.")
+    subparsers = parser.add_subparsers(dest='commands', title='commands')
+    # define join parser
+    join_parser = subparsers.add_parser(
+        'join', help="join ethiopia related datasets directly by commands",
+        description="Join datasets",
+    )
+    join_parser.add_argument(
+        '-d', '--dataset_dirs', action='store', dest='datasets_dirs',
+        help="paths to the datasets",
+    )
+    join_parser.add_argument(
+        '-o', '--output_dir', action='store', dest='output_dir',
+        help="paths to the output file",
+    )
+    arguments = parser.parse_args(argv[1:])
+
+    _logger.debug("given arguments are {}".format(str(arguments)))
+    _logger.info("Running {} function.".format(arguments.commands))
+    if arguments.commands == 'join':
+        processed_dirs = arguments.datasets_dirs.split(",")
+        _logger.info("Join from following files")
+        for i, each_dir in enumerate(processed_dirs):
+            if each_dir[0] == " ":
+                each_dir = each_dir[1:]
+                processed_dirs[i] = each_dir
+            _logger.info(each_dir)
+        res = Utils.join_datasets_by_files(files=processed_dirs)
+        res.to_csv(arguments.output_dir, index=False)
+
+
+if __name__ == '__main__':
+    main(sys.argv)

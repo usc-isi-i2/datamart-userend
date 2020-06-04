@@ -182,9 +182,13 @@ def wikifier_for_ethiopia(input_dataframe: pd.DataFrame, threshold=0.05, sample_
         woreda_name = remove_punctuation(str(each_val), "string")
         information = use_dict.get(woreda_name)
         q_node = None
-        # if not get directly, try to check the edit distance and if we get the edit distance = 1, 
-        # try to use that
-        if information is None:
+        # for using id searching condition, we may find result directly
+        if isinstance(information, str):
+            q_node = information
+
+        # if not get directly, try to check the edit distance and if we get the edit distance = 1, try to use that
+
+        elif information is None:
             if use_woreda_name_dict:
                 if woreda_name in wikifier_cache_dict:
                     information = wikifier_cache_dict.get(woreda_name)

@@ -1,10 +1,13 @@
 import requests
 import pandas
-import logging
 import os
 import json
 import copy
 import frozendict
+import pandas as pd
+import typing
+import io
+import logging
 from multiprocessing import Pool
 
 from d3m.container import Dataset as d3m_Dataset
@@ -13,6 +16,7 @@ from d3m.base import utils as d3m_utils
 from datamart_isi.cache.general_search_cache import GeneralSearchCache
 from datamart_isi.cache.metadata_cache import MetadataCache
 from datamart_isi.cache.wikidata_cache import QueryCache
+from datamart_isi.cache.materializer_cache import MaterializerCache
 from datamart_isi import config
 from datamart_isi.utilities import connection
 from SPARQLWrapper import SPARQLWrapper, JSON, POST, URLENCODED
@@ -27,42 +31,42 @@ logger = logging.getLogger(__name__)
 # EM_ES_URL = config.em_es_url
 # EM_ES_INDEX = config.em_es_index
 # EM_ES_TYPE = config.em_es_type
-def fetch_blacklist_nodes():
-    query = """
-        SELECT ?item ?itemLabel 
-        WHERE 
-        {
-          ?item wdt:P31/wdt:P279* wd:Q12132.
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
-        }
-    """
-    blacklist_nodes_set = set()
-    result = QueryCache().get_result(query)
-    for each_Q_node in result:
-        blacklist_nodes_set.add(each_Q_node['item']['value'].split("/")[-1])
-    logger.info("Following Q nodes are added to blacklist which will not be considered for wikidata search")
-    logger.info(str(blacklist_nodes_set))
-    return blacklist_nodes_set
-
 
 class DownloadManager:
-    blacklist_nodes = fetch_blacklist_nodes()
+    @staticmethod
+    def fetch_blacklist_nodes():
+        query = """
+            SELECT ?item ?itemLabel 
+            WHERE 
+            {
+              ?item wdt:P31/wdt:P279* wd:Q12132.
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+            }
+        """
+        blacklist_nodes_set = set()
+        result = QueryCache().get_result(query)
+        for each_Q_node in result:
+            blacklist_nodes_set.add(each_Q_node['item']['value'].split("/")[-1])
+        logger.info("Following Q nodes are added to blacklist which will not be considered for wikidata search")
+        logger.info(str(blacklist_nodes_set))
+        return blacklist_nodes_set
+
     @staticmethod
     def fetch_fb_embeddings(q_nodes_list, target_q_node_column_name):
         # add vectors columns in wikifier_res
         qnodes = list(filter(None, q_nodes_list))
         qnode_uris = [WIKIDATA_URI_TEMPLATE.format(qnode) for qnode in qnodes]
         # do elastic search
-        num_of_try = int(len(qnode_uris)/1024) + 1 if len(qnode_uris) % 1024 != 0 else int(len(qnode_uris)/1024)
+        num_of_try = int(len(qnode_uris) / 1024) + 1 if len(qnode_uris) % 1024 != 0 else int(len(qnode_uris) / 1024)
         res = dict()
         for i in range(num_of_try):
             query = {
                 'query': {
                     'terms': {
-                        'key.keyword': qnode_uris[1024*i:1024*i+1024]
+                        'key.keyword': qnode_uris[1024 * i:1024 * i + 1024]
                     }
                 },
-                "size": len(qnode_uris[1024*i:1024*i+1024])
+                "size": len(qnode_uris[1024 * i:1024 * i + 1024])
             }
             url = '{}/_search'.format(EM_ES_URL)
             resp = requests.get(url, json=query)
@@ -119,7 +123,8 @@ class DownloadManager:
                 # find closest Q nodes around a geospatial point from wikidata query
                 sparql_query = "select distinct ?place where \n{\n  ?place wdt:P31/wdt:P279* wd:" + granularity + " .\n" \
                                + "SERVICE wikibase:around {\n ?place wdt:P625 ?location .\n" \
-                               + "bd:serviceParam wikibase:center " + "\"Point(" + str(x) + " " + str(y) + ")\"^^geo:wktLiteral .\n" \
+                               + "bd:serviceParam wikibase:center " + "\"Point(" + str(x) + " " + str(
+                    y) + ")\"^^geo:wktLiteral .\n" \
                                + "bd:serviceParam wikibase:radius " + "\"" + str(radius) + "\" .\n" \
                                + "bd:serviceParam wikibase:distance ?dist. \n}\n" \
                                + "SERVICE wikibase:label { bd:serviceParam wikibase:language \"en\" }\n}\n" \
@@ -171,7 +176,7 @@ class DownloadManager:
 
         # set query information
         geo_variables_list = []
-        for latitude, longitude in zip(supplied_dataframe.iloc[:, latitude_index],supplied_dataframe.iloc[:, longitude_index]):
+        for latitude, longitude in zip(supplied_dataframe.iloc[:, latitude_index], supplied_dataframe.iloc[:, longitude_index]):
             geo_variable = {"latitude": latitude, "longitude": longitude, "radius": radius, "granularity": gran}
             geo_variables_list.append(geo_variable)
 
@@ -227,3 +232,100 @@ class DownloadManager:
             else:
                 logger.info("Push augment results to memcache success!")
         return output_ds
+
+    @staticmethod
+    def get_sample_dataset(search_result: "DatamartSearchResult", return_as_url: bool = False) -> typing.Union[str, bool]:
+        """
+        function used to get the sample dataset part from given search results
+        :param return_as_url: to return the sample dataset directly or return a url point to the sample dataset
+        :param search_result: a DatamartSearchResult class object
+        :return: a string indicate the result or a bool value.
+                If this is a bool value "False", it means this dataset should not be not displayed
+        """
+        file_type = search_result.search_result['file_type']['value']
+        if file_type == "csv":
+            result = DownloadManager.get_sample_dataset_table_format(search_result)
+        else:
+            result = DownloadManager.get_sample_dataset_other_format(search_result)
+        return result
+
+    @staticmethod
+    def get_sample_dataset_table_format(search_result: "DatamartSearchResult") -> typing.Union[str, bool]:
+        """
+        function used to get the sample dataset for table format data
+        :param search_result: a DatamartSearchResult class object
+        :return:
+        """
+        # for vector search results and wikidata search results, we need to fetch the results
+        materialize_info = search_result.serialize()
+        materialize_info_decoded = json.loads(materialize_info)
+        search_type = materialize_info_decoded["metadata"]['search_type']
+        sample_data = ""
+        try:
+            if search_type == "vector":
+                q_nodes_list = materialize_info_decoded["metadata"]['search_result']['q_nodes_list'][:10]
+                target_column_name = materialize_info_decoded["metadata"]['search_result']['target_q_node_column_name']
+                first_10_rows_df = DownloadManager.fetch_fb_embeddings(q_nodes_list=q_nodes_list,
+                                                                       target_q_node_column_name=target_column_name)
+                # updated v2020.1.6: do not return this results if get nothing on first 10 rows
+                if first_10_rows_df.shape[0] == 0:
+                    return False
+                sample_data = first_10_rows_df.to_csv(index=False)
+
+            elif search_type == "wikidata":
+                p_nodes = search_result.id().split("___")
+                if p_nodes[-1].startswith("with_column"):
+                    suffix_col_name = "_for_" + p_nodes[-1][12:]
+                else:
+                    suffix_col_name = ""
+                p_nodes = p_nodes[1: -1]
+                if len(p_nodes) == 0:
+                    logger.error("No Q nodes given for this search result! Will skip")
+                    return False
+                materialize_info_wikidata = {
+                    "p_nodes_needed": p_nodes,
+                    "length": 10,
+                    "suffix_col_name": suffix_col_name,
+                    "show_item_label": True
+                }
+                temp_df = MaterializerCache.materialize(materialize_info_wikidata)
+                # updated v2020.1.6: do not return this results if get nothing on first 10 rows
+                if temp_df.shape[0] == 0 or temp_df.shape[1] == 0:
+                    return False
+
+                sample_data = temp_df.to_csv(index=False)
+
+            elif search_type == "general":
+                extra_info_json = json.loads(materialize_info_decoded["metadata"]["search_result"]["extra_information"]["value"])
+                temp_df = pd.read_csv(io.StringIO(extra_info_json["first_10_rows"]))
+                if 'Unnamed: 0' in temp_df.columns:
+                    temp_df = temp_df.drop(columns=['Unnamed: 0'])
+                sample_data = temp_df.to_csv(index=False)
+
+        except Exception as e:
+            logger.error("Fetching the first 10 rows failed!")
+            logger.debug(e, exc_info=True)
+            sample_data = ""
+        return sample_data
+
+    @staticmethod
+    def get_sample_dataset_other_format(search_result: "DatamartSearchResult"):
+        extra_information = json.loads(search_result.search_result['extra_information']['value'])
+        sample_data = extra_information.get('first_10_rows')
+        return sample_data
+
+    @staticmethod
+    def get_metadata(search_result) -> dict:
+        """
+            combine function to get metadata for 2 different method
+        """
+        file_type = search_result.search_result['file_type']['value']
+        if file_type == "csv":
+            metadata = search_result.get_metadata().to_json_structure()
+        else:
+            extra_information = json.loads(search_result.search_result['extra_information']['value'])
+            metadata = {}
+            for k, v in extra_information.items():
+                if "meta" in k:
+                    metadata[k] = v
+        return metadata

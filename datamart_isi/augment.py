@@ -15,7 +15,11 @@ from datamart_isi import config
 
 
 @singleton
-class Augment(object):
+class Augment:
+    """
+    augment/search unit for datamart general search,
+    it is used to parse the given input from DatamartQuery to sparql query and return the search results
+    """
     def __init__(self) -> None:
         self.qm = SPARQLWrapper(connection.get_general_search_server_url())
         self.qm.setReturnFormat(JSON)
@@ -32,7 +36,7 @@ class Augment(object):
             **kwargs: some extra parameters may get
 
         Returns:
-
+            a list of search results
         """
         if query:
             query_body = self.parse_sparql_query(query, dataset, **kwargs)
@@ -116,8 +120,9 @@ class Augment(object):
                             '''
                 spaqrl_query = PREFIX + SELECTION + STRUCTURE
             else:
-                # updated v2019.11.1, now use fuzzy search
-                _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
+                # updated v2019.11.1, now use fuzzy search, no longer use column names
+                pass
+                # _, supplied_dataframe = d3m_utils.get_tabular_resource(dataset=dataset, resource_id=None)
                 # column_names_list = supplied_dataframe.columns.tolist()
                 # for each_col_name in supplied_dataframe.columns:
                 #     query_keywords.extend(remove_punctuation(each_col_name, "list"))
