@@ -1,0 +1,89 @@
+{
+  "server": {
+    "default_host": ""
+  },
+  "services": [
+    {
+      "name": "isi_datamart",
+      "host": "10.108.20.4",
+      "port": 9000,
+      "path": ""
+    },
+    {
+      "name": "wikidata",
+      "host": "10.108.20.4",
+      "port": 9966,
+      "port_org": 8888,
+      "path": "bigdata/namespace/wdq/sparql"
+    },
+    {
+      "name": "wikifier_identifier",
+      "host": "10.108.20.4",
+      "host-test": "10.108.20.4",
+      "port": 9000,
+      "path": "get_identifiers"
+    },
+    {
+      "name": "apache_tika",
+      "host": "10.108.20.4",
+      "port": 9007,
+      "path": ""
+    },
+    {
+      "name": "wikifier_knowledge_graph",
+      "host": "10.108.20.4",
+      "port": 8396,
+      "path": "wikify"
+    },
+    {
+      "name": "keywords_augmentation",
+      "host": "10.108.20.4",
+      "port": 9000,
+      "path": "keywords_augmentation"
+    },
+    {
+      "name": "general_search",
+      "host": "127.0.0.1",
+      "port": 8080,
+      "port_external": 8080,
+      "path": "bigdata/namespace/datamart3/sparql",
+      "host_org": "10.108.20.4",
+      "port_org": 9002,
+      "port_external_org": 9002,
+      "path_org": "blazegraph/namespace/datamart3/sparql"
+    },
+    {
+      "name": "general_search_test",
+      "host": "10.108.20.4",
+      "port": 9002,
+      "port_external": 9002,
+      "port_org": 9002,
+      "port_external_org": 9002,
+      "path": "blazegraph/namespace/datamart4/sparql"
+    },
+    {
+      "name": "memcached",
+      "host": "10.108.20.4",
+      "port": 11211,
+      "path": ""
+    },
+    {
+      "name": "redis",
+      "host": "10.108.20.4",
+      "port": 6379,
+      "path": ""
+    },
+    {
+      "name": "elasticsearch_not_used",
+      "host": "10.108.20.4",
+      "port": 9200,
+      "path": ""
+    },
+    {
+      "name": "elasticsearch_fb_embeddings",
+      "host": "kg2018a.isi.edu",
+      "port": 9200,
+      "path": "wiki_fb_embeddings_1/vectors"
+    }
+  ]
+}
